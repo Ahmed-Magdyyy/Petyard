@@ -10,12 +10,14 @@ const petSchema = new Schema(
     breed: { type: String },
     gender: { type: String }, // 'male' | 'female' | 'unknown'
     birthDate: { type: Date },
-    chronic_diseases: { type: String },
-    temp_health_issues: { type: String },
+    chronic_conditions: { type: [String], default: [] }, // array of condition codes
+    temp_health_issues: { type: [String], default: [] }, // array of condition codes
   },
   { timestamps: true }
 );
 
-petSchema.index({ userId: 1 });
+petSchema.index({ petOwner: 1 });
+petSchema.index({ chronic_conditions: 1 });
+petSchema.index({ temp_health_issues: 1 });
 
 export const PetModel = model("Pet", petSchema);

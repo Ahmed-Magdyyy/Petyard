@@ -53,8 +53,6 @@ const sendErrorForProd = (err, res) => {
 
 export const globalError =async (err, req, res, next) => {
 
-console.log("error:" ,err);
-
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
 

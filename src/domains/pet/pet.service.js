@@ -1,0 +1,205 @@
+// src/domains/pet/pet.service.js
+import { PetModel } from "./pet.model.js";
+import { ConditionModel } from "../condition/condition.model.js";
+import { ApiError } from "../../shared/ApiError.js";
+import { buildPagination, buildSort } from "../../shared/utils/apiFeatures.js";
+
+async function validateConditionSlugs({ chronicSlugs, tempSlugs }) {
+  if (chronicSlugs && chronicSlugs.length > 0) {
+    const uniqueChronic = [...new Set(chronicSlugs)];
+    const chronicConditions = await ConditionModel.find({
+      slug: { $in: uniqueChronic },
+      type: "chronic",
+      visible: true,
+    }).select("slug type");
+
+    const foundChronicSlugs = chronicConditions.map((c) => c.slug);
+    const missingChronic = uniqueChronic.filter(
+      (slug) => !foundChronicSlugs.includes(slug)
+    );
+
+    if (missingChronic.length > 0) {
+      throw new ApiError(
+        `Invalid chronic condition slugs: ${missingChronic.join(", ")}`,
+        400
+      );
+    }
+  }
+
+  if (tempSlugs && tempSlugs.length > 0) {
+    const uniqueTemp = [...new Set(tempSlugs)];
+    const tempConditions = await ConditionModel.find({
+      slug: { $in: uniqueTemp },
+      type: "temporary",
+      visible: true,
+    }).select("slug type");
+
+    const foundTempSlugs = tempConditions.map((c) => c.slug);
+    const missingTemp = uniqueTemp.filter(
+      (slug) => !foundTempSlugs.includes(slug)
+    );
+
+    if (missingTemp.length > 0) {
+      throw new ApiError(
+        `Invalid temporary health issue slugs: ${missingTemp.join(", ")}`,
+        400
+      );
+    }
+  }
+}
+
+export async function getAllPetsService(queryParams = {}) {
+  const { page, limit } = queryParams;
+
+  const filter = {};
+
+  const totalPetsCount = await PetModel.countDocuments(filter);
+
+  const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
+  const sort = buildSort(queryParams, "-createdAt");
+
+  const petsQuery = PetModel.find(filter).skip(skip).limit(limitNum);
+
+  if (sort) {
+    petsQuery.sort(sort);
+  }
+
+  const pets = await petsQuery;
+
+  const totalPages = Math.ceil(totalPetsCount / limitNum) || 1;
+
+  return {
+    totalPages,
+    page: pageNum,
+    results: pets.length,
+    data: pets,
+  };
+}
+
+export async function createPetService(ownerId, payload) {
+  const {
+    name,
+    type,
+    breed,
+    gender,
+    birthDate,
+    chronic_conditions,
+    temp_health_issues,
+  } = payload;
+
+  await validateConditionSlugs({
+    chronicSlugs: chronic_conditions,
+    tempSlugs: temp_health_issues,
+  });
+
+  const pet = await PetModel.create({
+    petOwner: ownerId,
+    name,
+    type,
+    breed,
+    gender,
+    birthDate,
+    chronic_conditions,
+    temp_health_issues,
+  });
+
+  return pet;
+}
+
+export async function getPetsForOwnerService(ownerId, queryParams = {}) {
+  const { page, limit } = queryParams;
+
+  const filter = { petOwner: ownerId };
+
+  const totalPetsCount = await PetModel.countDocuments(filter);
+
+  const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
+  const sort = buildSort(queryParams, "-createdAt");
+
+  const petsQuery = PetModel.find(filter).skip(skip).limit(limitNum);
+
+  if (sort) {
+    petsQuery.sort(sort);
+  }
+
+  const pets = await petsQuery;
+
+  const totalPages = Math.ceil(totalPetsCount / limitNum) || 1;
+
+  return {
+    totalPages,
+    page: pageNum,
+    results: pets.length,
+    data: pets,
+  };
+}
+
+export async function getPetByIdForOwnerService(ownerId, petId) {
+  const pet = await PetModel.findOne({ _id: petId, petOwner: ownerId });
+
+  if (!pet) {
+    throw new ApiError(`No pet found for this id: ${petId}`, 404);
+  }
+
+  return pet;
+}
+
+export async function updatePetForOwnerService(ownerId, petId, payload) {
+  const pet = await PetModel.findOne({ _id: petId, petOwner: ownerId });
+
+  if (!pet) {
+    throw new ApiError(`No pet found for this id: ${petId}`, 404);
+  }
+
+  const {
+    name,
+    type,
+    breed,
+    gender,
+    birthDate,
+    chronic_conditions,
+    temp_health_issues,
+  } = payload;
+
+  await validateConditionSlugs({
+    chronicSlugs: chronic_conditions,
+    tempSlugs: temp_health_issues,
+  });
+
+  if (name !== undefined) pet.name = name;
+  if (type !== undefined) pet.type = type;
+  if (breed !== undefined) pet.breed = breed;
+  if (gender !== undefined) pet.gender = gender;
+  if (birthDate !== undefined) pet.birthDate = birthDate;
+  if (chronic_conditions !== undefined)
+    pet.chronic_conditions = chronic_conditions;
+  if (temp_health_issues !== undefined)
+    pet.temp_health_issues = temp_health_issues;
+
+  const updatedPet = await pet.save();
+
+  return updatedPet;
+}
+
+export async function deletePetByIdService(petId) {
+  const pet = await PetModel.findByIdAndDelete(petId);
+
+  if (!pet) {
+    throw new ApiError(`No pet found for this id: ${petId}`, 404);
+  }
+
+  return pet;
+}
+
+export async function deletePetForOwnerService(ownerId, petId) {
+  const pet = await PetModel.findOneAndDelete({
+    _id: petId,
+    petOwner: ownerId,
+  });
+
+  if (!pet) {
+    throw new ApiError(`No pet found for this id: ${petId}`, 404);
+  }
+
+  return pet;
+}

@@ -1,5 +1,5 @@
 node_modules/
 
-docs/
-
 .env
+
+src/geo-zones-demo
