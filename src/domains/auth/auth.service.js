@@ -63,6 +63,7 @@ export async function signupService({ name, email, phone, password }) {
     email: user.email,
     phone: user.phone,
     phoneVerified: user.phoneVerified,
+    otp: otp
   };
 }
 
@@ -134,6 +135,7 @@ export async function resendOtpService({ phone }) {
     id: user._id,
     phone: user.phone,
     phoneVerified: user.phoneVerified,
+    otp: otp
   };
 }
 
