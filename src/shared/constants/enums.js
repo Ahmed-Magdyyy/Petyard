@@ -14,8 +14,10 @@ export const accountStatus = Object.freeze({
 
 export const enabledControls = Object.freeze({
   USERS: 'users',
+  CONDITIONS: 'conditions',
+  PETS: 'pets',
+  CATEGORIES: 'categories',
+  SUBCATEGORIES: 'subcategories',
   PRODUCTS: 'products',
   ORDERS: 'orders',
-  WAREHOUSES: 'warehouses',
-  PROMOTIONS: 'promotions',
 });

@@ -5,6 +5,10 @@ import conditionRoutes from "../domains/condition/condition.routes.js";
 import petsRoutes from "../domains/pet/pet.routes.js";
 import warehouseRoutes from "../domains/warehouse/warehouse.routes.js";
 import zoneRoutes from "../domains/zone/zone.routes.js";
+import categoryRoutes from "../domains/category/category.routes.js";
+import subcategoryRoutes from "../domains/subcategory/subcategory.routes.js";
+import brandRoutes from "../domains/brand/brand.routes.js";
+import productRoutes from "../domains/product/product.routes.js";
 
 export function mountRoutes(app) {
   app.use("/api/v1/auth", authRoutes);
@@ -13,4 +17,8 @@ export function mountRoutes(app) {
   app.use("/api/v1/pets", petsRoutes);
   app.use("/api/v1/warehouses", warehouseRoutes);
   app.use("/api/v1/zones", zoneRoutes);
+  app.use("/api/v1/categories", categoryRoutes);
+  app.use("/api/v1/subcategories", subcategoryRoutes);
+  app.use("/api/v1/brands", brandRoutes);
+  app.use("/api/v1/products", productRoutes);
 }

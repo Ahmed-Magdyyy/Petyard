@@ -46,8 +46,6 @@ export async function getUsersService(queryParams) {
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
   const sort = buildSort(queryParams, "-createdAt");
 
-  console.log(filter);
-
   const usersQuery = UserModel.find(filter).skip(skip).limit(limitNum);
 
   if (sort) {

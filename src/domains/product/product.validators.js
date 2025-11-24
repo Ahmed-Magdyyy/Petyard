@@ -1,0 +1,220 @@
+import { body, param } from "express-validator";
+import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
+
+export const createProductValidator = [
+  body("type")
+    .notEmpty()
+    .withMessage("type is required")
+    .isIn(["SIMPLE", "VARIANT"])
+    .withMessage("type must be either SIMPLE or VARIANT"),
+
+  body("subcategory")
+    .notEmpty()
+    .withMessage("subcategory is required")
+    .isMongoId()
+    .withMessage("subcategory must be a valid id"),
+
+  body("brand")
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage("brand must be a valid id"),
+
+  body("name_en").notEmpty().withMessage("English name is required"),
+  body("name_ar").notEmpty().withMessage("Arabic name is required"),
+
+  body("desc_en").notEmpty().withMessage("English description is required"),
+  body("desc_ar").notEmpty().withMessage("Arabic description is required"),
+
+  body("tags")
+    .optional()
+    .isArray()
+    .withMessage("tags must be an array"),
+
+  body("tags.*")
+    .optional()
+    .isString()
+    .withMessage("each tag must be a string"),
+
+  body("warehouseStocks")
+    .optional()
+    .isArray()
+    .withMessage("warehouseStocks must be an array"),
+
+  body("warehouseStocks.*.warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("warehouseStocks.*.warehouse must be a valid id"),
+
+  body("warehouseStocks.*.quantity")
+    .optional()
+    .isNumeric()
+    .withMessage("warehouseStocks.*.quantity must be a number"),
+
+  body("variants")
+    .optional()
+    .isArray()
+    .withMessage("variants must be an array"),
+
+  body("variants.*.price")
+    .optional()
+    .isNumeric()
+    .withMessage("variant price must be a number"),
+
+  body("variants.*.discountedPrice")
+    .optional()
+    .isNumeric()
+    .withMessage("variant discountedPrice must be a number"),
+
+  body("variants.*.warehouseStocks")
+    .optional()
+    .isArray()
+    .withMessage("variant warehouseStocks must be an array"),
+
+  body("variants.*.warehouseStocks.*.warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("variant warehouseStocks.*.warehouse must be a valid id"),
+
+  body("variants.*.warehouseStocks.*.quantity")
+    .optional()
+    .isNumeric()
+    .withMessage("variant warehouseStocks.*.quantity must be a number"),
+
+  body("type").custom((value, { req }) => {
+    if (value === "SIMPLE") {
+      if (!Array.isArray(req.body.warehouseStocks) || req.body.warehouseStocks.length === 0) {
+        throw new Error("warehouseStocks is required for SIMPLE products");
+      }
+      if (req.body.price == null) {
+        throw new Error("price is required for SIMPLE products");
+      }
+    }
+
+    if (value === "VARIANT") {
+      if (!Array.isArray(req.body.variants) || req.body.variants.length === 0) {
+        throw new Error("variants are required for VARIANT products");
+      }
+    }
+
+    return true;
+  }),
+
+  validatorMiddleware,
+];
+
+export const updateProductValidator = [
+  param("id").isMongoId().withMessage("Invalid product id"),
+
+  body("slug")
+    .not()
+    .exists()
+    .withMessage("slug cannot be updated"),
+
+  body("type")
+    .not()
+    .exists()
+    .withMessage("type cannot be updated"),
+
+  body("subcategory")
+    .optional()
+    .isMongoId()
+    .withMessage("subcategory must be a valid id"),
+
+  body("brand")
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage("brand must be a valid id"),
+
+  body("name_en")
+    .optional()
+    .isString()
+    .withMessage("English name must be a string"),
+
+  body("name_ar")
+    .optional()
+    .isString()
+    .withMessage("Arabic name must be a string"),
+
+  body("desc_en")
+    .optional()
+    .isString()
+    .withMessage("English description must be a string"),
+
+  body("desc_ar")
+    .optional()
+    .isString()
+    .withMessage("Arabic description must be a string"),
+
+  body("price")
+    .optional()
+    .isNumeric()
+    .withMessage("price must be a number"),
+
+  body("discountedPrice")
+    .optional()
+    .isNumeric()
+    .withMessage("discountedPrice must be a number"),
+
+  body("tags")
+    .optional()
+    .isArray()
+    .withMessage("tags must be an array"),
+
+  body("tags.*")
+    .optional()
+    .isString()
+    .withMessage("each tag must be a string"),
+
+  body("warehouseStocks")
+    .optional()
+    .isArray()
+    .withMessage("warehouseStocks must be an array"),
+
+  body("warehouseStocks.*.warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("warehouseStocks.*.warehouse must be a valid id"),
+
+  body("warehouseStocks.*.quantity")
+    .optional()
+    .isNumeric()
+    .withMessage("warehouseStocks.*.quantity must be a number"),
+
+  body("variants")
+    .optional()
+    .isArray()
+    .withMessage("variants must be an array"),
+
+  body("variants.*.price")
+    .optional()
+    .isNumeric()
+    .withMessage("variant price must be a number"),
+
+  body("variants.*.discountedPrice")
+    .optional()
+    .isNumeric()
+    .withMessage("variant discountedPrice must be a number"),
+
+  body("variants.*.warehouseStocks")
+    .optional()
+    .isArray()
+    .withMessage("variant warehouseStocks must be an array"),
+
+  body("variants.*.warehouseStocks.*.warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("variant warehouseStocks.*.warehouse must be a valid id"),
+
+  body("variants.*.warehouseStocks.*.quantity")
+    .optional()
+    .isNumeric()
+    .withMessage("variant warehouseStocks.*.quantity must be a number"),
+
+  validatorMiddleware,
+];
+
+export const productIdParamValidator = [
+  param("id").isMongoId().withMessage("Invalid product id"),
+
+  validatorMiddleware,
+];

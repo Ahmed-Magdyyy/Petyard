@@ -1,0 +1,33 @@
+import asyncHandler from "express-async-handler";
+import {
+  getProductsService,
+  getProductByIdService,
+  createProductService,
+  updateProductService,
+  deleteProductService,
+} from "./product.service.js";
+
+export const getProducts = asyncHandler(async (req, res) => {
+  const data = await getProductsService(req.query);
+  res.status(200).json({ data });
+});
+
+export const getProduct = asyncHandler(async (req, res) => {
+  const data = await getProductByIdService(req.params.id, req.query);
+  res.status(200).json({ data });
+});
+
+export const createProduct = asyncHandler(async (req, res) => {
+  const product = await createProductService(req.body, req.files || []);
+  res.status(201).json({ data: product });
+});
+
+export const updateProduct = asyncHandler(async (req, res) => {
+  const updated = await updateProductService(req.params.id, req.body, req.files || []);
+  res.status(200).json({ data: updated });
+});
+
+export const deleteProduct = asyncHandler(async (req, res) => {
+  await deleteProductService(req.params.id);
+  res.status(204).json({ message: "Product deleted successfully" });
+});
