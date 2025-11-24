@@ -37,7 +37,7 @@ dbConnection();
 mountRoutes(app)
 
 app.get('/', (req, res) => {
-  res.send('Swift move API is running.');
+  res.send('Petyard API is running.');
 });
 
 app.all("*", (req, res, next) => {
