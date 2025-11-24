@@ -53,6 +53,7 @@ export async function uploadImageToCloudinary(file, { folder, publicId } = {}) {
       url: result.secure_url || result.url,
     };
   } catch (err) {
+    console.log(err);
     throw new ApiError("Failed to upload image", 500);
   }
 }
