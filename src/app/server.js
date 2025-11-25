@@ -18,6 +18,7 @@ const __dirname = path.dirname(__filename)
 config({ path: path.resolve(__dirname, '../shared/.env') });
 
 // middlewares
+app.set("trust proxy", 1);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "uploads")));
