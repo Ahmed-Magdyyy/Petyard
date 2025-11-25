@@ -36,7 +36,20 @@ export async function getWarehouseByIdService(id) {
 }
 
 export async function createWarehouseService(payload) {
-  const warehouse = await WarehouseModel.create(payload);
+  const { isDefault, ...rest } = payload || {};
+
+  if (isDefault) {
+    await WarehouseModel.updateMany(
+      { isDefault: true },
+      { $set: { isDefault: false } }
+    );
+  }
+
+  const warehouse = await WarehouseModel.create({
+    ...rest,
+    ...(typeof isDefault === "boolean" ? { isDefault } : {}),
+  });
+
   return warehouse;
 }
 
@@ -46,7 +59,8 @@ export async function updateWarehouseService(id, payload) {
     throw new ApiError(`No warehouse found for this id: ${id}`, 404);
   }
 
-  const { name, code, country, governorate, address, location, active } = payload;
+  const { name, code, country, governorate, address, location, active, isDefault } =
+    payload;
 
   if (name !== undefined) warehouse.name = name;
   if (code !== undefined) warehouse.code = code;
@@ -54,6 +68,17 @@ export async function updateWarehouseService(id, payload) {
   if (governorate !== undefined) warehouse.governorate = governorate;
   if (address !== undefined) warehouse.address = address;
   if (location !== undefined) warehouse.location = location;
+  if (typeof isDefault === "boolean") {
+    if (isDefault) {
+      await WarehouseModel.updateMany(
+        { _id: { $ne: id }, isDefault: true },
+        { $set: { isDefault: false } }
+      );
+      warehouse.isDefault = true;
+    } else {
+      warehouse.isDefault = false;
+    }
+  }
   if (active !== undefined) warehouse.active = active;
 
   const updated = await warehouse.save();

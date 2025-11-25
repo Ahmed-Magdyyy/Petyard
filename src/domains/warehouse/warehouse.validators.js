@@ -1,6 +1,7 @@
 // src/domains/warehouse/warehouse.validators.js
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
+import { GOVERNORATES } from "../../shared/constants/enums.js";
 
 export const createWarehouseValidator = [
   body("name").notEmpty().withMessage("name is required"),
@@ -18,8 +19,8 @@ export const createWarehouseValidator = [
 
   body("governorate")
     .optional()
-    .isString()
-    .withMessage("governorate must be a string"),
+    .isIn(Object.values(GOVERNORATES))
+    .withMessage("governorate is invalid"),
 
   body("address")
     .optional()
@@ -41,6 +42,11 @@ export const createWarehouseValidator = [
     .isArray({ min: 2, max: 2 })
     .withMessage("location.coordinates must be [lng, lat]"),
 
+  body("isDefault")
+    .optional()
+    .isBoolean()
+    .withMessage("isDefault must be a boolean"),
+  
   body("defaultShippingPrice")
     .optional()
     .isFloat({ min: 0 })
@@ -69,8 +75,8 @@ export const updateWarehouseValidator = [
 
   body("governorate")
     .optional()
-    .isString()
-    .withMessage("governorate must be a string"),
+    .isIn(Object.values(GOVERNORATES))
+    .withMessage("governorate is invalid"),
 
   body("address")
     .optional()
@@ -96,6 +102,11 @@ export const updateWarehouseValidator = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage("defaultShippingPrice must be a non-negative number"),
+
+  body("isDefault")
+    .optional()
+    .isBoolean()
+    .withMessage("isDefault must be a boolean"),
 
   body("active")
     .optional()

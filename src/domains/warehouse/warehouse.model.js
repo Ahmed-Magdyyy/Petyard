@@ -25,6 +25,7 @@ const warehouseSchema = new Schema(
     governorate: {
       type: String,
       trim: true,
+      lowercase: true,
     },
     address: {
       type: String,
@@ -47,6 +48,10 @@ const warehouseSchema = new Schema(
       min: 0,
       default: 0,
     },
+    isDefault: {
+      type: Boolean,
+      default: false,
+    },
     active: {
       type: Boolean,
       default: true,
@@ -57,6 +62,8 @@ const warehouseSchema = new Schema(
 
 warehouseSchema.index({ code: 1 }, { unique: true });
 warehouseSchema.index({ active: 1 });
+warehouseSchema.index({ governorate: 1, active: 1 });
+warehouseSchema.index({ isDefault: 1 });
 warehouseSchema.index({ location: "2dsphere" });
 
 export const WarehouseModel = model("Warehouse", warehouseSchema);

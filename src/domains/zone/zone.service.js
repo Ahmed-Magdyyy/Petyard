@@ -164,35 +164,6 @@ export async function deleteZoneService(id) {
   await ZoneModel.deleteOne({ _id: id });
 }
 
-export async function resolveZoneByLocationService({ lat, lng }) {
-  const latNum = Number(lat);
-  const lngNum = Number(lng);
-
-  if (Number.isNaN(latNum) || Number.isNaN(lngNum)) {
-    throw new ApiError("lat and lng must be numbers", 400);
-  }
-
-  const point = {
-    type: "Point",
-    coordinates: [lngNum, latNum],
-  };
-
-  const zone = await ZoneModel.findOne({
-    active: true,
-    geometry: {
-      $geoIntersects: {
-        $geometry: point,
-      },
-    },
-  }).populate("warehouse", "name code active defaultShippingPrice");
-
-  if (!zone) {
-    throw new ApiError("No delivery coverage for this location", 404);
-  }
-
-  return zone;
-}
-
 export async function generateWarehouseGridService(
   warehouseId,
   { radiusKm = 10, cellSideKm = 1, overwrite = false } = {}

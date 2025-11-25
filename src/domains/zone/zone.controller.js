@@ -7,7 +7,6 @@ import {
   updateZoneService,
   toggleZoneActiveService,
   deleteZoneService,
-  resolveZoneByLocationService,
   generateWarehouseGridService,
   getWarehouseZonesGridService,
   updateWarehouseZonesGridService,
@@ -49,36 +48,6 @@ export const toggleZoneActive = asyncHandler(async (req, res) => {
 export const deleteZone = asyncHandler(async (req, res) => {
   await deleteZoneService(req.params.id);
   res.status(204).json({ message: "Zone deleted successfully" });
-});
-
-// POST /zones/resolve-zone
-export const resolveZone = asyncHandler(async (req, res) => {
-  const { lat, lng } = req.body;
-
-  const zone = await resolveZoneByLocationService({ lat, lng });
-
-  const warehouse = zone.warehouse;
-
-  const effectiveShippingPrice =
-    zone.shippingFee &&
-    typeof zone.shippingFee === "number" &&
-    !Number.isNaN(zone.shippingFee)
-      ? zone.shippingFee
-      : warehouse?.defaultShippingPrice ?? 0;
-
-  res.status(200).json({
-    data: {
-      zoneId: zone._id,
-      zoneName: zone.name,
-      areaName: zone.areaName ?? null,
-      warehouseId: warehouse?._id,
-      warehouseName: warehouse?.name,
-      warehouseCode: warehouse?.code,
-      effectiveShippingPrice,
-      shippingFee: zone.shippingFee ?? null,
-      defaultShippingPrice: warehouse?.defaultShippingPrice ?? null,
-    },
-  });
 });
 
 // POST /warehouses/:id/zones-grid/generate

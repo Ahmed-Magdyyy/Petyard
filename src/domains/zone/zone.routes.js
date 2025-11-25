@@ -9,21 +9,13 @@ import {
   updateZone,
   toggleZoneActive,
   deleteZone,
-  resolveZone,
 } from "./zone.controller.js";
-import {
-  createZoneValidator,
-  updateZoneValidator,
-  resolveZoneLocationValidator,
-  zoneIdParamValidator,
-} from "./zone.validators.js";
+import { createZoneValidator, updateZoneValidator, zoneIdParamValidator } from "./zone.validators.js";
 
 const router = Router();
 
 // Public list for dropdowns / location selection (can be filtered via query)
 router.get("/", getZones);
-
-router.post("/resolve-zone", resolveZoneLocationValidator, resolveZone);
 
 // Admin-only routes
 router.use(protect, allowedTo(roles.SUPER_ADMIN));
