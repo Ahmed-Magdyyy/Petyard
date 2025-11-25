@@ -16,6 +16,7 @@ import { roles } from "../../shared/constants/enums.js";
 // POST /auth/signup
 // Body: { name, email, phone, password }
 export const signup = asyncHandler(async (req, res) => {
+  console.log("req:", req);
   console.log("req.body:", req.body);
   
   const data = await signupService(req.body);
