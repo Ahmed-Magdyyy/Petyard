@@ -2,6 +2,7 @@ import { ZoneModel } from "../zone/zone.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { GOVERNORATES, SUPPORTED_GOVERNORATES } from "../../shared/constants/enums.js";
+import { getOrSetCache } from "../../shared/cache.js";
 
 function normalizeGovernorateName(raw) {
   if (!raw || typeof raw !== "string") return null;
@@ -169,6 +170,7 @@ function buildOutsideZonesResponse({
   coverageStatus,
   reasonCode,
   reasonMessage,
+  canDeliver = false,
 }) {
   if (!warehouse) {
     throw new ApiError("No active warehouse configured", 500);
@@ -203,7 +205,7 @@ function buildOutsideZonesResponse({
       },
     },
     delivery: {
-      canDeliver: false,
+      canDeliver,
       coverageStatus,
       reasonCode,
       reasonMessage,
@@ -224,7 +226,19 @@ export async function resolveLocationByCoordinatesService({ lat, lng, governorat
 
   const normalizedGovFromClient = normalizeGovernorateName(governorateRaw);
 
-  const zone = await findZoneForPoint({ latNum, lngNum });
+  const isClientGovSupported =
+    !!normalizedGovFromClient && SUPPORTED_GOVERNORATES.includes(normalizedGovFromClient);
+
+  let zone = null;
+
+  // Option B behavior:
+  // - If the client governorate is supported, or we could not normalize it,
+  //   we allow geometry-based zone lookup.
+  // - If the client governorate is explicitly normalized but unsupported,
+  //   we skip zone lookup entirely and go straight to outside/unsupported logic.
+  if (isClientGovSupported || !normalizedGovFromClient) {
+    zone = await findZoneForPoint({ latNum, lngNum });
+  }
 
   if (zone) {
     return buildZoneBasedResponse({
@@ -238,7 +252,7 @@ export async function resolveLocationByCoordinatesService({ lat, lng, governorat
   }
 
   const normalizedGov = normalizedGovFromClient;
-  const isSupported = !!normalizedGov && SUPPORTED_GOVERNORATES.includes(normalizedGov);
+  const isSupported = isClientGovSupported;
 
   if (isSupported) {
     let warehouse = await findWarehouseByGovernorate(normalizedGov);
@@ -264,8 +278,9 @@ export async function resolveLocationByCoordinatesService({ lat, lng, governorat
 
   const warehouse = await findDefaultWarehouse();
   const normalizedFallbackGov = warehouse?.governorate || null;
-  const isFallbackSupported = !!normalizedFallbackGov &&
-    SUPPORTED_GOVERNORATES.includes(normalizedFallbackGov);
+  const finalNormalizedGov = normalizedGov || normalizedFallbackGov || null;
+  const finalIsSupported = !!finalNormalizedGov &&
+    SUPPORTED_GOVERNORATES.includes(finalNormalizedGov);
 
   return buildOutsideZonesResponse({
     warehouse,
@@ -273,65 +288,87 @@ export async function resolveLocationByCoordinatesService({ lat, lng, governorat
     lngNum,
     source,
     governorateRaw,
-    normalizedGov: normalizedGov || normalizedFallbackGov || null,
-    isSupported: isSupported || isFallbackSupported,
+    normalizedGov: finalNormalizedGov,
+    isSupported: finalIsSupported,
     coverageStatus: "OUTSIDE_ZONES_UNSUPPORTED_GOVERNORATE",
-    reasonCode: "NON_DELIVERABLE_UNSUPPORTED_GOVERNORATE",
-    reasonMessage:
-      "We currently don't deliver to this governorate. You can still browse products.",
+    reasonCode: null,
+    reasonMessage: null,
+    canDeliver: true,
   });
 }
 
 export async function getLocationOptionsService() {
-  const aggregate = await ZoneModel.aggregate([
-    {
-      $match: {
-        active: true,
-        areaName: { $exists: true, $ne: "" },
+  const cacheKey = "location:options";
+  const ttlSeconds = 600; // cache for 10 minutes
+
+  const result = await getOrSetCache(cacheKey, ttlSeconds, async () => {
+    const aggregate = await ZoneModel.aggregate([
+      {
+        $match: {
+          active: true,
+          areaName: { $exists: true, $ne: "" },
+        },
       },
-    },
-    {
-      $group: {
-        _id: { governorate: "$governorate", areaName: "$areaName" },
-        warehouse: { $first: "$warehouse" },
+      {
+        $group: {
+          _id: { governorate: "$governorate", areaName: "$areaName" },
+          warehouse: { $first: "$warehouse" },
+        },
       },
-    },
-  ]);
+    ]);
 
-  const byGovernorate = new Map();
+    const byGovernorate = new Map();
 
-  aggregate.forEach((row) => {
-    const gov = (row._id?.governorate || "").toLowerCase();
-    const areaName = row._id?.areaName;
-    if (!gov || !areaName) return;
+    aggregate.forEach((row) => {
+      const gov = (row._id?.governorate || "").toLowerCase();
+      const areaName = row._id?.areaName;
+      if (!gov || !areaName) return;
 
-    if (!byGovernorate.has(gov)) {
-      byGovernorate.set(gov, []);
-    }
-    byGovernorate.get(gov).push({
-      name: areaName,
-      warehouseId: row.warehouse,
+      if (!byGovernorate.has(gov)) {
+        byGovernorate.set(gov, []);
+      }
+      byGovernorate.get(gov).push({
+        name: areaName,
+        warehouseId: row.warehouse,
+      });
     });
-  });
 
-  const governorateLabels = {
-    [GOVERNORATES.ALEXANDRIA]: "Alexandria",
-    [GOVERNORATES.CAIRO]: "Cairo",
-    [GOVERNORATES.GIZA]: "Giza",
-  };
+    const governorateLabels = {
+      [GOVERNORATES.ALEXANDRIA]: "Alexandria",
+      [GOVERNORATES.CAIRO]: "Cairo",
+      [GOVERNORATES.GIZA]: "Giza",
+      // Other governorates will fall back to their code string as label
+    };
 
-  const governorates = SUPPORTED_GOVERNORATES.map((code) => {
-    const areas = byGovernorate.get(code) || [];
+    const allGovernorateCodes = Object.values(GOVERNORATES);
+
+    const governorates = allGovernorateCodes.map((code) => {
+      const areas = byGovernorate.get(code) || [];
+
+      return {
+        code,
+        label: governorateLabels[code] || code,
+        isSupported: SUPPORTED_GOVERNORATES.includes(code),
+        hasAreas: areas.length > 0,
+        areas,
+      };
+    });
+
+    const defaultWarehouse = await findDefaultWarehouse();
 
     return {
-      code,
-      label: governorateLabels[code] || code,
-      hasAreas: areas.length > 0,
-      areas,
+      governorates,
+      defaultWarehouse: defaultWarehouse
+        ? {
+            id: defaultWarehouse._id,
+            name: defaultWarehouse.name,
+            governorate: defaultWarehouse.governorate || null,
+            isDefault: Boolean(defaultWarehouse.isDefault),
+            defaultShippingPrice: defaultWarehouse.defaultShippingPrice ?? 0,
+          }
+        : null,
     };
   });
 
-  return {
-    governorates,
-  };
+  return result;
 }
