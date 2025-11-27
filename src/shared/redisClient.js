@@ -18,7 +18,13 @@ export function getRedisClient() {
     return redisClient;
   }
 
-  const client = new Redis(redisUrl);
+  const client = new Redis(redisUrl, {
+    // Do not keep retrying forever if Redis is down; fail fast so requests
+    // can fall back to MongoDB without hanging.
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    retryStrategy: () => null,
+  });
 
   client.on("error", (err) => {
     console.error("[Redis] Error:", err.message);

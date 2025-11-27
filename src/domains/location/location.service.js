@@ -64,13 +64,23 @@ async function findZoneForPoint({ latNum, lngNum }) {
   return zone;
 }
 
-async function findWarehouseByGovernorate(governorate) {
+async function findNearestWarehouseByGovernorate({ governorate, latNum, lngNum }) {
   if (!governorate) return null;
+
+  const userPoint = {
+    type: "Point",
+    coordinates: [lngNum, latNum],
+  };
 
   const warehouse = await WarehouseModel.findOne({
     governorate,
     active: true,
-  }).sort({ createdAt: 1 });
+    location: {
+      $near: {
+        $geometry: userPoint,
+      },
+    },
+  });
 
   return warehouse;
 }
@@ -255,7 +265,11 @@ export async function resolveLocationByCoordinatesService({ lat, lng, governorat
   const isSupported = isClientGovSupported;
 
   if (isSupported) {
-    let warehouse = await findWarehouseByGovernorate(normalizedGov);
+    let warehouse = await findNearestWarehouseByGovernorate({
+      governorate: normalizedGov,
+      latNum,
+      lngNum,
+    });
 
     if (!warehouse) {
       warehouse = await findDefaultWarehouse();

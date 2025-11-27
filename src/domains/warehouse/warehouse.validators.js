@@ -19,6 +19,8 @@ export const createWarehouseValidator = [
 
   body("governorate")
     .optional()
+    .trim()
+    .toLowerCase()
     .isIn(Object.values(GOVERNORATES))
     .withMessage("governorate is invalid"),
 
