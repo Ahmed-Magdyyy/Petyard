@@ -4,6 +4,17 @@ import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { buildPagination, buildSort } from "../../shared/utils/apiFeatures.js";
 import { polygon as turfPolygon, area as turfArea, hexGrid } from "@turf/turf";
+import { deleteCacheKey } from "../../shared/cache.js";
+
+const LOCATION_OPTIONS_CACHE_KEY = "location:options";
+
+async function invalidateLocationOptionsCache() {
+  try {
+    await deleteCacheKey(LOCATION_OPTIONS_CACHE_KEY);
+  } catch (err) {
+    console.error("[Redis] Failed to invalidate location options cache", err.message);
+  }
+}
 
 export async function getZonesService(queryParams = {}) {
   const { page, limit, warehouse, country, governorate, city, district, active } =
@@ -107,6 +118,8 @@ export async function createZoneService(payload) {
     governorate: warehouseDoc?.governorate,
   });
 
+  await invalidateLocationOptionsCache();
+
   return zone;
 }
 
@@ -139,6 +152,7 @@ export async function updateZoneService(id, payload) {
   if (active !== undefined) zone.active = active;
 
   const updated = await zone.save();
+  await invalidateLocationOptionsCache();
   return updated;
 }
 
@@ -150,6 +164,7 @@ export async function toggleZoneActiveService(id) {
 
   zone.active = !zone.active;
   const updated = await zone.save();
+  await invalidateLocationOptionsCache();
   return updated;
 }
 
@@ -162,6 +177,7 @@ export async function deleteZoneService(id) {
   // TODO: later, prevent delete if zone is referenced by orders/addresses
 
   await ZoneModel.deleteOne({ _id: id });
+  await invalidateLocationOptionsCache();
 }
 
 export async function generateWarehouseGridService(
@@ -229,6 +245,8 @@ export async function generateWarehouseGridService(
   }
 
   const zones = await ZoneModel.insertMany(docs);
+
+  await invalidateLocationOptionsCache();
 
   return {
     total: zones.length,
@@ -324,6 +342,8 @@ export async function updateWarehouseZonesGridService(warehouseId, { zones }) {
   const result = await ZoneModel.bulkWrite(bulkOps);
 
   const updatedZones = await ZoneModel.find({ warehouse: warehouseId }).sort({ name: 1 });
+
+  await invalidateLocationOptionsCache();
 
   return {
     modifiedCount: result.modifiedCount || 0,

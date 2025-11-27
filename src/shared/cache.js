@@ -38,3 +38,16 @@ export async function getOrSetCache(key, ttlSeconds, fetchFn) {
 
   return fresh;
 }
+
+export async function deleteCacheKey(key) {
+  const redisClient = getRedisClient();
+  if (!redisClient) {
+    return;
+  }
+
+  try {
+    await redisClient.del(key);
+  } catch (err) {
+    console.error("[Redis] DEL error for key", key, err.message);
+  }
+}

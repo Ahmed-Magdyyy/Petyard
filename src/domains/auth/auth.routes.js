@@ -29,19 +29,7 @@ const router = Router();
 router.use(authRateLimiter);
 
 // Auth routes
-router.post(
-  "/signup",
-  (req, res, next) => {
-    console.log(
-      "DEBUG /auth/signup content-type:",
-      req.headers["content-type"]
-    );
-    console.log("DEBUG /auth/signup body:", req.body);
-    next();
-  },
-  signupValidator,
-  signup
-);
+router.post("/signup", signupValidator, signup);
 router.post("/resend-otp", resendOtpValidator, resendOtp);
 router.post("/verify-phone", verifyPhoneValidator, verifyPhone);
 router.post("/login", loginValidator, login);
