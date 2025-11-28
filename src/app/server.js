@@ -12,6 +12,7 @@ import {ApiError} from "../shared/ApiError.js";
 import {globalError} from "../shared/middlewares/errorMiddleware.js";
 import {dbConnection} from "../shared/database.js";
 import { mountRoutes } from "./routes.js";
+import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -23,6 +24,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "uploads")));
 app.use(cookieParser());
+app.use(i18nMiddleware);
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));

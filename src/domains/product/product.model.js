@@ -27,11 +27,24 @@ const warehouseStockSchema = new Schema(
   { _id: false }
 );
 
-const attributeSchema = new Schema(
+const variantOptionSchema = new Schema(
   {
-    key: { type: String, required: true, trim: true },
-    value_en: { type: String, trim: true },
-    value_ar: { type: String, trim: true },
+    name: { type: String, required: true, trim: true },
+    value: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
+const productOptionSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    values: [
+      {
+        type: String,
+        required: true,
+        trim: true,
+      },
+    ],
   },
   { _id: false }
 );
@@ -39,8 +52,6 @@ const attributeSchema = new Schema(
 const variantSchema = new Schema(
   {
     sku: { type: String, trim: true },
-    name_en: { type: String, trim: true },
-    name_ar: { type: String, trim: true },
     price: { type: Number, required: true, min: 0 },
     discountedPrice: {
       type: Number,
@@ -54,8 +65,7 @@ const variantSchema = new Schema(
         message: "discountedPrice cannot be greater than price",
       },
     },
-    weight: { type: Number, min: 0 },
-    attributes: [attributeSchema],
+    options: [variantOptionSchema],
     images: [imageSchema],
     warehouseStocks: [warehouseStockSchema],
     isDefault: { type: Boolean, default: false },
@@ -115,10 +125,6 @@ const productSchema = new Schema(
       type: String,
       trim: true,
     },
-    weight: {
-      type: Number,
-      min: 0,
-    },
     tags: [
       {
         type: String,
@@ -144,6 +150,7 @@ const productSchema = new Schema(
     },
     warehouseStocks: [warehouseStockSchema],
     images: [imageSchema],
+    options: [productOptionSchema],
     variants: [variantSchema],
     isActive: {
       type: Boolean,

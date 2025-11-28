@@ -35,6 +35,46 @@ export const createProductValidator = [
     .isString()
     .withMessage("each tag must be a string"),
 
+  body("options")
+    .optional()
+    .isArray()
+    .withMessage("options must be an array"),
+
+  body("options.*.name")
+    .optional()
+    .isString()
+    .withMessage("options.*.name must be a string"),
+
+  body("options.*.values")
+    .optional()
+    .isArray()
+    .withMessage("options.*.values must be an array"),
+
+  body("options.*.values.*")
+    .optional()
+    .isString()
+    .withMessage("each option value must be a string"),
+
+  body("options")
+    .optional()
+    .isArray()
+    .withMessage("options must be an array"),
+
+  body("options.*.name")
+    .optional()
+    .isString()
+    .withMessage("options.*.name must be a string"),
+
+  body("options.*.values")
+    .optional()
+    .isArray()
+    .withMessage("options.*.values must be an array"),
+
+  body("options.*.values.*")
+    .optional()
+    .isString()
+    .withMessage("each option value must be a string"),
+
   body("warehouseStocks")
     .optional()
     .isArray()
@@ -65,6 +105,21 @@ export const createProductValidator = [
     .isNumeric()
     .withMessage("variant discountedPrice must be a number"),
 
+  body("variants.*.options")
+    .optional()
+    .isArray()
+    .withMessage("variant options must be an array"),
+
+  body("variants.*.options.*.name")
+    .optional()
+    .isString()
+    .withMessage("variant option name must be a string"),
+
+  body("variants.*.options.*.value")
+    .optional()
+    .isString()
+    .withMessage("variant option value must be a string"),
+
   body("variants.*.warehouseStocks")
     .optional()
     .isArray()
@@ -80,6 +135,21 @@ export const createProductValidator = [
     .isNumeric()
     .withMessage("variant warehouseStocks.*.quantity must be a number"),
 
+  body("variants.*.options")
+    .optional()
+    .isArray()
+    .withMessage("variant options must be an array"),
+
+  body("variants.*.options.*.name")
+    .optional()
+    .isString()
+    .withMessage("variant option name must be a string"),
+
+  body("variants.*.options.*.value")
+    .optional()
+    .isString()
+    .withMessage("variant option value must be a string"),
+
   body("type").custom((value, { req }) => {
     if (value === "SIMPLE") {
       if (!Array.isArray(req.body.warehouseStocks) || req.body.warehouseStocks.length === 0) {
@@ -88,11 +158,31 @@ export const createProductValidator = [
       if (req.body.price == null) {
         throw new Error("price is required for SIMPLE products");
       }
+
+      if (Array.isArray(req.body.variants) && req.body.variants.length > 0) {
+        throw new Error("variants must be empty for SIMPLE products");
+      }
+
+      if (Array.isArray(req.body.options) && req.body.options.length > 0) {
+        throw new Error("options must be empty for SIMPLE products");
+      }
     }
 
     if (value === "VARIANT") {
       if (!Array.isArray(req.body.variants) || req.body.variants.length === 0) {
         throw new Error("variants are required for VARIANT products");
+      }
+
+      if (Array.isArray(req.body.warehouseStocks) && req.body.warehouseStocks.length > 0) {
+        throw new Error(
+          "warehouseStocks must be empty for VARIANT products; use variants[*].warehouseStocks instead"
+        );
+      }
+
+      if (req.body.price != null || req.body.discountedPrice != null) {
+        throw new Error(
+          "price and discountedPrice must be omitted for VARIANT products; use variants[*].price instead"
+        );
       }
     }
 

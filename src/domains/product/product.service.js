@@ -6,10 +6,16 @@ import { ApiError } from "../../shared/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import {
+  buildPagination,
+  buildSort,
+  buildRegexFilter,
+} from "../../shared/utils/apiFeatures.js";
+import {
   validateImageFile,
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+import { getOrSetCache, deleteCacheKey } from "../../shared/cache.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -29,6 +35,101 @@ function normalizeTags(tags) {
       .filter(Boolean);
   }
   return [];
+}
+
+function normalizeProductOptions(options) {
+  if (!Array.isArray(options)) return [];
+  return options
+    .map((opt) => {
+      const name = typeof opt.name === "string" ? opt.name.trim() : "";
+      if (!name) return null;
+
+      const values = Array.isArray(opt.values)
+        ? opt.values
+            .map((v) => (typeof v === "string" ? v.trim() : ""))
+            .filter(Boolean)
+        : [];
+
+      if (!values.length) return null;
+
+      return { name, values };
+    })
+    .filter(Boolean);
+}
+
+function validateVariantOptionsMatrix(productOptions, rawVariants) {
+  const optionDefs = Array.isArray(productOptions) ? productOptions : [];
+  const variants = Array.isArray(rawVariants) ? rawVariants : [];
+
+  if (!optionDefs.length) {
+    if (variants.length) {
+      throw new ApiError(
+        "options are required for VARIANT products and must have at least one option with values",
+        400
+      );
+    }
+    return;
+  }
+
+  const optionNames = optionDefs.map((o) => o.name);
+
+  variants.forEach((variant, index) => {
+    const label = index + 1;
+
+    if (!variant || !Array.isArray(variant.options) || variant.options.length === 0) {
+      throw new ApiError(
+        `Variant #${label} must define options for all product options: ${optionNames.join(", ")}`,
+        400
+      );
+    }
+
+    const variantOptionsMap = new Map();
+
+    for (const opt of variant.options) {
+      const name = typeof opt?.name === "string" ? opt.name.trim() : "";
+      const value = typeof opt?.value === "string" ? opt.value.trim() : "";
+
+      if (!name || !value) {
+        throw new ApiError(
+          `Variant #${label} has an option with missing name or value. Each option must have both name and value.`,
+          400
+        );
+      }
+
+      variantOptionsMap.set(name, value);
+    }
+
+    const missingNames = optionNames.filter((name) => !variantOptionsMap.has(name));
+    const extraNames = [...variantOptionsMap.keys()].filter(
+      (name) => !optionNames.includes(name)
+    );
+
+    if (missingNames.length || extraNames.length) {
+      if (missingNames.length) {
+        throw new ApiError(
+          `Variant #${label} is missing options: ${missingNames.join(", ")}. Each variant must specify all product options: ${optionNames.join(", ")}`,
+          400
+        );
+      }
+
+      if (extraNames.length) {
+        throw new ApiError(
+          `Variant #${label} has unknown options: ${extraNames.join(", ")}. Valid option names are: ${optionNames.join(", ")}`,
+          400
+        );
+      }
+    }
+
+    for (const optDef of optionDefs) {
+      const value = variantOptionsMap.get(optDef.name);
+      if (!optDef.values.includes(value)) {
+        throw new ApiError(
+          `Variant #${label} has invalid value '${value}' for option '${optDef.name}'. Allowed values: ${optDef.values.join(", ")}`,
+          400
+        );
+      }
+    }
+  });
 }
 
 function computeTotalStockForSimple(product) {
@@ -57,23 +158,201 @@ function pickMainImage(images) {
   return main || null;
 }
 
-export async function getProductsService(query = {}) {
-  const { lang, category, subcategory, brand, type } = query;
+function mapProductSortKey(sortKey) {
+  if (!sortKey) return null;
+
+  switch (String(sortKey)) {
+    case "featured":
+      return { isFeatured: -1, createdAt: -1 };
+    case "alpha_asc":
+      return { name_en: 1 };
+    case "alpha_desc":
+      return { name_en: -1 };
+    case "price_asc":
+      return { price: 1 };
+    case "price_desc":
+      return { price: -1 };
+    case "date_asc":
+      return { createdAt: 1 };
+    case "date_desc":
+      return { createdAt: -1 };
+    default:
+      return null;
+  }
+}
+
+function parseIdFilter(value) {
+  if (value == null) return null;
+
+  if (Array.isArray(value)) {
+    const ids = value.map((v) => String(v).trim()).filter(Boolean);
+    if (!ids.length) return null;
+    return ids.length === 1 ? ids[0] : { $in: ids };
+  }
+
+  const str = String(value);
+  const parts = str
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  if (!parts.length) return null;
+  return parts.length === 1 ? parts[0] : { $in: parts };
+}
+
+function mapLocalizedRef(ref, normalizedLang) {
+  if (!ref) return null;
+
+  // If it's a populated document, expose only id, slug, and localized name
+  if (typeof ref === "object" && ref._id) {
+    return {
+      id: ref._id,
+      slug: ref.slug,
+      name: pickLocalizedField(ref, "name", normalizedLang),
+    };
+  }
+
+  // Fallback: just return the id wrapper
+  return { id: ref };
+}
+
+export async function getProductsService(queryParams = {}) {
+  const {
+    page,
+    limit,
+    lang,
+    sortKey,
+    q,
+    category,
+    subcategory,
+    brand,
+    warehouse,
+    type,
+    isFeatured,
+    isActive,
+    ...rest
+  } = queryParams;
+
   const normalizedLang = normalizeLang(lang);
 
   const filter = {};
-  if (category) filter.category = category;
-  if (subcategory) filter.subcategory = subcategory;
-  if (brand) filter.brand = brand;
-  if (type && ["SIMPLE", "VARIANT"].includes(type)) filter.type = type;
 
-  const products = await ProductModel.find(filter)
+  // Type filter (SIMPLE vs VARIANT)
+  if (type && ["SIMPLE", "VARIANT"].includes(type)) {
+    filter.type = type;
+  }
+
+  // Category / subcategory / brand filters (support comma-separated lists)
+  const categoryFilter = parseIdFilter(category);
+  if (categoryFilter) filter.category = categoryFilter;
+
+  const subcategoryFilter = parseIdFilter(subcategory);
+  if (subcategoryFilter) filter.subcategory = subcategoryFilter;
+
+  const brandFilter = parseIdFilter(brand);
+  if (brandFilter) filter.brand = brandFilter;
+
+  // isFeatured / isActive flags
+  if (isFeatured !== undefined) {
+    if (isFeatured === true || isFeatured === "true") filter.isFeatured = true;
+    else if (isFeatured === false || isFeatured === "false")
+      filter.isFeatured = false;
+  }
+
+  if (isActive !== undefined) {
+    if (isActive === true || isActive === "true") filter.isActive = true;
+    else if (isActive === false || isActive === "false")
+      filter.isActive = false;
+  }
+
+  // Free-text search on name_en, name_ar, sku, and tags
+  const orConditions = [];
+  if (typeof q === "string" && q.trim()) {
+    const regex = { $regex: q.trim(), $options: "i" };
+    orConditions.push(
+      { name_en: regex },
+      { name_ar: regex },
+      { sku: regex },
+      { tags: regex }
+    );
+  }
+
+  // Generic regex filters for any extra query keys
+  const extraFilter = buildRegexFilter(rest, []);
+  Object.assign(filter, extraFilter);
+
+  // Optional warehouse filter: only include products that have stock > 0
+  // in the given warehouse. This applies to both SIMPLE and VARIANT products.
+  let warehouseFilter = null;
+  if (warehouse) {
+    const warehouseId = Array.isArray(warehouse)
+      ? String(warehouse[0])
+      : String(warehouse);
+
+    if (warehouseId) {
+      if (filter.type === "SIMPLE") {
+        warehouseFilter = {
+          "warehouseStocks.warehouse": warehouseId,
+          "warehouseStocks.quantity": { $gt: 0 },
+        };
+      } else if (filter.type === "VARIANT") {
+        warehouseFilter = {
+          "variants.warehouseStocks.warehouse": warehouseId,
+          "variants.warehouseStocks.quantity": { $gt: 0 },
+        };
+      } else {
+        warehouseFilter = {
+          $or: [
+            {
+              type: "SIMPLE",
+              "warehouseStocks.warehouse": warehouseId,
+              "warehouseStocks.quantity": { $gt: 0 },
+            },
+            {
+              type: "VARIANT",
+              "variants.warehouseStocks.warehouse": warehouseId,
+              "variants.warehouseStocks.quantity": { $gt: 0 },
+            },
+          ],
+        };
+      }
+    }
+  }
+
+  const andConditions = [filter];
+  if (warehouseFilter) {
+    andConditions.push(warehouseFilter);
+  }
+  if (orConditions.length) {
+    andConditions.push({ $or: orConditions });
+  }
+
+  const mongoFilter =
+    andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
+
+  const totalProductsCount = await ProductModel.countDocuments(mongoFilter);
+
+  const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
+
+  let sort = mapProductSortKey(sortKey);
+  if (!sort) {
+    sort = buildSort(queryParams, "-createdAt");
+  }
+
+  const productsQuery = ProductModel.find(mongoFilter)
     .populate("category", "_id slug name_en name_ar")
     .populate("subcategory", "_id slug name_en name_ar")
     .populate("brand", "_id slug name_en name_ar")
-    .sort({ slug: 1 });
+    .skip(skip)
+    .limit(limitNum);
 
-  return products.map((p) => {
+  if (sort) {
+    productsQuery.sort(sort);
+  }
+
+  const products = await productsQuery;
+
+  const data = products.map((p) => {
     const mainImage = pickMainImage(p.images);
 
     let stock = 0;
@@ -86,7 +365,11 @@ export async function getProductsService(query = {}) {
     let effectivePrice = p.price;
     let effectiveDiscountedPrice = p.discountedPrice;
 
-    if (p.type === "VARIANT" && Array.isArray(p.variants) && p.variants.length > 0) {
+    if (
+      p.type === "VARIANT" &&
+      Array.isArray(p.variants) &&
+      p.variants.length > 0
+    ) {
       let minPrice = Infinity;
       let minDiscounted = undefined;
 
@@ -94,7 +377,9 @@ export async function getProductsService(query = {}) {
         if (typeof v.price === "number" && v.price < minPrice) {
           minPrice = v.price;
           minDiscounted =
-            typeof v.discountedPrice === "number" ? v.discountedPrice : undefined;
+            typeof v.discountedPrice === "number"
+              ? v.discountedPrice
+              : undefined;
         }
       }
 
@@ -106,13 +391,17 @@ export async function getProductsService(query = {}) {
       }
     }
 
+    const category = mapLocalizedRef(p.category, normalizedLang);
+    const subcategory = mapLocalizedRef(p.subcategory, normalizedLang);
+    const brand = mapLocalizedRef(p.brand, normalizedLang);
+
     return {
       id: p._id,
       slug: p.slug,
       type: p.type,
-      category: p.category?._id || p.category,
-      subcategory: p.subcategory?._id || p.subcategory,
-      brand: p.brand?._id || p.brand,
+      category,
+      subcategory,
+      brand,
       name: pickLocalizedField(p, "name", normalizedLang),
       desc: pickLocalizedField(p, "desc", normalizedLang),
       tags: p.tags || [],
@@ -125,100 +414,122 @@ export async function getProductsService(query = {}) {
       inStock: stock > 0,
       image: mainImage?.url || null,
       hasVariants:
-        p.type === "VARIANT" && Array.isArray(p.variants) && p.variants.length > 0,
+        p.type === "VARIANT" &&
+        Array.isArray(p.variants) &&
+        p.variants.length > 0,
     };
   });
+
+  const totalPages = Math.ceil(totalProductsCount / limitNum) || 1;
+
+  return {
+    totalPages,
+    page: pageNum,
+    results: data.length,
+    data,
+  };
 }
 
 export async function getProductByIdService(id, query = {}) {
   const { lang } = query;
   const normalizedLang = normalizeLang(lang);
+  const cacheKey = `product:${id}:${normalizedLang}`;
 
-  const product = await ProductModel.findById(id)
-    .populate("category", "_id slug name_en name_ar")
-    .populate("subcategory", "_id slug name_en name_ar")
-    .populate("brand", "_id slug name_en name_ar");
+  return getOrSetCache(cacheKey, 3600, async () => {
+    const product = await ProductModel.findById(id)
+      .populate("category", "_id slug name_en name_ar")
+      .populate("subcategory", "_id slug name_en name_ar")
+      .populate("brand", "_id slug name_en name_ar");
 
-  if (!product) {
-    throw new ApiError(`No product found for this id: ${id}`, 404);
-  }
+    if (!product) {
+      throw new ApiError(`No product found for this id: ${id}`, 404);
+    }
 
-  const mainImage = pickMainImage(product.images);
+    const mainImage = pickMainImage(product.images);
 
-  let stock = 0;
-  if (product.type === "SIMPLE") {
-    stock = computeTotalStockForSimple(product);
-  } else if (product.type === "VARIANT") {
-    stock = computeTotalStockForVariants(product);
-  }
+    let stock = 0;
+    if (product.type === "SIMPLE") {
+      stock = computeTotalStockForSimple(product);
+    } else if (product.type === "VARIANT") {
+      stock = computeTotalStockForVariants(product);
+    }
 
-  const images = Array.isArray(product.images)
-    ? product.images.map((img) => ({
-        public_id: img.public_id,
-        url: img.url,
-        isMain: !!img.isMain,
-      }))
-    : [];
-
-  const variants =
-    product.type === "VARIANT" && Array.isArray(product.variants)
-      ? product.variants.map((v, index) => ({
-          index,
-          sku: v.sku || null,
-          name_en: v.name_en || null,
-          name_ar: v.name_ar || null,
-          price: v.price,
-          discountedPrice:
-            typeof v.discountedPrice === "number" ? v.discountedPrice : null,
-          weight: typeof v.weight === "number" ? v.weight : null,
-          attributes: Array.isArray(v.attributes) ? v.attributes : [],
-          images: Array.isArray(v.images)
-            ? v.images.map((img) => ({
-                public_id: img.public_id,
-                url: img.url,
-                isMain: !!img.isMain,
-              }))
-            : [],
-          warehouseStocks: Array.isArray(v.warehouseStocks)
-            ? v.warehouseStocks.map((ws) => ({
-                warehouse: ws.warehouse,
-                quantity: ws.quantity,
-              }))
-            : [],
-          isDefault: !!v.isDefault,
+    const images = Array.isArray(product.images)
+      ? product.images.map((img) => ({
+          public_id: img.public_id,
+          url: img.url,
+          isMain: !!img.isMain,
         }))
       : [];
 
-  const warehouseStocks =
-    product.type === "SIMPLE" && Array.isArray(product.warehouseStocks)
-      ? product.warehouseStocks.map((ws) => ({
-          warehouse: ws.warehouse,
-          quantity: ws.quantity,
-        }))
-      : [];
+    const variants =
+      product.type === "VARIANT" &&
+      Array.isArray(product.variants) &&
+      product.variants.length > 0
+        ? product.variants.map((v, index) => ({
+            index,
+            sku: v.sku || null,
+            price: v.price,
+            discountedPrice:
+              typeof v.discountedPrice === "number" ? v.discountedPrice : null,
+            options: Array.isArray(v.options) ? v.options : [],
+            images: Array.isArray(v.images)
+              ? v.images.map((img) => ({
+                  public_id: img.public_id,
+                  url: img.url,
+                  isMain: !!img.isMain,
+                }))
+              : [],
+            warehouseStocks: Array.isArray(v.warehouseStocks)
+              ? v.warehouseStocks.map((ws) => ({
+                  warehouse: ws.warehouse,
+                  quantity: ws.quantity,
+                }))
+              : [],
+            isDefault: !!v.isDefault,
+          }))
+        : undefined;
 
-  return {
-    id: product._id,
-    slug: product.slug,
-    type: product.type,
-    category: product.category?._id || product.category,
-    subcategory: product.subcategory?._id || product.subcategory,
-    brand: product.brand?._id || product.brand,
-    name: pickLocalizedField(product, "name", normalizedLang),
-    desc: pickLocalizedField(product, "desc", normalizedLang),
-    sku: product.sku || null,
-    weight: typeof product.weight === "number" ? product.weight : null,
-    tags: product.tags || [],
-    price: typeof product.price === "number" ? product.price : null,
-    discountedPrice:
-      typeof product.discountedPrice === "number" ? product.discountedPrice : null,
-    stock,
-    inStock: stock > 0,
-    images,
-    mainImage: mainImage?.url || null,
-    variants,
-    warehouseStocks,
-  };
+    const warehouseStocks =
+      product.type === "SIMPLE" && Array.isArray(product.warehouseStocks)
+        ? product.warehouseStocks.map((ws) => ({
+            warehouse: ws.warehouse,
+            quantity: ws.quantity,
+          }))
+        : [];
+
+    const category = mapLocalizedRef(product.category, normalizedLang);
+    const subcategory = mapLocalizedRef(product.subcategory, normalizedLang);
+    const brand = mapLocalizedRef(product.brand, normalizedLang);
+
+    return {
+      id: product._id,
+      slug: product.slug,
+      type: product.type,
+      category,
+      subcategory,
+      brand,
+      name: pickLocalizedField(product, "name", normalizedLang),
+      desc: pickLocalizedField(product, "desc", normalizedLang),
+      sku: product.sku || null,
+      tags: product.tags || [],
+      price: typeof product.price === "number" ? product.price : null,
+      discountedPrice:
+        typeof product.discountedPrice === "number"
+          ? product.discountedPrice
+          : null,
+      stock,
+      inStock: stock > 0,
+      images,
+      mainImage: mainImage?.url || null,
+      options:
+        Array.isArray(product.options) && product.options.length > 0
+          ? product.options
+          : undefined,
+      variants,
+      warehouseStocks,
+    };
+  });
 }
 
 async function ensureSubcategoryAndCategory(subcategoryId) {
@@ -226,7 +537,10 @@ async function ensureSubcategoryAndCategory(subcategoryId) {
     "category"
   );
   if (!subcategory) {
-    throw new ApiError(`No subcategory found for this id: ${subcategoryId}`, 400);
+    throw new ApiError(
+      `No subcategory found for this id: ${subcategoryId}`,
+      400
+    );
   }
   if (!subcategory.category) {
     throw new ApiError(
@@ -250,7 +564,9 @@ async function ensureWarehousesExist(warehouseIds) {
   const uniqueIds = Array.from(new Set(warehouseIds.map((id) => String(id))));
   if (uniqueIds.length === 0) return;
 
-  const count = await WarehouseModel.countDocuments({ _id: { $in: uniqueIds } });
+  const count = await WarehouseModel.countDocuments({
+    _id: { $in: uniqueIds },
+  });
   if (count !== uniqueIds.length) {
     throw new ApiError("One or more warehouses do not exist", 400);
   }
@@ -260,7 +576,8 @@ function mapWarehouseStocks(rawStocks) {
   if (!Array.isArray(rawStocks)) return [];
   return rawStocks.map((ws) => ({
     warehouse: ws.warehouse,
-    quantity: typeof ws.quantity === "number" ? ws.quantity : Number(ws.quantity) || 0,
+    quantity:
+      typeof ws.quantity === "number" ? ws.quantity : Number(ws.quantity) || 0,
   }));
 }
 
@@ -268,8 +585,6 @@ function mapVariantPayloads(rawVariants) {
   if (!Array.isArray(rawVariants)) return [];
   return rawVariants.map((v) => ({
     sku: v.sku,
-    name_en: v.name_en,
-    name_ar: v.name_ar,
     price: typeof v.price === "number" ? v.price : Number(v.price) || 0,
     discountedPrice:
       typeof v.discountedPrice === "number"
@@ -277,18 +592,13 @@ function mapVariantPayloads(rawVariants) {
         : v.discountedPrice != null
         ? Number(v.discountedPrice) || 0
         : undefined,
-    weight:
-      typeof v.weight === "number"
-        ? v.weight
-        : v.weight != null
-        ? Number(v.weight) || 0
-        : undefined,
-    attributes: Array.isArray(v.attributes)
-      ? v.attributes.map((a) => ({
-          key: a.key,
-          value_en: a.value_en,
-          value_ar: a.value_ar,
-        }))
+    options: Array.isArray(v.options)
+      ? v.options
+          .map((o) => ({
+            name: typeof o.name === "string" ? o.name.trim() : "",
+            value: typeof o.value === "string" ? o.value.trim() : "",
+          }))
+          .filter((o) => o.name && o.value)
       : [],
     warehouseStocks: mapWarehouseStocks(v.warehouseStocks),
     isDefault: !!v.isDefault,
@@ -356,12 +666,12 @@ export async function createProductService(payload, files = []) {
     desc_en,
     desc_ar,
     sku,
-    weight,
     tags,
     price,
     discountedPrice,
     warehouseStocks,
     variants,
+    options,
     mainImageIndex,
     isActive,
     isFeatured,
@@ -379,12 +689,17 @@ export async function createProductService(payload, files = []) {
 
   const existing = await ProductModel.findOne({ slug: normalizedSlug });
   if (existing) {
-    throw new ApiError(`Product with slug '${normalizedSlug}' already exists`, 409);
+    throw new ApiError(
+      `Product with slug '${normalizedSlug}' already exists`,
+      409
+    );
   }
 
   const { categoryId } = await ensureSubcategoryAndCategory(subcategoryId);
   const brand = await ensureBrandExists(brandId);
   const normalizedTags = normalizeTags(tags);
+  const normalizedOptions =
+    type === "VARIANT" ? normalizeProductOptions(options) : [];
 
   let simpleWarehouseStocks = [];
   let simplePrice;
@@ -392,7 +707,10 @@ export async function createProductService(payload, files = []) {
 
   if (type === "SIMPLE") {
     if (!Array.isArray(warehouseStocks) || warehouseStocks.length === 0) {
-      throw new ApiError("warehouseStocks is required for SIMPLE products", 400);
+      throw new ApiError(
+        "warehouseStocks is required for SIMPLE products",
+        400
+      );
     }
 
     const warehouseIds = warehouseStocks
@@ -403,7 +721,11 @@ export async function createProductService(payload, files = []) {
 
     simpleWarehouseStocks = mapWarehouseStocks(warehouseStocks);
     simplePrice =
-      typeof price === "number" ? price : price != null ? Number(price) || 0 : 0;
+      typeof price === "number"
+        ? price
+        : price != null
+        ? Number(price) || 0
+        : 0;
 
     simpleDiscountedPrice =
       typeof discountedPrice === "number"
@@ -418,6 +740,8 @@ export async function createProductService(payload, files = []) {
     if (!Array.isArray(variants) || variants.length === 0) {
       throw new ApiError("variants are required for VARIANT products", 400);
     }
+
+    validateVariantOptionsMatrix(normalizedOptions, variants);
 
     const allWarehouseIds = [];
     for (const v of variants) {
@@ -457,17 +781,12 @@ export async function createProductService(payload, files = []) {
       desc_en,
       desc_ar,
       sku,
-      weight:
-        typeof weight === "number"
-          ? weight
-          : weight != null
-          ? Number(weight) || 0
-          : undefined,
       tags: normalizedTags,
       price: type === "SIMPLE" ? simplePrice : undefined,
       discountedPrice: type === "SIMPLE" ? simpleDiscountedPrice : undefined,
       warehouseStocks: type === "SIMPLE" ? simpleWarehouseStocks : [],
       images,
+      options: normalizedOptions,
       variants: type === "VARIANT" ? variantDocs : [],
       isActive: typeof isActive === "boolean" ? isActive : undefined,
       isFeatured: typeof isFeatured === "boolean" ? isFeatured : undefined,
@@ -496,12 +815,12 @@ export async function updateProductService(id, payload, files = []) {
     desc_en,
     desc_ar,
     sku,
-    weight,
     tags,
     price,
     discountedPrice,
     warehouseStocks,
     variants,
+    options,
     mainImageIndex,
     isActive,
     isFeatured,
@@ -529,23 +848,28 @@ export async function updateProductService(id, payload, files = []) {
 
   if (sku !== undefined) product.sku = sku;
 
-  if (weight !== undefined) {
-    product.weight =
-      typeof weight === "number"
-        ? weight
-        : weight != null
-        ? Number(weight) || 0
-        : undefined;
-  }
-
   if (tags !== undefined) {
     product.tags = normalizeTags(tags);
   }
 
+  if (options !== undefined) {
+    if (product.type === "SIMPLE") {
+      throw new ApiError("options cannot be set for SIMPLE products", 400);
+    }
+    product.options = normalizeProductOptions(options);
+  }
+
+  const currentVariantOptions =
+    product.type === "VARIANT" ? normalizeProductOptions(product.options || []) : [];
+
   if (product.type === "SIMPLE") {
     if (price !== undefined) {
       product.price =
-        typeof price === "number" ? price : price != null ? Number(price) || 0 : 0;
+        typeof price === "number"
+          ? price
+          : price != null
+          ? Number(price) || 0
+          : 0;
     }
 
     if (discountedPrice !== undefined) {
@@ -580,6 +904,8 @@ export async function updateProductService(id, payload, files = []) {
       throw new ApiError("variants are required for VARIANT products", 400);
     }
 
+    validateVariantOptionsMatrix(currentVariantOptions, variants);
+
     const allWarehouseIds = [];
     for (const v of variants) {
       if (!Array.isArray(v.warehouseStocks) || v.warehouseStocks.length === 0) {
@@ -598,6 +924,9 @@ export async function updateProductService(id, payload, files = []) {
     await ensureWarehousesExist(allWarehouseIds);
 
     product.variants = mapVariantPayloads(variants);
+  } else if (product.type === "VARIANT" && variants === undefined && options !== undefined) {
+    // Options were updated but variants were not provided; ensure existing variants are still valid
+    validateVariantOptionsMatrix(currentVariantOptions, product.variants || []);
   }
 
   if (isActive !== undefined) {
@@ -617,7 +946,11 @@ export async function updateProductService(id, payload, files = []) {
     : [];
 
   if (Array.isArray(files) && files.length > 0) {
-    const uploadResult = await uploadProductImages(files, product.slug, mainImageIndex);
+    const uploadResult = await uploadProductImages(
+      files,
+      product.slug,
+      mainImageIndex
+    );
     newImages = uploadResult.images;
     newUploadedPublicIds = uploadResult.uploadedPublicIds;
     product.images = newImages;
@@ -631,6 +964,10 @@ export async function updateProductService(id, payload, files = []) {
         await deleteImageFromCloudinary(publicId);
       }
     }
+
+    // Invalidate cache for both languages
+    await deleteCacheKey(`product:${id}:en`);
+    await deleteCacheKey(`product:${id}:ar`);
 
     return updated;
   } catch (err) {
@@ -674,4 +1011,8 @@ export async function deleteProductService(id) {
   }
 
   await ProductModel.deleteOne({ _id: id });
+
+  // Invalidate cache for both languages
+  await deleteCacheKey(`product:${id}:en`);
+  await deleteCacheKey(`product:${id}:ar`);
 }

@@ -8,8 +8,8 @@ import {
 } from "./product.service.js";
 
 export const getProducts = asyncHandler(async (req, res) => {
-  const data = await getProductsService(req.query);
-  res.status(200).json({ data });
+  const result = await getProductsService(req.query);
+  res.status(200).json(result);
 });
 
 export const getProduct = asyncHandler(async (req, res) => {
