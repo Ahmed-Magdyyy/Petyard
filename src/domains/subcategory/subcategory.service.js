@@ -9,8 +9,8 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 
-export async function getSubcategoriesService(query = {}) {
-  const { category, lang } = query;
+export async function getSubcategoriesService(query = {}, lang = "en") {
+  const { category } = query;
   const normalizedLang = lang === "ar" ? "ar" : "en";
 
   const filter = {};
@@ -32,8 +32,7 @@ export async function getSubcategoriesService(query = {}) {
   }));
 }
 
-export async function getSubcategoryByIdService(id, query = {}) {
-  const { lang } = query;
+export async function getSubcategoryByIdService(id, lang = "en") {
   const normalizedLang = lang === "ar" ? "ar" : "en";
 
   const subcategory = await SubcategoryModel.findById(id).populate(

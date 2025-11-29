@@ -4,8 +4,8 @@ import { ApiError } from "../../shared/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 
-export async function getConditionsService(query) {
-  const { type, visible, lang } = query;
+export async function getConditionsService(query = {}, lang = "en") {
+  const { type, visible } = query;
 
   const filter = {};
   if (type) {

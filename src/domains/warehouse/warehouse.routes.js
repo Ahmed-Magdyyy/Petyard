@@ -14,6 +14,7 @@ import {
   generateWarehouseGrid,
   getWarehouseZonesGrid,
   updateWarehouseZonesGrid,
+  applyWarehouseBoundary,
 } from "../zone/zone.controller.js";
 import {
   createWarehouseValidator,
@@ -58,6 +59,12 @@ router.put(
   "/:id/zones-grid",
   updateWarehouseZonesGridValidator,
   updateWarehouseZonesGrid
+);
+
+router.post(
+  "/:id/apply-boundary",
+  warehouseIdParamValidator,
+  applyWarehouseBoundary
 );
 
 router.patch(

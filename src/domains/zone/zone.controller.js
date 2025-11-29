@@ -10,6 +10,7 @@ import {
   generateWarehouseGridService,
   getWarehouseZonesGridService,
   updateWarehouseZonesGridService,
+  applyWarehouseBoundaryService,
 } from "./zone.service.js";
 
 // GET /zones (public list, can be filtered)
@@ -74,6 +75,13 @@ export const updateWarehouseZonesGrid = asyncHandler(async (req, res) => {
   const { zones } = req.body || {};
 
   const result = await updateWarehouseZonesGridService(req.params.id, { zones });
+
+  res.status(200).json(result);
+});
+
+// POST /warehouses/:id/apply-boundary
+export const applyWarehouseBoundary = asyncHandler(async (req, res) => {
+  const result = await applyWarehouseBoundaryService(req.params.id);
 
   res.status(200).json(result);
 });

@@ -9,13 +9,13 @@ import {
 
 // GET /subcategories
 export const getSubcategories = asyncHandler(async (req, res) => {
-  const data = await getSubcategoriesService(req.query);
+  const data = await getSubcategoriesService(req.query, req.lang);
   res.status(200).json({ data });
 });
 
 // GET /subcategories/:id
 export const getSubcategory = asyncHandler(async (req, res) => {
-  const data = await getSubcategoryByIdService(req.params.id, req.query);
+  const data = await getSubcategoryByIdService(req.params.id, req.lang);
   res.status(200).json({ data });
 });
 

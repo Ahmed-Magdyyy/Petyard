@@ -44,6 +44,21 @@ export const createWarehouseValidator = [
     .isArray({ min: 2, max: 2 })
     .withMessage("location.coordinates must be [lng, lat]"),
 
+  body("boundaryGeometry")
+    .optional()
+    .isObject()
+    .withMessage("boundaryGeometry must be an object"),
+
+  body("boundaryGeometry.type")
+    .optional()
+    .isIn(["Polygon"])
+    .withMessage("boundaryGeometry.type must be 'Polygon'"),
+
+  body("boundaryGeometry.coordinates")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("boundaryGeometry.coordinates must be a non-empty array"),
+
   body("isDefault")
     .optional()
     .isBoolean()

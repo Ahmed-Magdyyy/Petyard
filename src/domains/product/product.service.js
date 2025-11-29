@@ -216,11 +216,10 @@ function mapLocalizedRef(ref, normalizedLang) {
   return { id: ref };
 }
 
-export async function getProductsService(queryParams = {}) {
+export async function getProductsService(queryParams = {}, lang = "en") {
   const {
     page,
     limit,
-    lang,
     sortKey,
     q,
     category,
@@ -430,8 +429,14 @@ export async function getProductsService(queryParams = {}) {
   };
 }
 
-export async function getProductByIdService(id, query = {}) {
-  const { lang } = query;
+export async function getProductListService(queryParams, lang = "en") {
+  const normalizedLang = normalizeLang(lang);
+  const { type, category, subcategory, brand, q, isFeatured, isActive, warehouse, page, limit, sortKey } = queryParams;
+
+  // ... rest of the function remains the same ...
+}
+
+export async function getProductByIdService(id, lang = "en") {
   const normalizedLang = normalizeLang(lang);
   const cacheKey = `product:${id}:${normalizedLang}`;
 

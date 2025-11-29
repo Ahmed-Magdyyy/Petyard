@@ -38,9 +38,10 @@ export function buildSort({ sort }, defaultSort = "-createdAt") {
 // excludeKeys: keys that should be skipped here and handled specially in the caller (e.g. ['role']).
 export function buildRegexFilter(query, excludeKeys = []) {
   const filter = {};
+  const excluded = new Set([...excludeKeys, "lang"]);
 
   Object.keys(query).forEach((key) => {
-    if (excludeKeys.includes(key)) return;
+    if (excluded.has(key)) return;
 
     const value = query[key];
 

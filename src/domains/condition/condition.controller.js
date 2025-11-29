@@ -9,7 +9,7 @@ import {
 
 // GET /conditions
 export const getConditions = asyncHandler(async (req, res) => {
-  const data = await getConditionsService(req.query);
+  const data = await getConditionsService(req.query, req.lang);
   res.status(200).json({ data });
 });
 

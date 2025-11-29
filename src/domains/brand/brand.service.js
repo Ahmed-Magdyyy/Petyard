@@ -8,8 +8,7 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 
-export async function getBrandsService(query = {}) {
-  const { lang } = query;
+export async function getBrandsService(lang = "en") {
   const normalizedLang = lang === "ar" ? "ar" : "en";
 
   const brands = await BrandModel.find({}).sort({ slug: 1 });
@@ -23,8 +22,7 @@ export async function getBrandsService(query = {}) {
   }));
 }
 
-export async function getBrandByIdService(id, query = {}) {
-  const { lang } = query;
+export async function getBrandByIdService(id, lang = "en") {
   const normalizedLang = lang === "ar" ? "ar" : "en";
 
   const brand = await BrandModel.findById(id);

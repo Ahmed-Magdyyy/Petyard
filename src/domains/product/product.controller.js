@@ -8,12 +8,12 @@ import {
 } from "./product.service.js";
 
 export const getProducts = asyncHandler(async (req, res) => {
-  const result = await getProductsService(req.query);
+  const result = await getProductsService(req.query, req.lang);
   res.status(200).json(result);
 });
 
 export const getProduct = asyncHandler(async (req, res) => {
-  const data = await getProductByIdService(req.params.id, req.query);
+  const data = await getProductByIdService(req.params.id, req.lang);
   res.status(200).json({ data });
 });
 

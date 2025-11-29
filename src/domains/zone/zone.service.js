@@ -3,7 +3,13 @@ import { ZoneModel } from "./zone.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { buildPagination, buildSort } from "../../shared/utils/apiFeatures.js";
-import { polygon as turfPolygon, area as turfArea, hexGrid } from "@turf/turf";
+import {
+  polygon as turfPolygon,
+  area as turfArea,
+  hexGrid,
+  centroid as turfCentroid,
+  booleanPointInPolygon,
+} from "@turf/turf";
 import { deleteCacheKey } from "../../shared/cache.js";
 
 const LOCATION_OPTIONS_CACHE_KEY = "location:options";
@@ -330,6 +336,80 @@ export async function updateWarehouseZonesGridService(warehouseId, { zones }) {
         update,
       },
     });
+  });
+
+  if (!bulkOps.length) {
+    return {
+      modifiedCount: 0,
+      data: await ZoneModel.find({ warehouse: warehouseId }).sort({ name: 1 }),
+    };
+  }
+
+  const result = await ZoneModel.bulkWrite(bulkOps);
+
+  const updatedZones = await ZoneModel.find({ warehouse: warehouseId }).sort({ name: 1 });
+
+  await invalidateLocationOptionsCache();
+
+  return {
+    modifiedCount: result.modifiedCount || 0,
+    data: updatedZones,
+  };
+}
+
+export async function applyWarehouseBoundaryService(warehouseId) {
+  const warehouse = await WarehouseModel.findById(warehouseId).select("boundaryGeometry");
+  if (!warehouse) {
+    throw new ApiError(`No warehouse found for this id: ${warehouseId}`, 404);
+  }
+
+  const boundaryGeometry = warehouse.boundaryGeometry;
+
+  if (
+    !boundaryGeometry ||
+    boundaryGeometry.type !== "Polygon" ||
+    !Array.isArray(boundaryGeometry.coordinates) ||
+    !boundaryGeometry.coordinates.length
+  ) {
+    throw new ApiError(
+      "Warehouse boundary geometry is not set or invalid. Please upload a valid polygon first.",
+      400
+    );
+  }
+
+  // Drop any altitude component if present, keep [lng, lat]
+  const cleanedPolygon = {
+    type: "Polygon",
+    coordinates: boundaryGeometry.coordinates.map((ring) =>
+      ring.map(([lng, lat]) => [lng, lat])
+    ),
+  };
+
+  const zones = await ZoneModel.find({ warehouse: warehouseId }).select(
+    "_id geometry active"
+  );
+
+  if (!zones.length) {
+    return { modifiedCount: 0, data: [] };
+  }
+
+  const bulkOps = [];
+
+  zones.forEach((zone) => {
+    if (!zone.geometry) return;
+
+    const center = turfCentroid(zone.geometry);
+    const inside = booleanPointInPolygon(center, cleanedPolygon);
+    const targetActive = !!inside;
+
+    if (zone.active !== targetActive) {
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: zone._id, warehouse: warehouseId },
+          update: { $set: { active: targetActive } },
+        },
+      });
+    }
   });
 
   if (!bulkOps.length) {

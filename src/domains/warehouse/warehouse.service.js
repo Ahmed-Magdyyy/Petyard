@@ -4,10 +4,12 @@ import { ApiError } from "../../shared/ApiError.js";
 import { buildPagination, buildSort, buildRegexFilter } from "../../shared/utils/apiFeatures.js";
 
 export async function getWarehousesService(queryParams = {}) {
-  const { page, limit, ...rawQuery } = queryParams;
+  const { page, limit, lang, ...rawQuery } = queryParams;
 
   const filter = buildRegexFilter(rawQuery, []);
 
+  console.log(filter);
+  
   const totalCount = await WarehouseModel.countDocuments(filter);
 
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
@@ -59,8 +61,17 @@ export async function updateWarehouseService(id, payload) {
     throw new ApiError(`No warehouse found for this id: ${id}`, 404);
   }
 
-  const { name, code, country, governorate, address, location, active, isDefault } =
-    payload;
+  const {
+    name,
+    code,
+    country,
+    governorate,
+    address,
+    location,
+    boundaryGeometry,
+    active,
+    isDefault,
+  } = payload;
 
   if (name !== undefined) warehouse.name = name;
   if (code !== undefined) warehouse.code = code;
@@ -68,6 +79,7 @@ export async function updateWarehouseService(id, payload) {
   if (governorate !== undefined) warehouse.governorate = governorate;
   if (address !== undefined) warehouse.address = address;
   if (location !== undefined) warehouse.location = location;
+  if (boundaryGeometry !== undefined) warehouse.boundaryGeometry = boundaryGeometry;
   if (typeof isDefault === "boolean") {
     if (isDefault) {
       await WarehouseModel.updateMany(

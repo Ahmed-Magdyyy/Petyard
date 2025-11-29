@@ -43,6 +43,18 @@ const warehouseSchema = new Schema(
         default: undefined,
       },
     },
+    // Optional GeoJSON polygon for configured delivery boundary
+    boundaryGeometry: {
+      type: {
+        type: String,
+        enum: ["Polygon"],
+        default: "Polygon",
+      },
+      coordinates: {
+        type: [[[Number]]], // [ [ [lng, lat], ... ] ]
+        default: undefined,
+      },
+    },
     defaultShippingPrice: {
       type: Number,
       min: 0,
@@ -65,5 +77,6 @@ warehouseSchema.index({ active: 1 });
 warehouseSchema.index({ governorate: 1, active: 1 });
 warehouseSchema.index({ isDefault: 1 });
 warehouseSchema.index({ location: "2dsphere" });
+warehouseSchema.index({ boundaryGeometry: "2dsphere" });
 
 export const WarehouseModel = model("Warehouse", warehouseSchema);
