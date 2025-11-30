@@ -11,17 +11,9 @@ import {
   deleteWarehouse,
 } from "./warehouse.controller.js";
 import {
-  generateWarehouseGrid,
-  getWarehouseZonesGrid,
-  updateWarehouseZonesGrid,
-  applyWarehouseBoundary,
-} from "../zone/zone.controller.js";
-import {
   createWarehouseValidator,
   updateWarehouseValidator,
   warehouseIdParamValidator,
-  generateWarehouseGridValidator,
-  updateWarehouseZonesGridValidator,
 } from "./warehouse.validators.js";
 
 const router = Router();
@@ -42,30 +34,6 @@ router
   .get(warehouseIdParamValidator, getWarehouse)
   .patch(updateWarehouseValidator, updateWarehouse)
   .delete(warehouseIdParamValidator, deleteWarehouse);
-
-router.post(
-  "/:id/zones-grid/generate",
-  generateWarehouseGridValidator,
-  generateWarehouseGrid
-);
-
-router.get(
-  "/:id/zones-grid",
-  warehouseIdParamValidator,
-  getWarehouseZonesGrid
-);
-
-router.put(
-  "/:id/zones-grid",
-  updateWarehouseZonesGridValidator,
-  updateWarehouseZonesGrid
-);
-
-router.post(
-  "/:id/apply-boundary",
-  warehouseIdParamValidator,
-  applyWarehouseBoundary
-);
 
 router.patch(
   "/:id/toggle-active",

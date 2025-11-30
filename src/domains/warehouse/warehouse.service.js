@@ -39,6 +39,7 @@ export async function getWarehouseByIdService(id) {
 
 export async function createWarehouseService(payload) {
   const { isDefault, ...rest } = payload || {};
+console.log(payload);
 
   if (isDefault) {
     await WarehouseModel.updateMany(

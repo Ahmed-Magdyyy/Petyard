@@ -4,21 +4,19 @@ import { validatorMiddleware } from "../../shared/middlewares/validatorMiddlewar
 
 export const resolveLocationValidator = [
   body("lat")
-    .notEmpty()
-    .withMessage("lat is required")
+    .optional()
     .isFloat({ min: -90, max: 90 })
     .withMessage("lat must be a valid latitude"),
 
   body("lng")
-    .notEmpty()
-    .withMessage("lng is required")
+    .optional()
     .isFloat({ min: -180, max: 180 })
     .withMessage("lng must be a valid longitude"),
 
-  body("governorateRaw")
+  body("governorateCode")
     .optional()
     .isString()
-    .withMessage("governorateRaw must be a string"),
+    .withMessage("governorateCode must be a string"),
 
   body("source")
     .optional()

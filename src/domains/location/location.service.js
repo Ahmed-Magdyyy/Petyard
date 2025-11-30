@@ -1,41 +1,197 @@
-import { ZoneModel } from "../zone/zone.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { ApiError } from "../../shared/ApiError.js";
-import { GOVERNORATES, SUPPORTED_GOVERNORATES } from "../../shared/constants/enums.js";
 import { getOrSetCache } from "../../shared/cache.js";
+import axios from "axios";
+import { booleanPointInPolygon } from "@turf/turf";
+import { pickLocalizedField } from "../../shared/utils/i18n.js";
+import governoratesConfig from "../../shared/constants/governorates.json" assert { type: "json" };
+
+const GOVERNORATES_BY_CODE = new Map(
+  (governoratesConfig.governorates || []).map((g) => [g.code, g])
+);
+
+function isSupportedGovernorate(code) {
+  if (!code) return false;
+  const entry = GOVERNORATES_BY_CODE.get(code);
+  return !!entry && !!entry.supported;
+}
+
+function summarizeWarehouse(warehouse) {
+  if (!warehouse) return null;
+  return {
+    id: warehouse._id,
+    name: warehouse.name,
+    code: warehouse.code || null,
+    governorate: warehouse.governorate || null,
+    isDefault: Boolean(warehouse.isDefault),
+    defaultShippingPrice: warehouse.defaultShippingPrice ?? 0,
+  };
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const R = 6371; // km
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function pickNearestWarehouseByLocation(candidates, { latNum, lngNum }) {
+  if (!Array.isArray(candidates) || !candidates.length) return null;
+
+  let best = null;
+  let bestDist = Infinity;
+
+  candidates.forEach((wh) => {
+    const coords = wh.location?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return;
+    const [whLng, whLat] = coords;
+    if (typeof whLat !== "number" || typeof whLng !== "number") return;
+
+    const dist = haversineKm(latNum, lngNum, whLat, whLng);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = wh;
+    }
+  });
+
+  return best || candidates[0];
+}
+
+async function reverseGeocodeGovernorate({ latNum, lngNum }) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+  if (!apiKey) {
+    return { raw: null, normalized: null };
+  }
+
+  try {
+    const url = "https://maps.googleapis.com/maps/api/geocode/json";
+    const params = {
+      latlng: `${latNum},${lngNum}`,
+      key: apiKey,
+      language: "en",
+      result_type: "administrative_area_level_1|administrative_area_level_2",
+    };
+
+    const { data } = await axios.get(url, { params });
+
+    if (!data || !Array.isArray(data.results) || !data.results.length) {
+      return { raw: null, normalized: null };
+    }
+
+    console.log("reverse geo result:", data.results);
+    
+    let govName = null;
+
+    for (const result of data.results) {
+      const components = result.address_components || [];
+
+      let level1Name = null;
+      let level2Name = null;
+
+      for (const comp of components) {
+        const types = comp.types || [];
+
+        if (types.includes("administrative_area_level_1")) {
+          level1Name = comp.long_name || comp.short_name || null;
+        } else if (types.includes("administrative_area_level_2") && !level2Name) {
+          level2Name = comp.long_name || comp.short_name || null;
+        }
+      }
+
+      if (level1Name || level2Name) {
+        govName = level1Name || level2Name;
+        break;
+      }
+    }
+    
+    if (!govName) {
+      return { raw: null, normalized: null };
+    }
+
+    const normalized = normalizeGovernorateName(govName);
+
+    return {
+      raw: govName,
+      normalized,
+    };
+  } catch (err) {
+    console.error(
+      "[reverseGeocodeGovernorate] Failed to reverse geocode governorate:",
+      err.message
+    );
+    return { raw: null, normalized: null };
+  }
+}
 
 function normalizeGovernorateName(raw) {
   if (!raw || typeof raw !== "string") return null;
   const value = raw.toLowerCase().trim();
 
+  // 1) Direct match against configured governorate codes
+  for (const [code] of GOVERNORATES_BY_CODE.entries()) {
+    if (value === code) {
+      return code;
+    }
+  }
+
+  // 2) Match using English/Arabic names or simple code variants from governorates.json
+  for (const [code, gov] of GOVERNORATES_BY_CODE.entries()) {
+    const labelEn = (gov.name_en || gov.label || gov.name || "").toLowerCase();
+    const labelAr = (gov.name_ar || "").toLowerCase();
+    const codeSpaced = code.replace(/_/g, " ");
+    const candidates = [code, codeSpaced, labelEn, labelAr];
+
+    if (candidates.some((term) => term && value.includes(term))) {
+      return code;
+    }
+  }
+
+  // 3) Fallback manual synonyms for tricky transliterations
   const mappings = [
-    { code: GOVERNORATES.CAIRO, keys: ["cairo"] },
-    { code: GOVERNORATES.ALEXANDRIA, keys: ["alexandria", "aleksandria", "alex"] },
-    { code: GOVERNORATES.GIZA, keys: ["giza", "gizah"] },
-    { code: GOVERNORATES.DAKAHLIA, keys: ["dakahlia", "daqahlia", "ad daqahliyah"] },
-    { code: GOVERNORATES.RED_SEA, keys: ["red sea", "al bahr al ahmar"] },
-    { code: GOVERNORATES.BEHEIRA, keys: ["beheira", "behira", "al buhayrah"] },
-    { code: GOVERNORATES.FAYOUM, keys: ["fayoum", "faiyum", "fayum", "al fayyum"] },
-    { code: GOVERNORATES.GHARBIA, keys: ["gharbia", "gharbiya", "al gharbiyah"] },
-    { code: GOVERNORATES.ISMAILIA, keys: ["ismailia", "ismailiya", "al ismaliyah"] },
-    { code: GOVERNORATES.MONUFIA, keys: ["monufia", "menoufia", "minufiya"] },
-    { code: GOVERNORATES.MINYA, keys: ["minya", "minia", "al minya"] },
-    { code: GOVERNORATES.QALYUBIA, keys: ["qalyubia", "qaliubiya", "al qalyubiyah"] },
-    { code: GOVERNORATES.NEW_VALLEY, keys: ["new valley", "al wadi al jadid", "el wadi el gedid"] },
-    { code: GOVERNORATES.NORTH_SINAI, keys: ["north sinai", "shamal sina"] },
-    { code: GOVERNORATES.PORT_SAID, keys: ["port said", "bur sa'id"] },
-    { code: GOVERNORATES.SHARQIA, keys: ["sharqia", "sharqiya", "ash sharqiyah"] },
-    { code: GOVERNORATES.SOHAG, keys: ["sohag", "suhag"] },
-    { code: GOVERNORATES.SOUTH_SINAI, keys: ["south sinai", "janub sina"] },
-    { code: GOVERNORATES.DAMIETTA, keys: ["damietta", "dumiyat"] },
-    { code: GOVERNORATES.KAFR_EL_SHEIKH, keys: ["kafr el sheikh", "kafr ash sheikh", "kafr el-shaykh"] },
-    { code: GOVERNORATES.MATROUH, keys: ["matrouh", "matruh", "marsa matrouh", "marsamatruh"] },
-    { code: GOVERNORATES.LUXOR, keys: ["luxor", "al uqsur"] },
-    { code: GOVERNORATES.QENA, keys: ["qena", "qina"] },
-    { code: GOVERNORATES.ASYUT, keys: ["asyut", "assiut", "asuyt"] },
-    { code: GOVERNORATES.BENI_SUEF, keys: ["beni suef", "bani suwayf"] },
-    { code: GOVERNORATES.ASWAN, keys: ["aswan", "aswan governorate"] },
-    { code: GOVERNORATES.SUEZ, keys: ["suez", "as suways"] },
+    { code: "alexandria", keys: ["aleksandria", "alex"] },
+    { code: "giza", keys: ["gizah"] },
+    { code: "dakahlia", keys: ["daqahlia", "ad daqahliyah"] },
+    { code: "red_sea", keys: ["al bahr al ahmar"] },
+    { code: "beheira", keys: ["behira", "al buhayrah"] },
+    { code: "fayoum", keys: ["faiyum", "fayum", "al fayyum"] },
+    { code: "gharbia", keys: ["gharbiya", "al gharbiyah"] },
+    { code: "ismailia", keys: ["ismailiya", "al ismaliyah"] },
+    { code: "monufia", keys: ["menoufia", "minufiya"] },
+    { code: "minya", keys: ["minia", "al minya"] },
+    { code: "qalyubia", keys: ["qaliubiya", "al qalyubiyah"] },
+    {
+      code: "new_valley",
+      keys: ["al wadi al jadid", "el wadi el gedid"],
+    },
+    { code: "north_sinai", keys: ["shamal sina"] },
+    { code: "port_said", keys: ["bur sa'id"] },
+    { code: "sharqia", keys: ["sharqiya", "ash sharqiyah"] },
+    { code: "sohag", keys: ["suhag"] },
+    { code: "south_sinai", keys: ["janub sina"] },
+    { code: "damietta", keys: ["dumiyat"] },
+    {
+      code: "kafr_el_sheikh",
+      keys: ["kafr ash sheikh", "kafr el-shaykh"],
+    },
+    {
+      code: "matrouh",
+      keys: ["matruh", "marsa matrouh", "marsamatruh"],
+    },
+    { code: "luxor", keys: ["al uqsur"] },
+    { code: "qena", keys: ["qina"] },
+    { code: "asyut", keys: ["assiut", "asuyt"] },
+    { code: "beni_suef", keys: ["bani suwayf"] },
+    { code: "aswan", keys: ["aswan governorate"] },
+    { code: "suez", keys: ["as suways"] },
   ];
 
   for (const { code, keys } of mappings) {
@@ -45,23 +201,6 @@ function normalizeGovernorateName(raw) {
   }
 
   return null;
-}
-
-async function findZoneForPoint({ latNum, lngNum }) {
-  const point = {
-    type: "Point",
-    coordinates: [lngNum, latNum],
-  };
-
-  const zone = await ZoneModel.findOne({
-    geometry: {
-      $geoIntersects: {
-        $geometry: point,
-      },
-    },
-  }).populate("warehouse", "name code governorate active defaultShippingPrice isDefault");
-
-  return zone;
 }
 
 async function findNearestWarehouseByGovernorate({ governorate, latNum, lngNum }) {
@@ -94,139 +233,79 @@ async function findDefaultWarehouse() {
 
   return warehouse;
 }
-
-function buildZoneBasedResponse({ zone, latNum, lngNum, source, governorateRaw, normalizedGovFromClient }) {
-  const warehouse = zone.warehouse;
-
-  if (!warehouse) {
-    throw new ApiError("Zone is not linked to a warehouse", 500);
-  }
-
-  const isZoneActive = Boolean(zone.active);
-  const zoneColor = isZoneActive ? "green" : "grey";
-
-  const effectiveShippingPrice =
-    zone.shippingFee &&
-    typeof zone.shippingFee === "number" &&
-    !Number.isNaN(zone.shippingFee)
-      ? zone.shippingFee
-      : warehouse.defaultShippingPrice ?? 0;
-
-  const normalizedFromWarehouse = warehouse.governorate || null;
-  const normalized = normalizedGovFromClient || normalizedFromWarehouse;
-  const isSupported = !!normalized && SUPPORTED_GOVERNORATES.includes(normalized);
-
-  let coverageStatus;
-  let reasonCode = null;
-  let reasonMessage = null;
-  let canDeliver;
-
-  if (isZoneActive) {
-    coverageStatus = "GREEN_ZONE";
-    canDeliver = true;
-  } else {
-    coverageStatus = "GREY_ZONE";
-    canDeliver = false;
-    reasonCode = "NON_DELIVERABLE_GREY_ZONE";
-    reasonMessage = "We currently don't deliver to this area.";
-  }
-
-  return {
-    warehouse: {
-      id: warehouse._id,
-      name: warehouse.name,
-      governorate: warehouse.governorate || null,
-      isDefault: Boolean(warehouse.isDefault),
-      defaultShippingPrice: warehouse.defaultShippingPrice ?? 0,
-    },
-    location: {
-      source: source || "gps",
-      coordinates: {
-        lat: latNum,
-        lng: lngNum,
-      },
-      zone: {
-        id: zone._id,
-        color: zoneColor,
-        name: zone.name || null,
-        areaName: zone.areaName || null,
-      },
-      governorate: {
-        raw: governorateRaw || null,
-        normalized,
-        isSupported,
-      },
-    },
-    delivery: {
-      canDeliver,
-      coverageStatus,
-      reasonCode,
-      reasonMessage,
-      effectiveShippingPrice,
-      shippingFee: zone.shippingFee ?? null,
-      defaultShippingPrice: warehouse.defaultShippingPrice ?? 0,
-    },
-  };
-}
-
-function buildOutsideZonesResponse({
-  warehouse,
-  latNum,
-  lngNum,
-  source,
-  governorateRaw,
-  normalizedGov,
-  isSupported,
-  coverageStatus,
-  reasonCode,
-  reasonMessage,
-  canDeliver = false,
+ 
+export async function resolveLocationByCoordinatesService({
+  lat,
+  lng,
+  governorateCode,
+  source = "gps",
 }) {
-  if (!warehouse) {
-    throw new ApiError("No active warehouse configured", 500);
+  const hasCoords = typeof lat !== "undefined" && typeof lng !== "undefined";
+
+  // Governorate-only mode (manual selection, no precise coordinates)
+  if (!hasCoords) {
+    if (!governorateCode || typeof governorateCode !== "string") {
+      throw new ApiError("Either (lat & lng) or governorateCode must be provided", 400);
+    }
+
+    const govCode = governorateCode.toLowerCase().trim();
+    const govConfig = GOVERNORATES_BY_CODE.get(govCode);
+
+    if (!govConfig) {
+      throw new ApiError("Unknown governorate code", 400);
+    }
+
+    const isSupported = isSupportedGovernorate(govCode);
+
+    let productsWarehouse = null;
+
+    if (isSupported) {
+      productsWarehouse =
+        (await WarehouseModel.findOne({ governorate: govCode, active: true }).sort({
+          createdAt: 1,
+        })) || (await findDefaultWarehouse());
+    } else {
+      productsWarehouse = await findDefaultWarehouse();
+    }
+
+    if (!productsWarehouse) {
+      throw new ApiError("No active warehouse configured", 500);
+    }
+
+    const warehouseSummary = summarizeWarehouse(productsWarehouse);
+
+    return {
+      warehouse: warehouseSummary,
+      productsWarehouse: warehouseSummary,
+      deliveryWarehouse: null,
+      location: {
+        source: lat&&lng ?  source : "manual",
+        coordinates: {
+          lat: null,
+          lng: null,
+        },
+        governorate: {
+          name: govCode,
+          isSupported,
+        },
+      },
+      delivery: {
+        canDeliver: false,
+        coverageStatus: isSupported
+          ? "GOVERNORATE_ONLY_SUPPORTED"
+          : "GOVERNORATE_ONLY_UNSUPPORTED",
+        reasonCode: "PRECISE_LOCATION_REQUIRED",
+        reasonMessage:
+          "Exact location is required to confirm delivery availability.",
+        requiresPreciseLocation: true,
+        effectiveShippingPrice: productsWarehouse.defaultShippingPrice ?? 0,
+        shippingFee: null,
+        defaultShippingPrice: productsWarehouse.defaultShippingPrice ?? 0,
+      },
+    };
   }
 
-  const effectiveShippingPrice = warehouse.defaultShippingPrice ?? 0;
-
-  return {
-    warehouse: {
-      id: warehouse._id,
-      name: warehouse.name,
-      governorate: warehouse.governorate || null,
-      isDefault: Boolean(warehouse.isDefault),
-      defaultShippingPrice: warehouse.defaultShippingPrice ?? 0,
-    },
-    location: {
-      source: source || "gps",
-      coordinates: {
-        lat: latNum,
-        lng: lngNum,
-      },
-      zone: {
-        id: null,
-        color: null,
-        name: null,
-        areaName: null,
-      },
-      governorate: {
-        raw: governorateRaw || null,
-        normalized: normalizedGov,
-        isSupported,
-      },
-    },
-    delivery: {
-      canDeliver,
-      coverageStatus,
-      reasonCode,
-      reasonMessage,
-      effectiveShippingPrice,
-      shippingFee: null,
-      defaultShippingPrice: warehouse.defaultShippingPrice ?? 0,
-    },
-  };
-}
-
-export async function resolveLocationByCoordinatesService({ lat, lng, governorateRaw, source = "gps" }) {
+  // Point/coordinates mode
   const latNum = Number(lat);
   const lngNum = Number(lng);
 
@@ -234,141 +313,231 @@ export async function resolveLocationByCoordinatesService({ lat, lng, governorat
     throw new ApiError("lat and lng must be numbers", 400);
   }
 
-  const normalizedGovFromClient = normalizeGovernorateName(governorateRaw);
+  let decisionRawGov = null;
+  let decisionNormalizedGov = null;
+  let isDecisionGovSupported = false;
 
-  const isClientGovSupported =
-    !!normalizedGovFromClient && SUPPORTED_GOVERNORATES.includes(normalizedGovFromClient);
+  const userPoint = {
+    type: "Point",
+    coordinates: [lngNum, latNum],
+  };
 
-  let zone = null;
+  const warehousesWithBoundary = await WarehouseModel.find({
+    active: true,
+    boundaryGeometry: { $exists: true },
+  }).select(
+    "name code governorate active defaultShippingPrice isDefault location boundaryGeometry"
+  );
 
-  // Option B behavior:
-  // - If the client governorate is supported, or we could not normalize it,
-  //   we allow geometry-based zone lookup.
-  // - If the client governorate is explicitly normalized but unsupported,
-  //   we skip zone lookup entirely and go straight to outside/unsupported logic.
-  if (isClientGovSupported || !normalizedGovFromClient) {
-    zone = await findZoneForPoint({ latNum, lngNum });
-  }
+  const insideCandidates = [];
 
-  if (zone) {
-    return buildZoneBasedResponse({
-      zone,
-      latNum,
-      lngNum,
-      source,
-      governorateRaw,
-      normalizedGovFromClient,
-    });
-  }
-
-  const normalizedGov = normalizedGovFromClient;
-  const isSupported = isClientGovSupported;
-
-  if (isSupported) {
-    let warehouse = await findNearestWarehouseByGovernorate({
-      governorate: normalizedGov,
-      latNum,
-      lngNum,
-    });
-
-    if (!warehouse) {
-      warehouse = await findDefaultWarehouse();
+  warehousesWithBoundary.forEach((warehouse) => {
+    const geom = warehouse.boundaryGeometry;
+    if (
+      !geom ||
+      geom.type !== "Polygon" ||
+      !Array.isArray(geom.coordinates) ||
+      !geom.coordinates.length
+    ) {
+      return;
     }
 
-    return buildOutsideZonesResponse({
-      warehouse,
-      latNum,
-      lngNum,
-      source,
-      governorateRaw,
-      normalizedGov,
-      isSupported,
-      coverageStatus: "OUTSIDE_ZONES_SUPPORTED_GOVERNORATE",
-      reasonCode: "NON_DELIVERABLE_OUTSIDE_GRID",
-      reasonMessage:
-        "We currently don't deliver to this exact area, but you can still browse products.",
-    });
+    const cleanedPolygon = {
+      type: "Polygon",
+      coordinates: geom.coordinates.map((ring) =>
+        Array.isArray(ring)
+          ? ring
+              .map((coord) => {
+                if (!Array.isArray(coord) || coord.length < 2) return null;
+                const [lngCoord, latCoord] = coord;
+                if (
+                  typeof lngCoord !== "number" ||
+                  typeof latCoord !== "number"
+                ) {
+                  return null;
+                }
+                return [lngCoord, latCoord];
+              })
+              .filter(Boolean)
+          : []
+      ),
+    };
+
+    if (
+      !Array.isArray(cleanedPolygon.coordinates[0]) ||
+      !cleanedPolygon.coordinates[0].length
+    ) {
+      return;
+    }
+
+    const inside = booleanPointInPolygon(userPoint, cleanedPolygon);
+    if (inside) {
+      insideCandidates.push(warehouse);
+    }
+  });
+
+  // If the point is outside all boundaries and we don't yet know the governorate,
+  // perform reverse geocoding on the backend to infer it.
+  if (!insideCandidates.length && !decisionNormalizedGov) {
+    const geo = await reverseGeocodeGovernorate({ latNum, lngNum });
+    if (geo.raw) {
+      decisionRawGov = geo.raw;
+    }
+    if (geo.normalized) {
+      decisionNormalizedGov = geo.normalized;
+      isDecisionGovSupported = isSupportedGovernorate(decisionNormalizedGov);
+    }
   }
 
-  const warehouse = await findDefaultWarehouse();
-  const normalizedFallbackGov = warehouse?.governorate || null;
-  const finalNormalizedGov = normalizedGov || normalizedFallbackGov || null;
-  const finalIsSupported = !!finalNormalizedGov &&
-    SUPPORTED_GOVERNORATES.includes(finalNormalizedGov);
+  let productsWarehouseDoc;
+  let deliveryWarehouseDoc;
+  let coverageStatus;
+  let scenario;
+  let reasonCode = null;
+  let reasonMessage = null;
+  let canDeliver;
 
-  return buildOutsideZonesResponse({
-    warehouse,
-    latNum,
-    lngNum,
-    source,
-    governorateRaw,
-    normalizedGov: finalNormalizedGov,
-    isSupported: finalIsSupported,
-    coverageStatus: "OUTSIDE_ZONES_UNSUPPORTED_GOVERNORATE",
-    reasonCode: null,
-    reasonMessage: null,
-    canDeliver: true,
-  });
+  if (insideCandidates.length > 0) {
+    const chosen = pickNearestWarehouseByLocation(insideCandidates, {
+      latNum,
+      lngNum,
+    });
+    productsWarehouseDoc = chosen;
+    deliveryWarehouseDoc = chosen;
+    coverageStatus = "INSIDE_BOUNDARY";
+    scenario = "INSIDE_BOUNDARY";
+    canDeliver = true;
+  } else if (decisionNormalizedGov && isDecisionGovSupported) {
+    let nearest = await findNearestWarehouseByGovernorate({
+      governorate: decisionNormalizedGov,
+      latNum,
+      lngNum,
+    });
+
+    if (!nearest) {
+      nearest = await findDefaultWarehouse();
+    }
+
+    productsWarehouseDoc = nearest;
+    deliveryWarehouseDoc = null;
+    coverageStatus = "OUTSIDE_BOUNDARIES_SUPPORTED_GOVERNORATE";
+    scenario = "OUTSIDE_BOUNDARIES_SUPPORTED_GOVERNORATE";
+    canDeliver = false;
+    reasonCode = "NON_DELIVERABLE_OUTSIDE_BOUNDARIES_SUPPORTED_GOV";
+    reasonMessage =
+      "We currently don't deliver to this exact area, but you can still browse products.";
+  } else {
+    const defaultWarehouse = await findDefaultWarehouse();
+    if (!defaultWarehouse) {
+      throw new ApiError("No active warehouse configured", 500);
+    }
+    productsWarehouseDoc = defaultWarehouse;
+    deliveryWarehouseDoc = defaultWarehouse;
+    coverageStatus = "OUTSIDE_BOUNDARIES_UNSUPPORTED_GOVERNORATE";
+    scenario = "OUTSIDE_BOUNDARIES_UNSUPPORTED_GOVERNORATE";
+    canDeliver = true;
+  }
+
+  const normalizedFromWarehouse = productsWarehouseDoc.governorate || null;
+  const normalizedGov = decisionNormalizedGov || normalizedFromWarehouse;
+  const isSupported = isSupportedGovernorate(normalizedGov);
+
+  const priceSource = deliveryWarehouseDoc || productsWarehouseDoc;
+  const effectiveShippingPrice = priceSource.defaultShippingPrice ?? 0;
+
+  const productsSummary = summarizeWarehouse(productsWarehouseDoc);
+  const deliverySummary = summarizeWarehouse(deliveryWarehouseDoc);
+
+  return {
+    warehouse: productsSummary,
+    productsWarehouse: productsSummary,
+    deliveryWarehouse: deliverySummary,
+    location: {
+      source: source || "gps",
+      coordinates: {
+        lat: latNum,
+        lng: lngNum,
+      },
+      governorate: {
+        raw: decisionRawGov,
+        normalized: normalizedGov,
+        isSupported,
+      },
+    },
+    delivery: {
+      canDeliver,
+      coverageStatus,
+      scenario,
+      reasonCode,
+      reasonMessage,
+      requiresPreciseLocation: false,
+      effectiveShippingPrice,
+      shippingFee: null,
+      defaultShippingPrice:
+        productsWarehouseDoc.defaultShippingPrice ?? 0,
+    },
+  };
 }
 
-export async function getLocationOptionsService() {
-  const cacheKey = "location:options";
+export async function getLocationOptionsService(lang = "en") {
+  const normalizedLang = lang === "ar" ? "ar" : "en";
+  const cacheKey = `location:options:${normalizedLang}`;
   const ttlSeconds = 600; // cache for 10 minutes
 
   const result = await getOrSetCache(cacheKey, ttlSeconds, async () => {
-    const aggregate = await ZoneModel.aggregate([
-      {
-        $match: {
-          active: true,
-          areaName: { $exists: true, $ne: "" },
-        },
-      },
-      {
-        $group: {
-          _id: { governorate: "$governorate", areaName: "$areaName" },
-          warehouse: { $first: "$warehouse" },
-        },
-      },
-    ]);
+    const defaultWarehouse = await findDefaultWarehouse();
+    const activeWarehouses = await WarehouseModel.find({ active: true }).select(
+      "_id code governorate"
+    );
+    const warehousesByCode = new Map(
+      activeWarehouses.map((w) => [w.code, w])
+    );
 
-    const byGovernorate = new Map();
+    const governorates = (governoratesConfig.governorates || []).map((g) => {
+      const simpleAreas = Array.isArray(g.areas) && g.areas.length > 0 ? g.areas : [];
+      const warehouseGroups = Array.isArray(g.warehouses) ? g.warehouses : [];
 
-    aggregate.forEach((row) => {
-      const gov = (row._id?.governorate || "").toLowerCase();
-      const areaName = row._id?.areaName;
-      if (!gov || !areaName) return;
+      const groupedAreas = [];
+      warehouseGroups.forEach((group) => {
+        const groupWarehouseCode = group.code || group.warehouseCode || null;
+        const groupAreas = Array.isArray(group.areas) ? group.areas : [];
 
-      if (!byGovernorate.has(gov)) {
-        byGovernorate.set(gov, []);
-      }
-      byGovernorate.get(gov).push({
-        name: areaName,
-        warehouseId: row.warehouse,
+        groupAreas.forEach((a) => {
+          groupedAreas.push({
+            ...a,
+            warehouseCode:
+              a.warehouseCode || a.warehouse_code || groupWarehouseCode,
+          });
+        });
       });
-    });
 
-    const governorateLabels = {
-      [GOVERNORATES.ALEXANDRIA]: "Alexandria",
-      [GOVERNORATES.CAIRO]: "Cairo",
-      [GOVERNORATES.GIZA]: "Giza",
-      // Other governorates will fall back to their code string as label
-    };
+      const flattenedAreas = simpleAreas.concat(groupedAreas);
 
-    const allGovernorateCodes = Object.values(GOVERNORATES);
-
-    const governorates = allGovernorateCodes.map((code) => {
-      const areas = byGovernorate.get(code) || [];
+      const name = pickLocalizedField(g, "name", normalizedLang) || g.code;
 
       return {
-        code,
-        label: governorateLabels[code] || code,
-        isSupported: SUPPORTED_GOVERNORATES.includes(code),
-        hasAreas: areas.length > 0,
-        areas,
+        code: g.code,
+        name,
+        isSupported: !!g.supported,
+        hasAreas: flattenedAreas.length > 0,
+        areas: flattenedAreas.map((a) => {
+          const warehouseCode = a.warehouseCode || a.warehouse_code || null;
+          const wh =
+            warehouseCode && warehousesByCode.has(warehouseCode)
+              ? warehousesByCode.get(warehouseCode)
+              : null;
+          const resolvedWarehouseId = wh ? wh._id : a.warehouseId || null;
+
+          const areaName = pickLocalizedField(a, "name", normalizedLang) || null;
+
+          return {
+            code: a.code || null,
+            name: areaName,
+            warehouseId: resolvedWarehouseId,
+          };
+        }),
       };
     });
-
-    const defaultWarehouse = await findDefaultWarehouse();
 
     return {
       governorates,

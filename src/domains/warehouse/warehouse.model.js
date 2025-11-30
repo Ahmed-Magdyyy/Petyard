@@ -48,11 +48,9 @@ const warehouseSchema = new Schema(
       type: {
         type: String,
         enum: ["Polygon"],
-        default: "Polygon",
       },
       coordinates: {
         type: [[[Number]]], // [ [ [lng, lat], ... ] ]
-        default: undefined,
       },
     },
     defaultShippingPrice: {
@@ -77,6 +75,5 @@ warehouseSchema.index({ active: 1 });
 warehouseSchema.index({ governorate: 1, active: 1 });
 warehouseSchema.index({ isDefault: 1 });
 warehouseSchema.index({ location: "2dsphere" });
-warehouseSchema.index({ boundaryGeometry: "2dsphere" });
 
 export const WarehouseModel = model("Warehouse", warehouseSchema);

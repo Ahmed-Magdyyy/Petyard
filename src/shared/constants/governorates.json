@@ -1,0 +1,939 @@
+{
+  "governorates": [
+    {
+      "code": "alexandria",
+      "name_en": "Alexandria",
+      "name_ar": "الإسكندرية",
+      "supported": true,
+      "areas": [],
+      "warehouses": [
+        {
+          "code": "ALEXO01",
+          "areas": [
+            { "code": "agami", "name_en": "Agami", "name_ar": "عجمي" },
+            { "code": "hanoville", "name_en": "Hanoville", "name_ar": "هانوفيل" },
+            { "code": "el_bitash", "name_en": "El Bitash", "name_ar": "بيطاش" },
+            { "code": "abu_yusuf", "name_en": "Abu Yusuf", "name_ar": "ابويوسف" },
+            { "code": "kilo_21", "name_en": "Kilo 21", "name_ar": "الكيلو ٢١" },
+            { "code": "abu_talat", "name_en": "Abu Talat", "name_ar": "ابو تلات" },
+            { "code": "el_max", "name_en": "El Max", "name_ar": "المكس" },
+            { "code": "wadi_el_qamar", "name_en": "Wadi El Qamar", "name_ar": "وادي القمر" },
+            { "code": "el_dekheila", "name_en": "El Dekheila", "name_ar": "الدخيله" },
+            { "code": "el_wardian", "name_en": "El Wardian", "name_ar": "الورديان" },
+            { "code": "karmouz", "name_en": "Karmouz", "name_ar": "كرموز" },
+            { "code": "mansheya", "name_en": "Mansheya", "name_ar": "منشية" },
+            { "code": "ras_el_tin", "name_en": "Ras El Tin", "name_ar": "راس التين" },
+            { "code": "bahary", "name_en": "Bahary", "name_ar": "بحري" },
+            { "code": "azarita", "name_en": "Azarita", "name_ar": "ازاريطة" },
+            { "code": "shatby", "name_en": "Shatby", "name_ar": "الشاطبي" },
+            { "code": "camp_caesar", "name_en": "Camp Caesar", "name_ar": "كامب شيزار" },
+            { "code": "ibrahemya", "name_en": "Ibrahemya", "name_ar": "الابراهمية" },
+            { "code": "sporting", "name_en": "Sporting", "name_ar": "سبورتنج" },
+            { "code": "cleopatra", "name_en": "Cleopatra", "name_ar": "كليوباترا" },
+            { "code": "sidi_gaber", "name_en": "Sidi Gaber", "name_ar": "سيدي جابر" },
+            { "code": "roushdy", "name_en": "Roushdy", "name_ar": "رشدي" },
+            { "code": "saba_pasha", "name_en": "Saba Pasha", "name_ar": "سابا باشا" },
+            { "code": "gleem", "name_en": "Gleem", "name_ar": "جليم" },
+            { "code": "janaklis", "name_en": "Janaklis", "name_ar": "جناكليس" },
+            { "code": "loran", "name_en": "Loran", "name_ar": "لوران" },
+            { "code": "shaarawy", "name_en": "Shaarawy", "name_ar": "شعرواوي" },
+            { "code": "victoria", "name_en": "Victoria", "name_ar": "فيكتوريا" },
+            { "code": "sidi_bishr", "name_en": "Sidi Bishr", "name_ar": "سيدي بشر" },
+            { "code": "asafra", "name_en": "Asafra", "name_ar": "عصافرة" },
+            { "code": "45_street", "name_en": "45 street", "name_ar": "شارع ٤٥" },
+            { "code": "mandara", "name_en": "Mandara", "name_ar": "مندرة" },
+            { "code": "abu_qir", "name_en": "Abu Qir", "name_ar": "ابو قير" },
+            { "code": "maamoura", "name_en": "Maamoura", "name_ar": "المعمورة" },
+            { "code": "montaza", "name_en": "Montaza", "name_ar": "المنتزة" },
+            { "code": "scott", "name_en": "Scott", "name_ar": "اسكوت" },
+            { "code": "el_mallaha", "name_en": "El Mallaha", "name_ar": "الملاحة" },
+            { "code": "tosson", "name_en": "Tosson", "name_ar": "طوسون" },
+            { "code": "new_miami", "name_en": "New Miami", "name_ar": "ميامي جديدة" },
+            { "code": "miami", "name_en": "Miami", "name_ar": "ميامي" },
+            { "code": "ras_el_soda", "name_en": "Ras El Soda", "name_ar": "راس السودة" },
+            { "code": "el_seyouf", "name_en": "El Seyouf", "name_ar": "سيوف" },
+            { "code": "el_awayed", "name_en": "El Awayed", "name_ar": "العوايد" },
+            { "code": "abis", "name_en": "Abis", "name_ar": "ابيس" },
+            { "code": "abu_soliman", "name_en": "Abu Soliman", "name_ar": "ابو سليمان" },
+            { "code": "hagar_el_nawateya", "name_en": "Hagar El Nawateya", "name_ar": "حجر النواتية" },
+            { "code": "kobri_el_namos", "name_en": "Kobri El Namos", "name_ar": "كوبري النموس" },
+            { "code": "ezbet_saad", "name_en": "Ezbet Saad", "name_ar": "عزبة سعد" },
+            { "code": "smouha", "name_en": "Smouha", "name_ar": "سموحة" },
+            { "code": "el_gawaher", "name_en": "El Gawaher", "name_ar": "الجواهر" },
+            { "code": "hadara", "name_en": "Hadara", "name_ar": "حضرة" },
+            { "code": "wabour_el_mayah", "name_en": "Wabour El Mayah", "name_ar": "وابور المياه" },
+            { "code": "moharam_bek", "name_en": "Moharam Bek", "name_ar": "محرم بك" },
+            { "code": "fouad_street", "name_en": "Fouad Street", "name_ar": "شارع فؤاد" },
+            { "code": "kom_el_deka", "name_en": "Kom El Deka", "name_ar": "كوم الدكة" },
+            { "code": "latin_district", "name_en": "Latin District", "name_ar": "حي لاتيني" },
+            { "code": "al_farahda", "name_en": "Al Farahda", "name_ar": "الفراهدة" },
+            { "code": "souq_el_gomaa", "name_en": "Souq El Gom'a", "name_ar": "سوق الجمعه" },
+            { "code": "misr_station", "name_en": "Misr Station", "name_ar": "محطة مصر" },
+            { "code": "kafr_ashry", "name_en": "Kafr Ashry", "name_ar": "كفر عشري" },
+            { "code": "labban", "name_en": "Labban", "name_ar": "اللبان" },
+            { "code": "el_zahreya", "name_en": "El Zahreya", "name_ar": "الضهرية" },
+            { "code": "fleming", "name_en": "Fleming", "name_ar": "فلمنج" },
+            { "code": "bacos", "name_en": "Bacos", "name_ar": "باكوس" },
+            { "code": "gabriel", "name_en": "Gabriel", "name_ar": "غبريال" },
+            { "code": "ezbet_sakina", "name_en": "Ezbet Sakina", "name_ar": "عزبة سكينة" },
+            { "code": "baktoushi", "name_en": "Baktoushi", "name_ar": "باكتوشي" },
+            { "code": "mansheya_el_bahariya", "name_en": "Mansheya El Bahariya", "name_ar": "المنشية البحيرة" },
+            { "code": "attarin", "name_en": "Attarin", "name_ar": "العطارين" },
+            { "code": "raml_station", "name_en": "Raml Station", "name_ar": "محطة الرمل" },
+            { "code": "safia_zaghloul", "name_en": "Safia Zaghloul", "name_ar": "صفية زغلول" },
+            { "code": "shakour", "name_en": "Shakour", "name_ar": "شكور" },
+            { "code": "el_matar_airport", "name_en": "El Matar (Airport)", "name_ar": "المطار" },
+            { "code": "rabea_el_nasreya", "name_en": "Rabea El Nasreya", "name_ar": "رابعة ناصرية" },
+            { "code": "new_smouha", "name_en": "New Smouha", "name_ar": "سموحة الجديدة" },
+            { "code": "winget", "name_en": "Winget", "name_ar": "وينجت" },
+            { "code": "carrefour", "name_en": "Carrefour", "name_ar": "كارفور" },
+            { "code": "kafr_abdo", "name_en": "Kafr Abdo", "name_ar": "كفر عبدة" },
+            { "code": "ambrozo", "name_en": "Ambrozo", "name_ar": "امبروزو" },
+            { "code": "gheit_el_saidi", "name_en": "Gheit El Sa'idi", "name_ar": "غيط الصعيدي" }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "cairo",
+      "name_en": "Cairo",
+      "name_ar": "القاهرة",
+      "supported": true,
+      "areas": [],
+      "warehouses": [
+        {
+          "code": "3RD_SETTELMENT",
+          "areas": [
+            {
+              "code": "mostakbal_city",
+              "name_en": "Mostakbal City",
+              "name_ar": "مدينة المستقبل"
+            },
+            {
+              "code": "hikestep",
+              "name_en": "Hikestep",
+              "name_ar": "هايكستب"
+            },
+            {
+              "code": "el_shorouk",
+              "name_en": "El Shorouk",
+              "name_ar": "الشروق"
+            },
+            {
+              "code": "madinaty",
+              "name_en": "Madinaty",
+              "name_ar": "مدينتي"
+            },
+            {
+              "code": "new_heliopolis",
+              "name_en": "New Heliopolis",
+              "name_ar": "هليوبلس الجديدة"
+            },
+            {
+              "code": "badr_city",
+              "name_en": "Badr City",
+              "name_ar": "بدر"
+            },
+            {
+              "code": "capital_gardens_city",
+              "name_en": "Capital Gardens City",
+              "name_ar": "مدينة حدائق العاصمة"
+            },
+            {
+              "code": "new_administrative_capital",
+              "name_en": "New Administrative Capital",
+              "name_ar": "العاصمة الادارية الجديدة"
+            },
+            {
+              "code": "sixth_settlement",
+              "name_en": "6th Settlement (Tagamoa El Sades)",
+              "name_ar": "تجمع ٦"
+            },
+            {
+              "code": "hyde_park",
+              "name_en": "Hyde Park",
+              "name_ar": "هايد بارك"
+            },
+            {
+              "code": "mountain_view_hyde_park",
+              "name_en": "Mountain View Hyde Park",
+              "name_ar": "ماونتن فيو هايد بارك"
+            },
+            {
+              "code": "the_square",
+              "name_en": "The Square",
+              "name_ar": "ذا سكوير"
+            },
+            {
+              "code": "al_andalus",
+              "name_en": "Al Andalus",
+              "name_ar": "الاندلس"
+            },
+            {
+              "code": "northern_investors",
+              "name_en": "Northern Investors",
+              "name_ar": "مستثمرين شمالي"
+            },
+            {
+              "code": "al_rehab",
+              "name_en": "Al Rehab",
+              "name_ar": "الرحاب"
+            },
+            {
+              "code": "lotus_north_south",
+              "name_en": "Lotus (North & South)",
+              "name_ar": "لوتس شمالي وجنوبي"
+            },
+            {
+              "code": "tamr_henna",
+              "name_en": "Tamr Henna",
+              "name_ar": "تمر حنة"
+            },
+            {
+              "code": "al_qoronfel",
+              "name_en": "Al Qoronfel",
+              "name_ar": "قرنفل"
+            },
+            {
+              "code": "auc",
+              "name_en": "AUC (American University in Cairo)",
+              "name_ar": "الجامعة الأمريكية"
+            },
+            {
+              "code": "mivida",
+              "name_en": "Mivida",
+              "name_ar": "مفيدا"
+            },
+            {
+              "code": "teseen_street",
+              "name_en": "Teseen Street (North/South 90 St.)",
+              "name_ar": "التسعين"
+            }
+          ]
+        },
+        {
+          "code": "5TH_SETTELMENT",
+          "areas": [
+            {
+              "code": "obour_city",
+              "name_en": "Obour City",
+              "name_ar": "العبور"
+            },
+            {
+              "code": "gesr_el_suez",
+              "name_en": "Gesr El Suez",
+              "name_ar": "جسر السويس"
+            },
+            {
+              "code": "el_herafyeen",
+              "name_en": "El Herafyeen",
+              "name_ar": "حرفيين"
+            },
+            {
+              "code": "el_marg",
+              "name_en": "El Marg",
+              "name_ar": "مرج"
+            },
+            {
+              "code": "el_nozha",
+              "name_en": "El Nozha",
+              "name_ar": "نزهه"
+            },
+            {
+              "code": "el_khosous",
+              "name_en": "El Khosous",
+              "name_ar": "خصوص"
+            },
+            {
+              "code": "el_matareya",
+              "name_en": "El Matareya",
+              "name_ar": "مطاريه"
+            },
+            {
+              "code": "ezbet_el_nakhl",
+              "name_en": "Ezbet El Nakhl",
+              "name_ar": "عزبة النخل"
+            },
+            {
+              "code": "ain_shams",
+              "name_en": "Ain Shams",
+              "name_ar": "عين شمس"
+            },
+            {
+              "code": "el_amiriya",
+              "name_en": "El Amiriya",
+              "name_ar": "اماريه"
+            },
+            {
+              "code": "heliopolis",
+              "name_en": "Heliopolis",
+              "name_ar": "هليوبلس"
+            },
+            {
+              "code": "heliopolis_masr_al_jadida",
+              "name_en": "Heliopolis (Masr Al Jadida)",
+              "name_ar": "مصر الجديدة"
+            },
+            {
+              "code": "sheraton",
+              "name_en": "Sheraton",
+              "name_ar": "شيراتون"
+            },
+            {
+              "code": "almaza",
+              "name_en": "Almaza",
+              "name_ar": "الماظه"
+            },
+            {
+              "code": "hadayek_el_qobbah",
+              "name_en": "Hadayek El Qobbah",
+              "name_ar": "حدائق القبه"
+            },
+            {
+              "code": "helmiet_el_zaitoun",
+              "name_en": "Helmiet El Zaitoun",
+              "name_ar": "حلمية الزيتون"
+            },
+            {
+              "code": "teraat_al_gabal",
+              "name_en": "Teraat Al Gabal",
+              "name_ar": "ترعة الجبل"
+            },
+            {
+              "code": "shubra",
+              "name_en": "Shubra",
+              "name_ar": "شبرا مصر"
+            },
+            {
+              "code": "shubra_el_kheima",
+              "name_en": "Shubra El Kheima",
+              "name_ar": "شبرا خيمة"
+            },
+            {
+              "code": "khalafawy_shubra",
+              "name_en": "Khalafawy (Shubra)",
+              "name_ar": "شبرا خلفاوي"
+            },
+            {
+              "code": "el_zawya_el_hamra",
+              "name_en": "El Zawya El Hamra",
+              "name_ar": "زاوية حمرا"
+            },
+            {
+              "code": "el_sharabeya",
+              "name_en": "El Sharabeya",
+              "name_ar": "شرابية"
+            },
+            {
+              "code": "el_gamaleya",
+              "name_en": "El Gamaleya",
+              "name_ar": "جماليه"
+            },
+            {
+              "code": "ramses",
+              "name_en": "Ramses",
+              "name_ar": "رمسيس"
+            },
+            {
+              "code": "abbasiya",
+              "name_en": "Abbasiya",
+              "name_ar": "عباسية"
+            },
+            {
+              "code": "el_wayli",
+              "name_en": "El Wayli",
+              "name_ar": "الوايلي"
+            },
+            {
+              "code": "bab_el_louq",
+              "name_en": "Bab El Louq",
+              "name_ar": "باب اللوق"
+            },
+            {
+              "code": "bab_el_sharia",
+              "name_en": "Bab El Sharia",
+              "name_ar": "باب الشعرية"
+            },
+            {
+              "code": "abdeen",
+              "name_en": "Abdeen",
+              "name_ar": "عابدين"
+            },
+            {
+              "code": "tahrir",
+              "name_en": "Tahrir",
+              "name_ar": "تحرير"
+            },
+            {
+              "code": "the_citadel_el_qalaa",
+              "name_en": "The Citadel (El Qalaa)",
+              "name_ar": "القلعة"
+            },
+            {
+              "code": "manshiyat_naser",
+              "name_en": "Manshiyat Naser",
+              "name_ar": "منشأة ناصر"
+            },
+            {
+              "code": "el_tayaran",
+              "name_en": "El Tayaran",
+              "name_ar": "الطيران"
+            },
+            {
+              "code": "sayeda_zeinab",
+              "name_en": "Sayeda Zeinab",
+              "name_ar": "سيدة زينب"
+            },
+            {
+              "code": "al_darb_al_ahmar",
+              "name_en": "Al Darb Al Ahmar",
+              "name_ar": "الدرب الأحمر"
+            },
+            {
+              "code": "saad_zaghloul",
+              "name_en": "Saad Zaghloul",
+              "name_ar": "سعد زغلول"
+            },
+            {
+              "code": "salah_salem",
+              "name_en": "Salah Salem",
+              "name_ar": "صلاح سالم"
+            },
+            {
+              "code": "sayeda_aisha",
+              "name_en": "Sayeda Aisha",
+              "name_ar": "سيدة عائشة"
+            },
+            {
+              "code": "fustat",
+              "name_en": "Fustat",
+              "name_ar": "فسطاط"
+            },
+            {
+              "code": "new_fustat",
+              "name_en": "New Fustat",
+              "name_ar": "فسطاط الجديدة"
+            },
+            {
+              "code": "mokattam",
+              "name_en": "Mokattam",
+              "name_ar": "مقطم"
+            },
+            {
+              "code": "maadi",
+              "name_en": "Maadi",
+              "name_ar": "معادي"
+            },
+            {
+              "code": "zahraa_al_maadi",
+              "name_en": "Zahraa Al Maadi",
+              "name_ar": "زهراء معادي"
+            },
+            {
+              "code": "hadayek_el_maadi",
+              "name_en": "Hadayek El Maadi",
+              "name_ar": "حدايق معادي"
+            },
+            {
+              "code": "degla_maadi",
+              "name_en": "Degla Maadi",
+              "name_ar": "دجلة المعادي"
+            },
+            {
+              "code": "nasr_city",
+              "name_en": "Nasr City",
+              "name_ar": "مدينة نصر"
+            },
+            {
+              "code": "zahraa_nasr_city",
+              "name_en": "Zahraa Nasr City",
+              "name_ar": "زهراء م نصر"
+            },
+            {
+              "code": "old_cairo_masr_el_adima",
+              "name_en": "Old Cairo (Masr El Adima)",
+              "name_ar": "مصر القديمة"
+            },
+            {
+              "code": "tora_el_maadi",
+              "name_en": "Tora El Maadi",
+              "name_ar": "طره المعادي"
+            },
+            {
+              "code": "saqr_quraish",
+              "name_en": "Saqr Quraish",
+              "name_ar": "صقر قريش"
+            },
+            {
+              "code": "mokattam_middle_plateau",
+              "name_en": "Mokattam Middle Plateau",
+              "name_ar": "الهضبه الوسطي المقطم"
+            },
+            {
+              "code": "katameya",
+              "name_en": "Katameya",
+              "name_ar": "قطامية"
+            },
+            {
+              "code": "south_academy",
+              "name_en": "South Academy",
+              "name_ar": "جنوب اكاديمية"
+            },
+            {
+              "code": "al_nakheel",
+              "name_en": "Al Nakheel",
+              "name_ar": "النخيل"
+            },
+            {
+              "code": "al_banafseg",
+              "name_en": "Al Banafseg",
+              "name_ar": "بنفسج"
+            },
+            {
+              "code": "al_yasmine",
+              "name_en": "Al Yasmine",
+              "name_ar": "ياسمين"
+            },
+            {
+              "code": "east_academy",
+              "name_en": "East Academy",
+              "name_ar": "شرق الاكاديمىة"
+            },
+            {
+              "code": "sectors_1_2_3_new_cairo",
+              "name_en": "1st, 2nd, 3rd Sector (New Cairo)",
+              "name_ar": "قطاع اول وتاني وتالت"
+            },
+            {
+              "code": "al_narges",
+              "name_en": "Al Narges",
+              "name_ar": "نرجس"
+            },
+            {
+              "code": "al_ahyaa",
+              "name_en": "Al Ahyaa",
+              "name_ar": "احياء"
+            },
+            {
+              "code": "choueifat",
+              "name_en": "Choueifat",
+              "name_ar": "شويفات"
+            },
+            {
+              "code": "katameya_heights",
+              "name_en": "Katameya Heights",
+              "name_ar": "قطامية هايتس"
+            },
+            {
+              "code": "west_golf",
+              "name_en": "West Golf",
+              "name_ar": "غرب الجولف"
+            },
+            {
+              "code": "stone_park",
+              "name_en": "Stone Park",
+              "name_ar": "استون بارك"
+            },
+            {
+              "code": "third_settlement",
+              "name_en": "3rd Settlement (Tagamoa El Talet)",
+              "name_ar": "تجمع ٣"
+            },
+            {
+              "code": "arabella",
+              "name_en": "Arabella",
+              "name_ar": "اربيلا"
+            },
+            {
+              "code": "gardenia_heights",
+              "name_en": "Gardenia Heights",
+              "name_ar": "جاردينيا هايتس"
+            },
+            {
+              "code": "southern_investors",
+              "name_en": "Southern Investors",
+              "name_ar": "مستثمرين جنوبي"
+            },
+            {
+              "code": "cairo_festival_city",
+              "name_en": "Cairo Festival City",
+              "name_ar": "كايرو فيستفال"
+            },
+            {
+              "code": "taj_city",
+              "name_en": "Taj City",
+              "name_ar": "تاج سيتي"
+            },
+            {
+              "code": "taj_sultan",
+              "name_en": "Taj Sultan",
+              "name_ar": "تاج سلطان"
+            },
+            {
+              "code": "el_waha_city",
+              "name_en": "El Waha City",
+              "name_ar": "مدينة الواحة"
+            },
+            {
+              "code": "ain_sokhna_road",
+              "name_en": "Ain Sokhna Road",
+              "name_ar": "طريق السخنه"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "giza",
+      "name_en": "Giza",
+      "name_ar": "الجيزة",
+      "supported": true,
+      "areas": [],
+      "warehouses": [
+        {
+          "code": "OCTOBERO01",
+          "areas": [
+            {
+              "code": "6th_of_october_city",
+              "name_en": "6th of October City",
+              "name_ar": "مدينة ٦ اكتوبر"
+            },
+            {
+              "code": "sheikh_zayed_city",
+              "name_en": "Sheikh Zayed City",
+              "name_ar": "مدينة الشيخ زايد"
+            },
+            {
+              "code": "october_gardens",
+              "name_en": "October Gardens",
+              "name_ar": "حدايق اكتوبر"
+            },
+            {
+              "code": "hadayek_al_ahram",
+              "name_en": "Hadayek Al Ahram",
+              "name_ar": "حدائق الأهرام"
+            },
+            {
+              "code": "al_wahat_road",
+              "name_en": "Al Wahat Road",
+              "name_ar": "طريق الواحات"
+            },
+            {
+              "code": "dahshur_link",
+              "name_en": "Dahshur Link",
+              "name_ar": "واصلة دهشور"
+            },
+            {
+              "code": "new_giza",
+              "name_en": "New Giza",
+              "name_ar": "نيو جيزه"
+            },
+            {
+              "code": "cairo_alex_desert_road",
+              "name_en": "Cairo - Alexandria Desert Road",
+              "name_ar": "صحراوي الاهرام"
+            },
+            {
+              "code": "el_remaya",
+              "name_en": "El Remaya",
+              "name_ar": "الرماية"
+            },
+            {
+              "code": "saqqara",
+              "name_en": "Saqqara",
+              "name_ar": "سقارة"
+            },
+            {
+              "code": "al_haram_street",
+              "name_en": "Al Haram Street",
+              "name_ar": "شارع الهرم"
+            },
+            {
+              "code": "tersa",
+              "name_en": "Tersa",
+              "name_ar": "ترسا"
+            },
+            {
+              "code": "faisal",
+              "name_en": "Faisal",
+              "name_ar": "فيصل"
+            },
+            {
+              "code": "omraneya",
+              "name_en": "Omraneya",
+              "name_ar": "عمرانية"
+            },
+            {
+              "code": "el_mounib",
+              "name_en": "El Mounib",
+              "name_ar": "المنيب"
+            },
+            {
+              "code": "manshiyat_al_bakari",
+              "name_en": "Manshiyat Al Bakari",
+              "name_ar": "منشأة البكاري"
+            },
+            {
+              "code": "bulaq",
+              "name_en": "Bulaq",
+              "name_ar": "بولاق"
+            },
+            {
+              "code": "bulaq_el_dakrour",
+              "name_en": "Bulaq El Dakrour",
+              "name_ar": "بولاق الدكرور"
+            },
+            {
+              "code": "bulaq_abu_el_ela",
+              "name_en": "Bulaq Abu El Ela",
+              "name_ar": "بولاق ابو العلا"
+            },
+            {
+              "code": "saft_el_laban",
+              "name_en": "Saft El Laban",
+              "name_ar": "سفط اللبن"
+            },
+            {
+              "code": "mohandessin",
+              "name_en": "Mohandessin",
+              "name_ar": "مهندسين"
+            },
+            {
+              "code": "dokki",
+              "name_en": "Dokki",
+              "name_ar": "دقي"
+            },
+            {
+              "code": "agouza",
+              "name_en": "Agouza",
+              "name_ar": "عجوزة"
+            },
+            {
+              "code": "zamalek",
+              "name_en": "Zamalek",
+              "name_ar": "زمالك"
+            },
+            {
+              "code": "manial",
+              "name_en": "Manial",
+              "name_ar": "منيل"
+            },
+            {
+              "code": "el_bahr_el_aazam",
+              "name_en": "El Bahr El Aazam",
+              "name_ar": "بحر اعظم"
+            },
+            {
+              "code": "garden_city",
+              "name_en": "Garden City",
+              "name_ar": "جارين سيتي"
+            },
+            {
+              "code": "imbaba",
+              "name_en": "Imbaba",
+              "name_ar": "امبابة"
+            },
+            {
+              "code": "al_barajil",
+              "name_en": "Al Barajil",
+              "name_ar": "البراجيل"
+            },
+            {
+              "code": "warraq",
+              "name_en": "Warraq",
+              "name_ar": "الوراق"
+            },
+            {
+              "code": "nahia",
+              "name_en": "Nahia",
+              "name_ar": "ناهية"
+            },
+            {
+              "code": "kerdasa",
+              "name_en": "Kerdasa",
+              "name_ar": "كرداسة"
+            },
+            {
+              "code": "abu_rawash",
+              "name_en": "Abu Rawash",
+              "name_ar": "ابورواش"
+            },
+            {
+              "code": "ard_el_lewaa",
+              "name_en": "Ard El Lewaa",
+              "name_ar": "ارض اللواء"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "dakahlia",
+      "name_en": "Dakahlia",
+      "name_ar": "الدقهلية",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "red_sea",
+      "name_en": "Red Sea",
+      "name_ar": "البحر الأحمر",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "beheira",
+      "name_en": "Beheira",
+      "name_ar": "البحيرة",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "fayoum",
+      "name_en": "Fayoum",
+      "name_ar": "الفيوم",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "gharbia",
+      "name_en": "Gharbia",
+      "name_ar": "الغربية",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "ismailia",
+      "name_en": "Ismailia",
+      "name_ar": "الإسماعيلية",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "monufia",
+      "name_en": "Monufia",
+      "name_ar": "المنوفية",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "minya",
+      "name_en": "Minya",
+      "name_ar": "المنيا",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "qalyubia",
+      "name_en": "Qalyubia",
+      "name_ar": "القليوبية",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "new_valley",
+      "name_en": "New Valley",
+      "name_ar": "الوادي الجديد",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "north_sinai",
+      "name_en": "North Sinai",
+      "name_ar": "شمال سيناء",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "port_said",
+      "name_en": "Port Said",
+      "name_ar": "بورسعيد",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "sharqia",
+      "name_en": "Sharqia",
+      "name_ar": "الشرقية",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "sohag",
+      "name_en": "Sohag",
+      "name_ar": "سوهاج",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "south_sinai",
+      "name_en": "South Sinai",
+      "name_ar": "جنوب سيناء",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "damietta",
+      "name_en": "Damietta",
+      "name_ar": "دمياط",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "kafr_el_sheikh",
+      "name_en": "Kafr El Sheikh",
+      "name_ar": "كفر الشيخ",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "matrouh",
+      "name_en": "Matrouh",
+      "name_ar": "مطروح",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "luxor",
+      "name_en": "Luxor",
+      "name_ar": "الأقصر",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "qena",
+      "name_en": "Qena",
+      "name_ar": "قنا",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "asyut",
+      "name_en": "Asyut",
+      "name_ar": "أسيوط",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "beni_suef",
+      "name_en": "Beni Suef",
+      "name_ar": "بني سويف",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "aswan",
+      "name_en": "Aswan",
+      "name_ar": "أسوان",
+      "supported": false,
+      "areas": []
+    },
+    {
+      "code": "suez",
+      "name_en": "Suez",
+      "name_ar": "السويس",
+      "supported": false,
+      "areas": []
+    }
+  ]
+}
