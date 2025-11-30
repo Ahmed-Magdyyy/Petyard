@@ -4,7 +4,10 @@ import { getOrSetCache } from "../../shared/cache.js";
 import axios from "axios";
 import { booleanPointInPolygon } from "@turf/turf";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
-import governoratesConfig from "../../shared/constants/governorates.json" assert { type: "json" };
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const governoratesConfig = require("../../shared/constants/governorates.json");
 
 const GOVERNORATES_BY_CODE = new Map(
   (governoratesConfig.governorates || []).map((g) => [g.code, g])

@@ -1,7 +1,10 @@
 // src/domains/warehouse/warehouse.validators.js
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
-import governoratesConfig from "../../shared/constants/governorates.json" assert { type: "json" };
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const governoratesConfig = require("../../shared/constants/governorates.json");
 
 const GOVERNORATE_CODES = (governoratesConfig.governorates || []).map((g) => g.code);
 
