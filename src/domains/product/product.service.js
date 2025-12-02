@@ -429,13 +429,6 @@ export async function getProductsService(queryParams = {}, lang = "en") {
   };
 }
 
-export async function getProductListService(queryParams, lang = "en") {
-  const normalizedLang = normalizeLang(lang);
-  const { type, category, subcategory, brand, q, isFeatured, isActive, warehouse, page, limit, sortKey } = queryParams;
-
-  // ... rest of the function remains the same ...
-}
-
 export async function getProductByIdService(id, lang = "en") {
   const normalizedLang = normalizeLang(lang);
   const cacheKey = `product:${id}:${normalizedLang}`;
@@ -472,6 +465,7 @@ export async function getProductByIdService(id, lang = "en") {
       Array.isArray(product.variants) &&
       product.variants.length > 0
         ? product.variants.map((v, index) => ({
+            id: v._id || null,
             index,
             sku: v.sku || null,
             price: v.price,
@@ -480,9 +474,8 @@ export async function getProductByIdService(id, lang = "en") {
             options: Array.isArray(v.options) ? v.options : [],
             images: Array.isArray(v.images)
               ? v.images.map((img) => ({
-                  public_id: img.public_id,
+                  // public_id: img.public_id,
                   url: img.url,
-                  isMain: !!img.isMain,
                 }))
               : [],
             warehouseStocks: Array.isArray(v.warehouseStocks)
@@ -586,28 +579,62 @@ function mapWarehouseStocks(rawStocks) {
   }));
 }
 
-function mapVariantPayloads(rawVariants) {
+// Maps raw variant payloads into clean variant subdocuments.
+// - productImages: used to resolve imageIndex into a concrete image object.
+// - existingVariantsById (optional): when provided, and when the payload
+//   includes an _id that matches an existing variant, we reuse that _id so
+//   variant identity stays stable across updates (important for carts/orders).
+function mapVariantPayloads(rawVariants, productImages, existingVariantsById) {
   if (!Array.isArray(rawVariants)) return [];
-  return rawVariants.map((v) => ({
-    sku: v.sku,
-    price: typeof v.price === "number" ? v.price : Number(v.price) || 0,
-    discountedPrice:
-      typeof v.discountedPrice === "number"
-        ? v.discountedPrice
-        : v.discountedPrice != null
-        ? Number(v.discountedPrice) || 0
-        : undefined,
-    options: Array.isArray(v.options)
-      ? v.options
-          .map((o) => ({
-            name: typeof o.name === "string" ? o.name.trim() : "",
-            value: typeof o.value === "string" ? o.value.trim() : "",
-          }))
-          .filter((o) => o.name && o.value)
-      : [],
-    warehouseStocks: mapWarehouseStocks(v.warehouseStocks),
-    isDefault: !!v.isDefault,
-  }));
+
+  const hasProductImages =
+    Array.isArray(productImages) && productImages.length > 0;
+
+  return rawVariants.map((v) => {
+    const doc = {
+      sku: v.sku,
+      price: typeof v.price === "number" ? v.price : Number(v.price) || 0,
+      discountedPrice:
+        typeof v.discountedPrice === "number"
+          ? v.discountedPrice
+          : v.discountedPrice != null
+          ? Number(v.discountedPrice) || 0
+          : undefined,
+      options: Array.isArray(v.options)
+        ? v.options
+            .map((o) => ({
+              name: typeof o.name === "string" ? o.name.trim() : "",
+              value: typeof o.value === "string" ? o.value.trim() : "",
+            }))
+            .filter((o) => o.name && o.value)
+        : [],
+      warehouseStocks: mapWarehouseStocks(v.warehouseStocks),
+      isDefault: !!v.isDefault,
+    };
+
+    // When updating an existing product, try to preserve the variant _id if
+    // the payload provided one and it exists on the current product.
+    if (existingVariantsById && v._id) {
+      const existing = existingVariantsById.get(String(v._id));
+      if (existing && existing._id) {
+        doc._id = existing._id;
+      }
+    }
+
+    if (hasProductImages && v.imageIndex != null) {
+      const idx = Number(v.imageIndex);
+      if (!Number.isNaN(idx) && idx >= 0 && idx < productImages.length) {
+        const baseImage = productImages[idx];
+        if (baseImage) {
+          // Attach a single image to this variant by reusing the
+          // already-uploaded product image metadata (no extra upload).
+          doc.images = [baseImage];
+        }
+      }
+    }
+
+    return doc;
+  });
 }
 
 async function uploadProductImages(files, slug, mainImageIndex) {
@@ -764,8 +791,6 @@ export async function createProductService(payload, files = []) {
     }
 
     await ensureWarehousesExist(allWarehouseIds);
-
-    variantDocs = mapVariantPayloads(variants);
   }
 
   const { images, uploadedPublicIds } = await uploadProductImages(
@@ -773,6 +798,13 @@ export async function createProductService(payload, files = []) {
     normalizedSlug,
     mainImageIndex
   );
+
+  if (type === "VARIANT") {
+    // Map each variant to a single image (if provided) by referencing
+    // the already-uploaded product images array. This avoids duplicate
+    // uploads while still giving each variant its own images field.
+    variantDocs = mapVariantPayloads(variants, images);
+  }
 
   try {
     const product = await ProductModel.create({
@@ -867,6 +899,8 @@ export async function updateProductService(id, payload, files = []) {
   const currentVariantOptions =
     product.type === "VARIANT" ? normalizeProductOptions(product.options || []) : [];
 
+  let shouldRemapVariantsFromPayload = false;
+
   if (product.type === "SIMPLE") {
     if (price !== undefined) {
       product.price =
@@ -927,8 +961,7 @@ export async function updateProductService(id, payload, files = []) {
     }
 
     await ensureWarehousesExist(allWarehouseIds);
-
-    product.variants = mapVariantPayloads(variants);
+    shouldRemapVariantsFromPayload = true;
   } else if (product.type === "VARIANT" && variants === undefined && options !== undefined) {
     // Options were updated but variants were not provided; ensure existing variants are still valid
     validateVariantOptionsMatrix(currentVariantOptions, product.variants || []);
@@ -959,6 +992,23 @@ export async function updateProductService(id, payload, files = []) {
     newImages = uploadResult.images;
     newUploadedPublicIds = uploadResult.uploadedPublicIds;
     product.images = newImages;
+  }
+
+  if (product.type === "VARIANT" && shouldRemapVariantsFromPayload) {
+    const effectiveImages = Array.isArray(product.images) ? product.images : [];
+    const existingVariantsById = new Map(
+      Array.isArray(product.variants)
+        ? product.variants.map((v) => [String(v._id), v])
+        : []
+    );
+    // Replace the entire variants array with the payload, preserving _id when
+    // the payload includes an existing variant _id. Variants omitted from the
+    // payload are treated as removed.
+    product.variants = mapVariantPayloads(
+      variants,
+      effectiveImages,
+      existingVariantsById
+    );
   }
 
   try {

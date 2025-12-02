@@ -405,6 +405,11 @@ export async function forgetPasswordService({ email }) {
     await user.save();
     throw new ApiError("Sending email failed", 500);
   }
+
+  return {
+    email: user.email,
+    resetCode,
+  };
 }
 
 export async function verifyPasswordResetCodeService({ resetCode }) {

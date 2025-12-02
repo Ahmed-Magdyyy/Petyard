@@ -69,8 +69,7 @@ const variantSchema = new Schema(
     images: [imageSchema],
     warehouseStocks: [warehouseStockSchema],
     isDefault: { type: Boolean, default: false },
-  },
-  { _id: false }
+  }
 );
 
 const productSchema = new Schema(

@@ -25,20 +25,11 @@ export const createProductValidator = [
   body("desc_en").notEmpty().withMessage("English description is required"),
   body("desc_ar").notEmpty().withMessage("Arabic description is required"),
 
-  body("tags")
-    .optional()
-    .isArray()
-    .withMessage("tags must be an array"),
+  body("tags").optional().isArray().withMessage("tags must be an array"),
 
-  body("tags.*")
-    .optional()
-    .isString()
-    .withMessage("each tag must be a string"),
+  body("tags.*").optional().isString().withMessage("each tag must be a string"),
 
-  body("options")
-    .optional()
-    .isArray()
-    .withMessage("options must be an array"),
+  body("options").optional().isArray().withMessage("options must be an array"),
 
   body("options.*.name")
     .optional()
@@ -55,10 +46,7 @@ export const createProductValidator = [
     .isString()
     .withMessage("each option value must be a string"),
 
-  body("options")
-    .optional()
-    .isArray()
-    .withMessage("options must be an array"),
+  body("options").optional().isArray().withMessage("options must be an array"),
 
   body("options.*.name")
     .optional()
@@ -152,7 +140,10 @@ export const createProductValidator = [
 
   body("type").custom((value, { req }) => {
     if (value === "SIMPLE") {
-      if (!Array.isArray(req.body.warehouseStocks) || req.body.warehouseStocks.length === 0) {
+      if (
+        !Array.isArray(req.body.warehouseStocks) ||
+        req.body.warehouseStocks.length === 0
+      ) {
         throw new Error("warehouseStocks is required for SIMPLE products");
       }
       if (req.body.price == null) {
@@ -173,7 +164,10 @@ export const createProductValidator = [
         throw new Error("variants are required for VARIANT products");
       }
 
-      if (Array.isArray(req.body.warehouseStocks) && req.body.warehouseStocks.length > 0) {
+      if (
+        Array.isArray(req.body.warehouseStocks) &&
+        req.body.warehouseStocks.length > 0
+      ) {
         throw new Error(
           "warehouseStocks must be empty for VARIANT products; use variants[*].warehouseStocks instead"
         );
@@ -195,15 +189,9 @@ export const createProductValidator = [
 export const updateProductValidator = [
   param("id").isMongoId().withMessage("Invalid product id"),
 
-  body("slug")
-    .not()
-    .exists()
-    .withMessage("slug cannot be updated"),
+  body("slug").not().exists().withMessage("slug cannot be updated"),
 
-  body("type")
-    .not()
-    .exists()
-    .withMessage("type cannot be updated"),
+  body("type").not().exists().withMessage("type cannot be updated"),
 
   body("subcategory")
     .optional()
@@ -235,25 +223,16 @@ export const updateProductValidator = [
     .isString()
     .withMessage("Arabic description must be a string"),
 
-  body("price")
-    .optional()
-    .isNumeric()
-    .withMessage("price must be a number"),
+  body("price").optional().isNumeric().withMessage("price must be a number"),
 
   body("discountedPrice")
     .optional()
     .isNumeric()
     .withMessage("discountedPrice must be a number"),
 
-  body("tags")
-    .optional()
-    .isArray()
-    .withMessage("tags must be an array"),
+  body("tags").optional().isArray().withMessage("tags must be an array"),
 
-  body("tags.*")
-    .optional()
-    .isString()
-    .withMessage("each tag must be a string"),
+  body("tags.*").optional().isString().withMessage("each tag must be a string"),
 
   body("warehouseStocks")
     .optional()
@@ -274,6 +253,11 @@ export const updateProductValidator = [
     .optional()
     .isArray()
     .withMessage("variants must be an array"),
+    
+  body("variants.*._id")
+    .optional()
+    .isMongoId()
+    .withMessage("variant _id must be a valid id"),
 
   body("variants.*.price")
     .optional()
