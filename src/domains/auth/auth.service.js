@@ -392,19 +392,19 @@ export async function forgetPasswordService({ email }) {
   const capitalizedName =
     firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
 
-  try {
-    await sendEmail({
-      email: user.email,
-      subject: `${capitalizedName}, here is your reset code`,
-      message: forgetPasswordEmailHTML(capitalizedName, resetCode),
-    });
-  } catch (error) {
-    user.passwordResetCode = undefined;
-    user.passwordResetCodeExpire = undefined;
-    user.passwordResetCodeVerified = undefined;
-    await user.save();
-    throw new ApiError("Sending email failed", 500);
-  }
+  // try {
+  //   await sendEmail({
+  //     email: user.email,
+  //     subject: `${capitalizedName}, here is your reset code`,
+  //     message: forgetPasswordEmailHTML(capitalizedName, resetCode),
+  //   });
+  // } catch (error) {
+  //   user.passwordResetCode = undefined;
+  //   user.passwordResetCodeExpire = undefined;
+  //   user.passwordResetCodeVerified = undefined;
+  //   await user.save();
+  //   throw new ApiError("Sending email failed", 500);
+  // }
 
   return {
     email: user.email,
