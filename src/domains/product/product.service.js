@@ -591,6 +591,16 @@ function mapVariantPayloads(rawVariants, productImages, existingVariantsById) {
     Array.isArray(productImages) && productImages.length > 0;
 
   return rawVariants.map((v) => {
+    let isDefault = false;
+    if (typeof v.isDefault === "boolean") {
+      isDefault = v.isDefault;
+    } else if (typeof v.isDefault === "string") {
+      const flag = v.isDefault.trim().toLowerCase();
+      if (flag === "true" || flag === "1" || flag === "yes" || flag === "on") {
+        isDefault = true;
+      }
+    }
+
     const doc = {
       sku: v.sku,
       price: typeof v.price === "number" ? v.price : Number(v.price) || 0,
@@ -609,7 +619,7 @@ function mapVariantPayloads(rawVariants, productImages, existingVariantsById) {
             .filter((o) => o.name && o.value)
         : [],
       warehouseStocks: mapWarehouseStocks(v.warehouseStocks),
-      isDefault: !!v.isDefault,
+      isDefault,
     };
 
     // When updating an existing product, try to preserve the variant _id if
@@ -1014,9 +1024,15 @@ export async function updateProductService(id, payload, files = []) {
   try {
     const updated = await product.save();
 
-    for (const publicId of oldPublicIds) {
-      if (!newUploadedPublicIds.includes(publicId)) {
-        await deleteImageFromCloudinary(publicId);
+    // Only attempt to delete old images from Cloudinary when we actually
+    // uploaded new ones for this product. If no new images were uploaded
+    // (files.length === 0), we keep the existing images as-is to avoid
+    // unnecessary network calls and accidental deletions.
+    if (Array.isArray(newUploadedPublicIds) && newUploadedPublicIds.length > 0) {
+      for (const publicId of oldPublicIds) {
+        if (!newUploadedPublicIds.includes(publicId)) {
+          await deleteImageFromCloudinary(publicId);
+        }
       }
     }
 
