@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { protect } from "../auth/auth.middleware.js";
+import { protect, allowedTo } from "../auth/auth.middleware.js";
+import { roles } from "../../shared/constants/enums.js";
 import {
   getGuestCart,
   addOrUpdateGuestCartItem,
@@ -12,6 +13,7 @@ import {
   removeMyCartItem,
   clearMyCart,
   mergeGuestCartIntoMyCart,
+  listCartsForAdmin,
 } from "./cart.controller.js";
 import {
   warehouseIdParamValidator,
@@ -51,6 +53,14 @@ router.delete(
   warehouseIdParamValidator,
   clearGuestCart
 );
+
+router.use(
+  "/admin",
+  protect,
+  allowedTo(roles.ADMIN, roles.SUPER_ADMIN)
+);
+
+router.get("/admin", listCartsForAdmin);
 
 router.use("/me", protect);
 

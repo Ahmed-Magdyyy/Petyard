@@ -1,10 +1,12 @@
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
+import { normalizeProductType } from "../../shared/utils/productType.js";
 
 export const createProductValidator = [
   body("type")
     .notEmpty()
     .withMessage("type is required")
+    .customSanitizer((value) => normalizeProductType(value))
     .isIn(["SIMPLE", "VARIANT"])
     .withMessage("type must be either SIMPLE or VARIANT"),
 

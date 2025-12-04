@@ -87,11 +87,38 @@ const cartSchema = new Schema(
       type: String,
       default: "EGP",
     },
+
+    status: {
+      type: String,
+      enum: ["ACTIVE", "ABANDONED"],
+      default: "ACTIVE",
+      index: true,
+    },
+
+    lastActivityAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+
+    abandonedAt: {
+      type: Date,
+    },
+
+    abandonedEmailSentAt: {
+      type: Date,
+    },
+
+    abandonedEmailCount: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );
 
 cartSchema.index({ user: 1 });
 cartSchema.index({ guestId: 1 });
+cartSchema.index({ status: 1, lastActivityAt: 1 });
 
 export const CartModel = model("Cart", cartSchema);

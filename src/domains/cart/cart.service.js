@@ -1,8 +1,24 @@
-import { CartModel } from "./cart.model.js";
-import { ProductModel } from "../product/product.model.js";
+import {
+  findProductById,
+  findProductsByIds,
+} from "../product/product.repository.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
+import { normalizeProductType } from "../../shared/utils/productType.js";
+import {
+  findCart,
+  createCart,
+  deleteCart,
+  findCarts,
+  countCarts,
+  markCartsAbandoned,
+} from "./cart.repository.js";
+import sendEmail from "../../shared/Email/sendEmails.js";
+import { abandonedCart } from "../../shared/Email/emailHtml.js";
+
+const MAX_ABANDON_EMAILS_PER_CART = 3;
+const ABANDON_EMAIL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -28,14 +44,16 @@ function buildIdentityFilter({ userId, guestId }) {
 async function getOrCreateCart({ userId, guestId, warehouseId }) {
   const identityFilter = buildIdentityFilter({ userId, guestId });
 
-  let cart = await CartModel.findOne(identityFilter);
+  let cart = await findCart(identityFilter);
 
   if (!cart) {
-    cart = await CartModel.create({
+    cart = await createCart({
       ...identityFilter,
       warehouse: warehouseId,
       items: [],
       totalCartPrice: 0,
+      status: "ACTIVE",
+      lastActivityAt: new Date(),
     });
   }
 
@@ -45,7 +63,7 @@ async function getOrCreateCart({ userId, guestId, warehouseId }) {
 async function getExistingCartOrThrow({ userId, guestId, warehouseId }) {
   const identityFilter = buildIdentityFilter({ userId, guestId });
 
-  let cart = await CartModel.findOne(identityFilter);
+  let cart = await findCart(identityFilter);
 
   if (!cart) {
     throw new ApiError("Cart not found", 404);
@@ -135,10 +153,12 @@ function findVariantWarehouseStock(variant, warehouseId) {
   );
 }
 
-async function rebindCartToWarehouse(cart, warehouseId) {
+async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
   if (!cart) return null;
 
   await assertWarehouseExists(warehouseId);
+
+  const normalizedLang = normalizeLang(lang);
 
   const items = Array.isArray(cart.items) ? cart.items : [];
   const originalItems = [...items];
@@ -146,6 +166,8 @@ async function rebindCartToWarehouse(cart, warehouseId) {
   if (!items.length) {
     cart.warehouse = warehouseId;
     computeTotalCartPrice(cart);
+    cart.lastActivityAt = new Date();
+    cart.status = "ACTIVE";
     await cart.save();
     return cart;
   }
@@ -158,7 +180,7 @@ async function rebindCartToWarehouse(cart, warehouseId) {
     ),
   ];
 
-  const products = await ProductModel.find({ _id: { $in: productIds } });
+  const products = await findProductsByIds(productIds);
   const productById = new Map(products.map((p) => [String(p._id), p]));
 
   const keptItems = [];
@@ -179,6 +201,7 @@ async function rebindCartToWarehouse(cart, warehouseId) {
     let newProductImageUrl = item.productImageUrl || null;
     let newVariantId = item.variantId;
     let newVariantOptionsSnapshot = item.variantOptionsSnapshot;
+    const productName = pickLocalizedField(product, "name", normalizedLang);
 
     if (product.type === "SIMPLE") {
       const stock = findSimpleWarehouseStock(product, warehouseId);
@@ -194,8 +217,7 @@ async function rebindCartToWarehouse(cart, warehouseId) {
         typeof product.discountedPrice === "number"
           ? product.discountedPrice
           : undefined;
-      newItemPrice =
-        typeof discounted === "number" ? discounted : price;
+      newItemPrice = typeof discounted === "number" ? discounted : price;
 
       newProductImageUrl = pickMainImageUrl(product.images);
       newVariantId = undefined;
@@ -217,8 +239,7 @@ async function rebindCartToWarehouse(cart, warehouseId) {
         typeof variant.discountedPrice === "number"
           ? variant.discountedPrice
           : undefined;
-      newItemPrice =
-        typeof discounted === "number" ? discounted : price;
+      newItemPrice = typeof discounted === "number" ? discounted : price;
 
       newVariantOptionsSnapshot = Array.isArray(variant.options)
         ? variant.options.map((o) => ({
@@ -237,6 +258,7 @@ async function rebindCartToWarehouse(cart, warehouseId) {
     }
 
     item.itemPrice = newItemPrice;
+    item.productName = productName;
     item.productImageUrl = newProductImageUrl || null;
     item.variantId = newVariantId;
     item.variantOptionsSnapshot = newVariantOptionsSnapshot;
@@ -245,34 +267,46 @@ async function rebindCartToWarehouse(cart, warehouseId) {
   }
 
   const keptIds = new Set(keptItems.map((it) => String(it._id)));
-  const removedRaw = originalItems.filter(
-    (it) => !keptIds.has(String(it._id))
-  );
+  const removedRaw = originalItems.filter((it) => !keptIds.has(String(it._id)));
 
-  cart._removedItems = removedRaw.map((it) => ({
-    id: it._id,
-    productId: it.product,
-    productType: it.productType,
-    productName: it.productName || null,
-    productImageUrl: it.productImageUrl || null,
-    variantId: it.variantId || null,
-    quantity: it.quantity,
-    itemPrice: it.itemPrice,
-  }));
+  cart._removedItems = removedRaw.map((it) => {
+    const product = productById.get(String(it.product));
+    const localizedName = product
+      ? pickLocalizedField(product, "name", normalizedLang)
+      : it.productName || null;
+
+    return {
+      id: it._id,
+      productId: it.product,
+      productType: it.productType,
+      productName: localizedName,
+      productImageUrl: it.productImageUrl || null,
+      variantId: it.variantId || null,
+      quantity: it.quantity,
+      itemPrice: it.itemPrice,
+    };
+  });
 
   cart.items = keptItems;
   cart.warehouse = warehouseId;
   computeTotalCartPrice(cart);
+  cart.lastActivityAt = new Date();
+  cart.status = "ACTIVE";
   await cart.save();
 
   return cart;
 }
 
-export async function getCartService({ userId, guestId, warehouseId }) {
+export async function getCartService({
+  userId,
+  guestId,
+  warehouseId,
+  lang = "en",
+}) {
   await assertWarehouseExists(warehouseId);
 
   const baseCart = await getOrCreateCart({ userId, guestId, warehouseId });
-  const cart = await rebindCartToWarehouse(baseCart, warehouseId);
+  const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
   return mapCartToResponse(cart);
 }
 
@@ -292,12 +326,17 @@ export async function upsertCartItemService({
 
   await assertWarehouseExists(warehouseId);
 
-  const product = await ProductModel.findById(productId);
+  const normalizedProductType = normalizeProductType(productType);
+  if (!normalizedProductType) {
+    throw new ApiError("Invalid productType. Must be SIMPLE or VARIANT", 400);
+  }
+
+  const product = await findProductById(productId);
   if (!product) {
     throw new ApiError(`No product found for this id: ${productId}`, 404);
   }
 
-  if (product.type !== productType) {
+  if (product.type !== normalizedProductType) {
     throw new ApiError(
       `Product type mismatch. Expected ${product.type}, got ${productType}`,
       400
@@ -306,6 +345,23 @@ export async function upsertCartItemService({
 
   const normalizedLang = normalizeLang(lang);
   const productName = pickLocalizedField(product, "name", normalizedLang);
+
+  const cart = await getOrCreateCart({ userId, guestId, warehouseId });
+  const items = Array.isArray(cart.items) ? cart.items : [];
+
+  const existing = items.find((item) => {
+    if (!item.product || String(item.product) !== String(product._id)) {
+      return false;
+    }
+    if (product.type === "SIMPLE") {
+      return !item.variantId;
+    }
+    return item.variantId && String(item.variantId) === String(variantId);
+  });
+
+  const currentQuantity =
+    existing && typeof existing.quantity === "number" ? existing.quantity : 0;
+  const requestedTotalQuantity = currentQuantity + quantity;
 
   let itemPrice;
   let variant = null;
@@ -320,7 +376,7 @@ export async function upsertCartItemService({
         400
       );
     }
-    if (quantity > stock.quantity) {
+    if (requestedTotalQuantity > stock.quantity) {
       throw new ApiError(
         `Requested quantity exceeds available stock (${stock.quantity})`,
         400
@@ -348,7 +404,7 @@ export async function upsertCartItemService({
         400
       );
     }
-    if (quantity > stock.quantity) {
+    if (requestedTotalQuantity > stock.quantity) {
       throw new ApiError(
         `Requested quantity exceeds available stock (${stock.quantity})`,
         400
@@ -376,22 +432,8 @@ export async function upsertCartItemService({
     }
   }
 
-  const cart = await getOrCreateCart({ userId, guestId, warehouseId });
-
-  const items = Array.isArray(cart.items) ? cart.items : [];
-
-  const existing = items.find((item) => {
-    if (!item.product || String(item.product) !== String(product._id)) {
-      return false;
-    }
-    if (product.type === "SIMPLE") {
-      return !item.variantId;
-    }
-    return item.variantId && String(item.variantId) === String(variant._id);
-  });
-
   if (existing) {
-    existing.quantity = quantity;
+    existing.quantity = requestedTotalQuantity;
     existing.itemPrice = itemPrice;
     existing.productName = productName;
     existing.productImageUrl = productImageUrl;
@@ -407,15 +449,17 @@ export async function upsertCartItemService({
       variantId:
         product.type === "VARIANT" && variant ? variant._id : undefined,
       variantOptionsSnapshot,
-      quantity,
+      quantity: requestedTotalQuantity,
       itemPrice,
     });
   }
 
   computeTotalCartPrice(cart);
+  cart.lastActivityAt = new Date();
+  cart.status = "ACTIVE";
   await cart.save();
 
-  const refreshed = await rebindCartToWarehouse(cart, warehouseId);
+  const refreshed = await rebindCartToWarehouse(cart, warehouseId, lang);
   return mapCartToResponse(refreshed);
 }
 
@@ -425,6 +469,7 @@ export async function updateCartItemQuantityService({
   warehouseId,
   itemId,
   quantity,
+  lang = "en",
 }) {
   if (quantity == null || quantity <= 0) {
     throw new ApiError("quantity must be greater than 0", 400);
@@ -437,7 +482,7 @@ export async function updateCartItemQuantityService({
     throw new ApiError("Cart item not found", 404);
   }
 
-  const product = await ProductModel.findById(item.product);
+  const product = await findProductById(item.product);
   if (!product) {
     throw new ApiError("Product no longer exists", 400);
   }
@@ -483,6 +528,8 @@ export async function updateCartItemQuantityService({
 
   item.quantity = quantity;
   computeTotalCartPrice(cart);
+  cart.lastActivityAt = new Date();
+  cart.status = "ACTIVE";
   await cart.save();
 
   const refreshed = await rebindCartToWarehouse(cart, warehouseId);
@@ -494,6 +541,7 @@ export async function removeCartItemService({
   guestId,
   warehouseId,
   itemId,
+  lang = "en",
 }) {
   const cart = await getExistingCartOrThrow({ userId, guestId, warehouseId });
 
@@ -504,6 +552,8 @@ export async function removeCartItemService({
 
   item.deleteOne();
   computeTotalCartPrice(cart);
+  cart.lastActivityAt = new Date();
+  cart.status = cart.items.length > 0 ? "ACTIVE" : cart.status;
   await cart.save();
 
   const refreshed = await rebindCartToWarehouse(cart, warehouseId);
@@ -513,7 +563,7 @@ export async function removeCartItemService({
 export async function clearCartService({ userId, guestId, warehouseId }) {
   const identityFilter = buildIdentityFilter({ userId, guestId });
 
-  await CartModel.deleteOne(identityFilter);
+  await deleteCart(identityFilter);
 
   return { success: true };
 }
@@ -525,21 +575,31 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
 
   await assertWarehouseExists(warehouseId);
 
-  const guestCart = await CartModel.findOne({ guestId });
+  const guestCart = await findCart({ guestId });
 
   // No guest cart: just return the current user cart (or an empty one)
   if (!guestCart) {
-    const baseUserCart = await getOrCreateCart({ userId, guestId: null, warehouseId });
-    const refreshedUserCart = await rebindCartToWarehouse(baseUserCart, warehouseId);
+    const baseUserCart = await getOrCreateCart({
+      userId,
+      guestId: null,
+      warehouseId,
+    });
+    const refreshedUserCart = await rebindCartToWarehouse(
+      baseUserCart,
+      warehouseId
+    );
     return mapCartToResponse(refreshedUserCart);
   }
 
-  let userCart = await CartModel.findOne({ user: userId });
+  let userCart = await findCart({ user: userId });
 
   // Case A: no existing user cart -> adopt guest cart
   if (!userCart) {
     guestCart.user = userId;
     guestCart.guestId = undefined;
+    guestCart.lastActivityAt = new Date();
+    guestCart.status = "ACTIVE";
+    await guestCart.save();
 
     const adoptedCart = await rebindCartToWarehouse(guestCart, warehouseId);
     return mapCartToResponse(adoptedCart);
@@ -549,11 +609,13 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
   const refreshedGuest = await rebindCartToWarehouse(guestCart, warehouseId);
   userCart = await rebindCartToWarehouse(userCart, warehouseId);
 
-  const guestItems = Array.isArray(refreshedGuest.items) ? refreshedGuest.items : [];
+  const guestItems = Array.isArray(refreshedGuest.items)
+    ? refreshedGuest.items
+    : [];
   const userItems = Array.isArray(userCart.items) ? userCart.items : [];
 
   if (!guestItems.length) {
-    await CartModel.deleteOne({ _id: refreshedGuest._id });
+    await deleteCart({ _id: refreshedGuest._id });
     const finalCart = await rebindCartToWarehouse(userCart, warehouseId);
     return mapCartToResponse(finalCart);
   }
@@ -567,7 +629,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     ),
   ];
 
-  const products = await ProductModel.find({ _id: { $in: productIds } });
+  const products = await findProductsByIds(productIds);
   const productById = new Map(products.map((p) => [String(p._id), p]));
 
   const userItemByKey = new Map();
@@ -643,8 +705,154 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     }
   }
 
-  await CartModel.deleteOne({ _id: refreshedGuest._id });
+  await deleteCart({ _id: refreshedGuest._id });
+  userCart.lastActivityAt = new Date();
+  userCart.status = "ACTIVE";
+  await userCart.save();
 
   const finalCart = await rebindCartToWarehouse(userCart, warehouseId);
   return mapCartToResponse(finalCart);
+}
+
+export async function listCartsForAdminService(query = {}) {
+  const {
+    page = 1,
+    limit = 20,
+    status,
+    warehouse,
+    user,
+    guestId,
+    from,
+    to,
+  } = query;
+
+  const filter = {};
+
+  if (status) {
+    const normalizedStatus =
+      typeof status === "string" ? status.trim().toUpperCase() : status;
+    filter.status = normalizedStatus;
+  }
+
+  if (warehouse) {
+    filter.warehouse = warehouse;
+  }
+
+  if (user) {
+    filter.user = user;
+  }
+
+  if (guestId) {
+    filter.guestId = guestId;
+  }
+
+  if (from || to) {
+    filter.lastActivityAt = {};
+    if (from) {
+      filter.lastActivityAt.$gte = new Date(from);
+    }
+    if (to) {
+      filter.lastActivityAt.$lte = new Date(to);
+    }
+  }
+
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
+  const skip = (pageNum - 1) * limitNum;
+
+  const sort = { lastActivityAt: -1 };
+
+  const totalCount = await countCarts(filter);
+  const carts = await findCarts(filter, { skip, limit: limitNum, sort });
+
+  return {
+    totalPages: Math.ceil(totalCount / limitNum) || 1,
+    page: pageNum,
+    results: carts.length,
+    data: carts.map(mapCartToResponse),
+  };
+}
+
+export async function markAbandonedCartsService(thresholdMs) {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - thresholdMs);
+
+  const filter = {
+    status: "ACTIVE",
+    lastActivityAt: { $lt: cutoff },
+    "items.0": { $exists: true },
+  };
+
+  const candidates = await findCarts(filter, {
+    populate: { path: "user", select: "email name" },
+  });
+
+  for (const cart of candidates) {
+    if (!cart.user || typeof cart.user.email !== "string") {
+      continue;
+    }
+
+    const emailCount =
+      typeof cart.abandonedEmailCount === "number"
+        ? cart.abandonedEmailCount
+        : 0;
+    const lastEmailAt = cart.abandonedEmailSentAt || null;
+
+    const cooldownPassed =
+      !lastEmailAt || now - lastEmailAt >= ABANDON_EMAIL_COOLDOWN_MS;
+    const hasNewActivitySinceLastEmail =
+      !lastEmailAt || cart.lastActivityAt > lastEmailAt;
+
+    const canSend =
+      emailCount < MAX_ABANDON_EMAILS_PER_CART &&
+      cooldownPassed &&
+      hasNewActivitySinceLastEmail;
+
+    if (!canSend) {
+      continue;
+    }
+
+    const rawName =
+      typeof cart.user.name === "string" && cart.user.name.trim()
+        ? cart.user.name.trim()
+        : "there";
+    const firstName = rawName.split(" ")[0];
+    const capitalizedName =
+      firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+
+    const itemsForEmail = Array.isArray(cart.items)
+      ? cart.items.map((item) => ({
+          productName: item.productName || "",
+          productImageUrl: item.productImageUrl || "",
+          quantity:
+            typeof item.quantity === "number" && item.quantity > 0
+              ? item.quantity
+              : 0,
+          itemPrice: typeof item.itemPrice === "number" ? item.itemPrice : 0,
+        }))
+      : [];
+
+    try {
+      await sendEmail({
+        email: cart.user.email,
+        subject: `${capitalizedName}, you left items in your cart!`,
+        message: abandonedCart(
+          capitalizedName,
+          itemsForEmail,
+          cart.currency || "EGP"
+        ),
+      });
+    } catch (error) {
+      console.error(error);
+    }
+
+    cart.abandonedEmailSentAt = now;
+    cart.abandonedEmailCount = emailCount + 1;
+    await cart.save();
+  }
+
+  const abandonedAt = now;
+  const result = await markCartsAbandoned(filter, abandonedAt);
+
+  return result;
 }

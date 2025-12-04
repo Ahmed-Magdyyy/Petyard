@@ -1,4 +1,3 @@
-// src/shared/utils/apiFeatures.js
 
 // Build pagination info from query params
 export function buildPagination({ page, limit }, defaultLimit = 10) {

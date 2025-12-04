@@ -1,10 +1,19 @@
-import { ProductModel } from "./product.model.js";
+import {
+  countProducts,
+  findProducts,
+  findProductById,
+  findProductByIdWithRefs,
+  findProductBySlug,
+  createProduct,
+  deleteProductById,
+} from "./product.repository.js";
 import { SubcategoryModel } from "../subcategory/subcategory.model.js";
 import { BrandModel } from "../brand/brand.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
+import { normalizeProductType } from "../../shared/utils/productType.js";
 import {
   buildPagination,
   buildSort,
@@ -236,9 +245,10 @@ export async function getProductsService(queryParams = {}, lang = "en") {
 
   const filter = {};
 
-  // Type filter (SIMPLE vs VARIANT)
-  if (type && ["SIMPLE", "VARIANT"].includes(type)) {
-    filter.type = type;
+  // Type filter (SIMPLE vs VARIANT), case-insensitive
+  const normalizedType = normalizeProductType(type);
+  if (normalizedType) {
+    filter.type = normalizedType;
   }
 
   // Category / subcategory / brand filters (support comma-separated lists)
@@ -329,7 +339,7 @@ export async function getProductsService(queryParams = {}, lang = "en") {
   const mongoFilter =
     andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
-  const totalProductsCount = await ProductModel.countDocuments(mongoFilter);
+  const totalProductsCount = await countProducts(mongoFilter);
 
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
 
@@ -338,18 +348,11 @@ export async function getProductsService(queryParams = {}, lang = "en") {
     sort = buildSort(queryParams, "-createdAt");
   }
 
-  const productsQuery = ProductModel.find(mongoFilter)
-    .populate("category", "_id slug name_en name_ar")
-    .populate("subcategory", "_id slug name_en name_ar")
-    .populate("brand", "_id slug name_en name_ar")
-    .skip(skip)
-    .limit(limitNum);
-
-  if (sort) {
-    productsQuery.sort(sort);
-  }
-
-  const products = await productsQuery;
+  const products = await findProducts(mongoFilter, {
+    skip,
+    limit: limitNum,
+    sort,
+  });
 
   const data = products.map((p) => {
     const mainImage = pickMainImage(p.images);
@@ -416,6 +419,10 @@ export async function getProductsService(queryParams = {}, lang = "en") {
         p.type === "VARIANT" &&
         Array.isArray(p.variants) &&
         p.variants.length > 0,
+      ratingAverage:
+        typeof p.ratingAverage === "number" ? p.ratingAverage : 0,
+      ratingCount:
+        typeof p.ratingCount === "number" ? p.ratingCount : 0,
     };
   });
 
@@ -434,10 +441,7 @@ export async function getProductByIdService(id, lang = "en") {
   const cacheKey = `product:${id}:${normalizedLang}`;
 
   return getOrSetCache(cacheKey, 3600, async () => {
-    const product = await ProductModel.findById(id)
-      .populate("category", "_id slug name_en name_ar")
-      .populate("subcategory", "_id slug name_en name_ar")
-      .populate("brand", "_id slug name_en name_ar");
+    const product = await findProductByIdWithRefs(id);
 
     if (!product) {
       throw new ApiError(`No product found for this id: ${id}`, 404);
@@ -526,6 +530,10 @@ export async function getProductByIdService(id, lang = "en") {
           : undefined,
       variants,
       warehouseStocks,
+      ratingAverage:
+        typeof product.ratingAverage === "number" ? product.ratingAverage : 0,
+      ratingCount:
+        typeof product.ratingCount === "number" ? product.ratingCount : 0,
     };
   });
 }
@@ -719,6 +727,11 @@ export async function createProductService(payload, files = []) {
     isFeatured,
   } = payload;
 
+  const normalizedType = normalizeProductType(type);
+  if (!normalizedType) {
+    throw new ApiError("Invalid product type. Must be SIMPLE or VARIANT", 400);
+  }
+
   const normalizedSlug = slugify(String(name_en), {
     lower: true,
     strict: true,
@@ -729,7 +742,7 @@ export async function createProductService(payload, files = []) {
     throw new ApiError("Unable to generate slug from name_en", 400);
   }
 
-  const existing = await ProductModel.findOne({ slug: normalizedSlug });
+  const existing = await findProductBySlug(normalizedSlug);
   if (existing) {
     throw new ApiError(
       `Product with slug '${normalizedSlug}' already exists`,
@@ -741,13 +754,13 @@ export async function createProductService(payload, files = []) {
   const brand = await ensureBrandExists(brandId);
   const normalizedTags = normalizeTags(tags);
   const normalizedOptions =
-    type === "VARIANT" ? normalizeProductOptions(options) : [];
+    normalizedType === "VARIANT" ? normalizeProductOptions(options) : [];
 
   let simpleWarehouseStocks = [];
   let simplePrice;
   let simpleDiscountedPrice;
 
-  if (type === "SIMPLE") {
+  if (normalizedType === "SIMPLE") {
     if (!Array.isArray(warehouseStocks) || warehouseStocks.length === 0) {
       throw new ApiError(
         "warehouseStocks is required for SIMPLE products",
@@ -778,7 +791,7 @@ export async function createProductService(payload, files = []) {
   }
 
   let variantDocs = [];
-  if (type === "VARIANT") {
+  if (normalizedType === "VARIANT") {
     if (!Array.isArray(variants) || variants.length === 0) {
       throw new ApiError("variants are required for VARIANT products", 400);
     }
@@ -817,9 +830,9 @@ export async function createProductService(payload, files = []) {
   }
 
   try {
-    const product = await ProductModel.create({
+    const product = await createProduct({
       slug: normalizedSlug,
-      type,
+      type: normalizedType,
       subcategory: subcategoryId,
       category: categoryId,
       ...(brand && { brand }),
@@ -829,12 +842,14 @@ export async function createProductService(payload, files = []) {
       desc_ar,
       sku,
       tags: normalizedTags,
-      price: type === "SIMPLE" ? simplePrice : undefined,
-      discountedPrice: type === "SIMPLE" ? simpleDiscountedPrice : undefined,
-      warehouseStocks: type === "SIMPLE" ? simpleWarehouseStocks : [],
+      price: normalizedType === "SIMPLE" ? simplePrice : undefined,
+      discountedPrice:
+        normalizedType === "SIMPLE" ? simpleDiscountedPrice : undefined,
+      warehouseStocks:
+        normalizedType === "SIMPLE" ? simpleWarehouseStocks : [],
       images,
       options: normalizedOptions,
-      variants: type === "VARIANT" ? variantDocs : [],
+      variants: normalizedType === "VARIANT" ? variantDocs : [],
       isActive: typeof isActive === "boolean" ? isActive : undefined,
       isFeatured: typeof isFeatured === "boolean" ? isFeatured : undefined,
     });
@@ -849,7 +864,7 @@ export async function createProductService(payload, files = []) {
 }
 
 export async function updateProductService(id, payload, files = []) {
-  const product = await ProductModel.findById(id);
+  const product = await findProductById(id);
   if (!product) {
     throw new ApiError(`No product found for this id: ${id}`, 404);
   }
@@ -1050,7 +1065,7 @@ export async function updateProductService(id, payload, files = []) {
 }
 
 export async function deleteProductService(id) {
-  const product = await ProductModel.findById(id);
+  const product = await findProductById(id);
   if (!product) {
     throw new ApiError(`No product found for this id: ${id}`, 404);
   }
@@ -1081,7 +1096,7 @@ export async function deleteProductService(id) {
     await deleteImageFromCloudinary(publicId);
   }
 
-  await ProductModel.deleteOne({ _id: id });
+  await deleteProductById(id);
 
   // Invalidate cache for both languages
   await deleteCacheKey(`product:${id}:en`);

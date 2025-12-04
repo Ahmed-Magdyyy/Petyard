@@ -7,6 +7,7 @@ import {
   removeCartItemService,
   clearCartService,
   mergeGuestCartService,
+  listCartsForAdminService,
 } from "./cart.service.js";
 
 function getGuestId(req) {
@@ -29,6 +30,7 @@ export const getGuestCart = asyncHandler(async (req, res) => {
     userId: null,
     guestId,
     warehouseId,
+    lang: req.lang,
   });
 
   res.status(200).json({ data: cart });
@@ -73,6 +75,7 @@ export const updateGuestCartItemQuantity = asyncHandler(async (req, res) => {
     warehouseId,
     itemId,
     quantity,
+    lang: req.lang,
   });
 
   res.status(200).json({ data: cart });
@@ -92,6 +95,7 @@ export const removeGuestCartItem = asyncHandler(async (req, res) => {
     guestId,
     warehouseId,
     itemId,
+    lang: req.lang,
   });
 
   res.status(200).json({ data: cart });
@@ -114,6 +118,11 @@ export const clearGuestCart = asyncHandler(async (req, res) => {
   res.status(204).json({});
 });
 
+export const listCartsForAdmin = asyncHandler(async (req, res) => {
+  const result = await listCartsForAdminService(req.query);
+  res.status(200).json(result);
+});
+
 export const mergeGuestCartIntoMyCart = asyncHandler(async (req, res) => {
   const guestId = getGuestId(req);
   const warehouseId = req.params.warehouseId;
@@ -134,6 +143,7 @@ export const getMyCart = asyncHandler(async (req, res) => {
     userId: req.user._id,
     guestId: null,
     warehouseId,
+    lang: req.lang,
   });
 
   res.status(200).json({ data: cart });
@@ -168,6 +178,7 @@ export const updateMyCartItemQuantity = asyncHandler(async (req, res) => {
     warehouseId,
     itemId,
     quantity,
+    lang: req.lang,
   });
 
   res.status(200).json({ data: cart });
@@ -182,6 +193,7 @@ export const removeMyCartItem = asyncHandler(async (req, res) => {
     guestId: null,
     warehouseId,
     itemId,
+    lang: req.lang,
   });
 
   res.status(200).json({ data: cart });

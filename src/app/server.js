@@ -13,6 +13,7 @@ import {globalError} from "../shared/middlewares/errorMiddleware.js";
 import {dbConnection} from "../shared/database.js";
 import { mountRoutes } from "./routes.js";
 import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
+import { startAbandonedCartsJob } from "../shared/jobs/abandonedCarts.job.js";
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -38,6 +39,9 @@ dbConnection();
 
 // Mount Routes
 mountRoutes(app)
+
+// Background jobs
+startAbandonedCartsJob();
 
 app.get('/', (req, res) => {
   res.send('Petyard API is running.');

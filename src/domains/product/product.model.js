@@ -159,6 +159,17 @@ const productSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    ratingAverage: {
+      type: Number,
+      min: 0,
+      max: 5,
+      default: 0,
+    },
+    ratingCount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
   },
   { timestamps: true }
 );

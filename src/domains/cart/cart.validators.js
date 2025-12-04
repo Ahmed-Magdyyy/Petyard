@@ -1,5 +1,6 @@
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
+import { normalizeProductType } from "../../shared/utils/productType.js";
 
 export const warehouseIdParamValidator = [
   param("warehouseId").isMongoId().withMessage("Invalid warehouse id"),
@@ -21,6 +22,7 @@ export const upsertCartItemValidator = [
   body("productType")
     .notEmpty()
     .withMessage("productType is required")
+    .customSanitizer((value) => normalizeProductType(value))
     .isIn(["SIMPLE", "VARIANT"])
     .withMessage("productType must be either SIMPLE or VARIANT"),
 
