@@ -3,6 +3,7 @@ import {
   findProductsByIds,
 } from "../product/product.repository.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
+import { UserModel } from "../user/user.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
@@ -96,6 +97,24 @@ function mapCartToResponse(cart) {
         }))
       : undefined;
 
+  const deliveryAddress = cart.deliveryAddress
+    ? {
+        userAddressId: cart.deliveryAddress.userAddressId || null,
+        label: cart.deliveryAddress.label || null,
+        name: cart.deliveryAddress.name || null,
+        governorate: cart.deliveryAddress.governorate || null,
+        area: cart.deliveryAddress.area || null,
+        phone: cart.deliveryAddress.phone || cart.user.phone || null,
+        location: cart.deliveryAddress.location
+          ? {
+              lat: cart.deliveryAddress.location.lat,
+              lng: cart.deliveryAddress.location.lng,
+            }
+          : null,
+        details: cart.deliveryAddress.details || null,
+      }
+    : null;
+
   return {
     id: cart._id,
     userId: cart.user || null,
@@ -103,6 +122,7 @@ function mapCartToResponse(cart) {
     warehouseId: cart.warehouse,
     currency: cart.currency,
     totalCartPrice: cart.totalCartPrice,
+    deliveryAddress,
     items: Array.isArray(cart.items)
       ? cart.items.map((item) => ({
           id: item._id,
@@ -306,6 +326,93 @@ export async function getCartService({
   await assertWarehouseExists(warehouseId);
 
   const baseCart = await getOrCreateCart({ userId, guestId, warehouseId });
+  const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
+  return mapCartToResponse(cart);
+}
+
+export async function setCartAddressFromUserService({
+  userId,
+  warehouseId,
+  userAddressId,
+  lang = "en",
+}) {
+  await assertWarehouseExists(warehouseId);
+
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  const address = user.addresses && user.addresses.id(userAddressId);
+  if (!address) {
+    throw new ApiError("Address not found for this user", 404);
+  }
+
+  const baseCart = await getOrCreateCart({
+    userId,
+    guestId: null,
+    warehouseId,
+  });
+
+  baseCart.deliveryAddress = {
+    userAddressId: address._id,
+    label: address.label || undefined,
+    name: address.name || user.name || undefined,
+    governorate: address.governorate || undefined,
+    area: address.area || undefined,
+    phone: address.phone || user.phone || undefined,
+    location: address.location
+      ? {
+          lat: address.location.lat,
+          lng: address.location.lng,
+        }
+      : undefined,
+    details: address.details || undefined,
+  };
+
+  const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
+  return mapCartToResponse(cart);
+}
+
+export async function setCartAddressForGuestService({
+  guestId,
+  warehouseId,
+  address,
+  lang = "en",
+}) {
+  if (!guestId) {
+    throw new ApiError("guestId is required for setting cart address", 400);
+  }
+
+  await assertWarehouseExists(warehouseId);
+
+  const baseCart = await getOrCreateCart({
+    userId: null,
+    guestId,
+    warehouseId,
+  });
+
+  const safeAddress = address || {};
+
+  baseCart.deliveryAddress = {
+    userAddressId: undefined,
+    label: safeAddress.label || undefined,
+    name: safeAddress.name || undefined,
+    governorate: safeAddress.governorate || undefined,
+    area: safeAddress.area || undefined,
+    phone: safeAddress.phone || undefined,
+    location:
+      safeAddress.location &&
+      typeof safeAddress.location === "object" &&
+      safeAddress.location !== null
+        ? {
+            lat: safeAddress.location.lat,
+            lng: safeAddress.location.lng,
+          }
+        : undefined,
+    details: safeAddress.details || undefined,
+  };
+
   const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
   return mapCartToResponse(cart);
 }

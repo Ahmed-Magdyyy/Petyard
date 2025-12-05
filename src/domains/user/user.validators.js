@@ -165,3 +165,113 @@ export const updateUserActiveValidator = [
 
   validatorMiddleware,
 ];
+
+export const addressIdParamValidator = [
+  param("addressId").isMongoId().withMessage("Invalid address id"),
+
+  validatorMiddleware,
+];
+
+export const addMyAddressValidator = [
+  body("label")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("label must be a string"),
+
+  body("name")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("name must be a string"),
+
+  body("governorate")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("governorate must be a string"),
+
+  body("area")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("area must be a string"),
+
+  body("details")
+    .notEmpty()
+    .withMessage("details is required"),
+
+  body("phone")
+    .optional()
+    .isString()
+    .matches(egyptianPhoneRegex)
+    .withMessage("Phone must be a valid Egyptian mobile number"),
+
+  body("location.lat")
+    .notEmpty()
+    .isFloat()
+    .withMessage("location.lat must be a number"),
+
+  body("location.lng")
+    .notEmpty()
+    .isFloat()
+    .withMessage("location.lng must be a number"),
+
+  body("isDefault")
+    .optional()
+    .isBoolean()
+    .withMessage("isDefault must be a boolean"),
+
+  validatorMiddleware,
+];
+
+export const updateMyAddressValidator = [
+  body("label")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("label must be a string"),
+
+  body("name")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("name must be a string"),
+
+  body("governorate")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("governorate must be a string"),
+
+  body("area")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("area must be a string"),
+
+  body("details")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("details must be a string"),
+
+  body("phone")
+    .optional({ nullable: true })
+    .matches(egyptianPhoneRegex)
+    .withMessage("Phone must be a valid Egyptian mobile number"),
+
+  body("location.lat")
+    .optional({ nullable: true })
+    .isFloat()
+    .withMessage("location.lat must be a number"),
+
+  body("location.lng")
+    .optional({ nullable: true })
+    .isFloat()
+    .withMessage("location.lng must be a number"),
+
+  body("isDefault")
+    .optional({ nullable: true })
+    .isBoolean()
+    .withMessage("isDefault must be a boolean"),
+
+  validatorMiddleware,
+];
+
+export const setDefaultMyAddressValidator = [
+  addressIdParamValidator[0],
+
+  validatorMiddleware,
+];

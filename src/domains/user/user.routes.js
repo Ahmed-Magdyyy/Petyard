@@ -12,6 +12,11 @@ import {
   updateLoggedUserPassword,
   updateLoggedUserData,
   deactivateLoggedUser,
+  getMyAddresses,
+  addMyAddress,
+  updateMyAddress,
+  deleteMyAddress,
+  setDefaultMyAddress,
 } from "./user.controller.js";
 import { protect, allowedTo, enabledControls as enabledControlsMiddleware } from "../auth/auth.middleware.js";
 import { roles, enabledControls as enabledControlsEnum } from "../../shared/constants/enums.js";
@@ -22,6 +27,10 @@ import {
   updateLoggedUserPasswordValidator,
   updateLoggedUserDataValidator,
   updateUserActiveValidator,
+  addressIdParamValidator,
+  addMyAddressValidator,
+  updateMyAddressValidator,
+  setDefaultMyAddressValidator,
 } from "./user.validators.js";
 
 const router = Router();
@@ -32,6 +41,28 @@ router.get("/me", protect, getLoggedUser);
 router.patch("/me/password", protect, updateLoggedUserPasswordValidator, updateLoggedUserPassword);
 router.patch("/me", protect, updateLoggedUserDataValidator, updateLoggedUserData);
 router.delete("/me", protect, deactivateLoggedUser);
+
+router.get("/me/addresses", protect, getMyAddresses);
+router.post("/me/addresses", protect, addMyAddressValidator, addMyAddress);
+router.patch(
+  "/me/addresses/:addressId",
+  protect,
+  addressIdParamValidator,
+  updateMyAddressValidator,
+  updateMyAddress
+);
+router.delete(
+  "/me/addresses/:addressId",
+  protect,
+  addressIdParamValidator,
+  deleteMyAddress
+);
+router.patch(
+  "/me/addresses/:addressId/default",
+  protect,
+  setDefaultMyAddressValidator,
+  setDefaultMyAddress
+);
 
 // ----- Admin Routes -----
 router.use(protect, allowedTo(roles.ADMIN, roles.SUPER_ADMIN), enabledControlsMiddleware(enabledControlsEnum.USERS));

@@ -263,6 +263,171 @@ export async function updateLoggedUserDataService({
   return updatedUser;
 }
 
+export async function getMyAddressesService({ userId }) {
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  const addresses = Array.isArray(user.addresses) ? user.addresses : [];
+  return addresses;
+}
+
+export async function addMyAddressService({ userId, payload }) {
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  if (!Array.isArray(user.addresses)) {
+    user.addresses = [];
+  }
+
+  const {
+    label,
+    name,
+    governorate,
+    area,
+    phone,
+    location,
+    details,
+    isDefault,
+  } = payload;
+
+  const newAddress = {
+    label: label !== undefined ? label : undefined,
+    name: name ? name : user.name,
+    governorate,
+    area,
+    phone: phone ? phone : user.phone,
+    location:
+      location && typeof location === "object" && location !== null
+        ? {
+            lat: location.lat,
+            lng: location.lng,
+          }
+        : undefined,
+    details,
+    isDefault: isDefault === true,
+  };
+
+  if (user.addresses.length === 0 && newAddress.isDefault !== true) {
+    newAddress.isDefault = true;
+  }
+
+  if (newAddress.isDefault) {
+    user.addresses.forEach((addr) => {
+      addr.isDefault = false;
+    });
+  }
+
+  user.addresses.push(newAddress);
+
+  const savedUser = await user.save();
+  const addresses = Array.isArray(savedUser.addresses) ? savedUser.addresses : [];
+  return addresses;
+}
+
+export async function updateMyAddressService({ userId, addressId, payload }) {
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  if (!Array.isArray(user.addresses)) {
+    user.addresses = [];
+  }
+
+  const address = user.addresses.id(addressId);
+  if (!address) {
+    throw new ApiError("Address not found for this user", 404);
+  }
+
+  const {
+    label,
+    name,
+    governorate,
+    area,
+    phone,
+    location,
+    details,
+  } = payload;
+
+  if (label !== undefined) address.label = label;
+  if (name !== undefined) address.name = name;
+  if (governorate !== undefined) address.governorate = governorate;
+  if (area !== undefined) address.area = area;
+  if (phone !== undefined) address.phone = phone;
+  if (details !== undefined) address.details = details;
+  if (location !== undefined) {
+    if (location && typeof location === "object") {
+      address.location = {
+        lat: location.lat,
+        lng: location.lng,
+      };
+    } else {
+      address.location = undefined;
+    }
+  }
+
+
+  const savedUser = await user.save();
+  const addresses = Array.isArray(savedUser.addresses) ? savedUser.addresses : [];
+  return addresses;
+}
+
+export async function deleteMyAddressService({ userId, addressId }) {
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  if (!Array.isArray(user.addresses)) {
+    user.addresses = [];
+  }
+
+  const address = user.addresses.id(addressId);
+  if (!address) {
+    throw new ApiError("Address not found for this user", 404);
+  }
+
+  const wasDefault = address.isDefault === true;
+
+  address.deleteOne();
+
+  if (wasDefault && user.addresses.length > 0) {
+    user.addresses[0].isDefault = true;
+  }
+
+  const savedUser = await user.save();
+  const addresses = Array.isArray(savedUser.addresses) ? savedUser.addresses : [];
+  return addresses;
+}
+
+export async function setDefaultMyAddressService({ userId, addressId }) {
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    throw new ApiError("User not found", 404);
+  }
+
+  if (!Array.isArray(user.addresses)) {
+    user.addresses = [];
+  }
+
+  const address = user.addresses.id(addressId);
+  if (!address) {
+    throw new ApiError("Address not found for this user", 404);
+  }
+
+  user.addresses.forEach((addr) => {
+    addr.isDefault = String(addr._id) === String(address._id);
+  });
+
+  const savedUser = await user.save();
+  const addresses = Array.isArray(savedUser.addresses) ? savedUser.addresses : [];
+  return addresses;
+}
+
 export async function deactivateLoggedUserService({ userId }) {
   const user = await UserModel.findById(userId);
   if (!user) {

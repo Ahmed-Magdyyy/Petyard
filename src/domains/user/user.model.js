@@ -43,12 +43,16 @@ const userSchema = new Schema(
     addresses: {
       type: [
         {
-          _id: false,
-          alias: String,
-          details: String,
-          district: String,
-          city: String,
+          label: String,
+          name: String,
+          governorate: String,
+          area: String,
           phone: String,
+          location: {
+            lat: Number,
+            lng: Number,
+          },
+          details: String,
           isDefault: { type: Boolean, default: false },
         },
       ],

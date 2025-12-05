@@ -12,6 +12,11 @@ import {
   updateLoggedUserPasswordService,
   updateLoggedUserDataService,
   deactivateLoggedUserService,
+  getMyAddressesService,
+  addMyAddressService,
+  updateMyAddressService,
+  deleteMyAddressService,
+  setDefaultMyAddressService,
 } from "./user.service.js";
 
 // ----- Admin Controllers -----
@@ -107,4 +112,48 @@ export const deactivateLoggedUser = asyncHandler(async (req, res) => {
   const deletedUser = await deactivateLoggedUserService({ userId: req.user._id });
 
   res.status(204).json({ message: "Success", userDeleted: deletedUser });
+});
+
+// ----- Logged-in User Addresses -----
+
+export const getMyAddresses = asyncHandler(async (req, res) => {
+  const addresses = await getMyAddressesService({ userId: req.user._id });
+  res.status(200).json({ data: addresses });
+});
+
+export const addMyAddress = asyncHandler(async (req, res) => {
+  const addresses = await addMyAddressService({
+    userId: req.user._id,
+    payload: req.body,
+  });
+
+  res.status(201).json({ data: addresses });
+});
+
+export const updateMyAddress = asyncHandler(async (req, res) => {
+  const addresses = await updateMyAddressService({
+    userId: req.user._id,
+    addressId: req.params.addressId,
+    payload: req.body,
+  });
+
+  res.status(200).json({ data: addresses });
+});
+
+export const deleteMyAddress = asyncHandler(async (req, res) => {
+  const addresses = await deleteMyAddressService({
+    userId: req.user._id,
+    addressId: req.params.addressId,
+  });
+
+  res.status(200).json({ data: addresses });
+});
+
+export const setDefaultMyAddress = asyncHandler(async (req, res) => {
+  const addresses = await setDefaultMyAddressService({
+    userId: req.user._id,
+    addressId: req.params.addressId,
+  });
+
+  res.status(200).json({ data: addresses });
 });

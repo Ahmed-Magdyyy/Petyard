@@ -8,6 +8,8 @@ import {
   clearCartService,
   mergeGuestCartService,
   listCartsForAdminService,
+  setCartAddressFromUserService,
+  setCartAddressForGuestService,
 } from "./cart.service.js";
 
 function getGuestId(req) {
@@ -118,6 +120,34 @@ export const clearGuestCart = asyncHandler(async (req, res) => {
   res.status(204).json({});
 });
 
+export const setGuestCartAddress = asyncHandler(async (req, res) => {
+  const guestId = getGuestId(req);
+  if (!guestId) {
+    throw new ApiError("x-guest-id header is required", 400);
+  }
+
+  const warehouseId = req.params.warehouseId;
+
+  const address = {
+    label: req.body.label,
+    name: req.body.name,
+    governorate: req.body.governorate,
+    area: req.body.area,
+    phone: req.body.phone,
+    location: req.body.location,
+    details: req.body.details,
+  };
+
+  const cart = await setCartAddressForGuestService({
+    guestId,
+    warehouseId,
+    address,
+    lang: req.lang,
+  });
+
+  res.status(200).json({ data: cart });
+});
+
 export const listCartsForAdmin = asyncHandler(async (req, res) => {
   const result = await listCartsForAdminService(req.query);
   res.status(200).json(result);
@@ -209,4 +239,18 @@ export const clearMyCart = asyncHandler(async (req, res) => {
   });
 
   res.status(204).json({});
+});
+
+export const setMyCartAddress = asyncHandler(async (req, res) => {
+  const warehouseId = req.params.warehouseId;
+  const { userAddressId } = req.body;
+
+  const cart = await setCartAddressFromUserService({
+    userId: req.user._id,
+    warehouseId,
+    userAddressId,
+    lang: req.lang,
+  });
+
+  res.status(200).json({ data: cart });
 });

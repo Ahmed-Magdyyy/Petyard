@@ -10,6 +10,8 @@ import subcategoryRoutes from "../domains/subcategory/subcategory.routes.js";
 import brandRoutes from "../domains/brand/brand.routes.js";
 import productRoutes from "../domains/product/product.routes.js";
 import cartRoutes from "../domains/cart/cart.routes.js";
+import couponRoutes from "../domains/coupon/coupon.routes.js";
+import checkoutRoutes from "../domains/checkout/checkout.routes.js";
 
 export function mountRoutes(app) {
   app.use("/api/v1/auth", authRoutes);
@@ -23,4 +25,6 @@ export function mountRoutes(app) {
   app.use("/api/v1/brands", brandRoutes);
   app.use("/api/v1/products", productRoutes);
   app.use("/api/v1/cart", cartRoutes);
+  app.use("/api/v1/coupons", couponRoutes);
+  app.use("/api/v1/checkout", checkoutRoutes);
 }

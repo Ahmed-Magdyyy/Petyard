@@ -87,6 +87,22 @@ const cartSchema = new Schema(
       type: String,
       default: "EGP",
     },
+    
+    deliveryAddress: {
+      userAddressId: {
+        type: Schema.Types.ObjectId,
+      },
+      label: String,
+      name: String,
+      governorate: String,
+      area: String,
+      phone: String,
+      location: {
+        lat: Number,
+        lng: Number,
+      },
+      details: String,
+    },
 
     status: {
       type: String,

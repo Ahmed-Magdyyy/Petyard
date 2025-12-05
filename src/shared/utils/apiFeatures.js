@@ -1,4 +1,3 @@
-
 // Build pagination info from query params
 export function buildPagination({ page, limit }, defaultLimit = 10) {
   const pageNum = Math.max(Number(page) || 1, 1);
@@ -8,7 +7,6 @@ export function buildPagination({ page, limit }, defaultLimit = 10) {
 }
 
 // Build sort object from query params
-// Example: sort=-createdAt,name => { createdAt: -1, name: 1 }
 export function buildSort({ sort }, defaultSort = "-createdAt") {
   const sortValue = sort || defaultSort;
 
@@ -34,7 +32,6 @@ export function buildSort({ sort }, defaultSort = "-createdAt") {
 }
 
 // Build a generic regex-based filter from query params.
-// excludeKeys: keys that should be skipped here and handled specially in the caller (e.g. ['role']).
 export function buildRegexFilter(query, excludeKeys = []) {
   const filter = {};
   const excluded = new Set([...excludeKeys, "lang"]);

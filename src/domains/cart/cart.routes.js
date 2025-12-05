@@ -7,6 +7,7 @@ import {
   updateGuestCartItemQuantity,
   removeGuestCartItem,
   clearGuestCart,
+  setGuestCartAddress,
   getMyCart,
   addOrUpdateMyCartItem,
   updateMyCartItemQuantity,
@@ -14,17 +15,27 @@ import {
   clearMyCart,
   mergeGuestCartIntoMyCart,
   listCartsForAdmin,
+  setMyCartAddress,
 } from "./cart.controller.js";
 import {
   warehouseIdParamValidator,
   cartItemIdParamValidator,
   upsertCartItemValidator,
   updateCartItemQuantityValidator,
+  setUserCartAddressValidator,
+  setGuestCartAddressValidator,
 } from "./cart.validators.js";
 
 const router = Router();
 
 router.get("/guest/:warehouseId", warehouseIdParamValidator, getGuestCart);
+
+router.patch(
+  "/guest/:warehouseId/address",
+  warehouseIdParamValidator,
+  setGuestCartAddressValidator,
+  setGuestCartAddress
+);
 
 router.post(
   "/guest/:warehouseId/items",
@@ -65,6 +76,13 @@ router.get("/admin", listCartsForAdmin);
 router.use("/me", protect);
 
 router.get("/me/:warehouseId", warehouseIdParamValidator, getMyCart);
+
+router.patch(
+  "/me/:warehouseId/address",
+  warehouseIdParamValidator,
+  setUserCartAddressValidator,
+  setMyCartAddress
+);
 
 router.post(
   "/me/:warehouseId/items",
