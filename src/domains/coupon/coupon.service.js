@@ -147,7 +147,6 @@ export async function createCouponService(payload) {
     maxUsagePerUser,
     firstOrderOnly,
     allowedUserIds,
-    allowedEmails,
   } = payload;
 
   const normalizedCode = normalizeCouponCode(code);
@@ -194,7 +193,6 @@ export async function createCouponService(payload) {
       maxUsagePerUser != null ? Number(maxUsagePerUser) || 0 : undefined,
     firstOrderOnly: !!firstOrderOnly,
     allowedUserIds: Array.isArray(allowedUserIds) ? allowedUserIds : [],
-    allowedEmails: Array.isArray(allowedEmails) ? allowedEmails : [],
   };
 
   const coupon = await CouponModel.create(doc);
@@ -310,12 +308,6 @@ export async function updateCouponService(id, payload) {
       : [];
   }
 
-  if (allowedEmails !== undefined) {
-    coupon.allowedEmails = Array.isArray(allowedEmails)
-      ? allowedEmails
-      : [];
-  }
-
   const updated = await coupon.save();
   return updated;
 }
@@ -348,7 +340,7 @@ export async function findActiveCouponByCodeService(code, now = new Date()) {
   });
 
   if (!coupon) {
-    throw new ApiError("Coupon not found or not active", 404);
+    throw new ApiError("Expired or Invalid coupon code", 404);
   }
 
   return coupon;

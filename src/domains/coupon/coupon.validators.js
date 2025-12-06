@@ -6,6 +6,13 @@ export const createCouponValidator = [
 
   body("discountType")
     .optional()
+    .customSanitizer((value) => {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed ? trimmed.toUpperCase() : trimmed;
+      }
+      return value;
+    })
     .isIn(["PERCENT", "FIXED"])
     .withMessage("discountType must be either PERCENT or FIXED"),
 
@@ -73,16 +80,6 @@ export const createCouponValidator = [
     .optional()
     .isMongoId()
     .withMessage("each allowedUserIds item must be a valid id"),
-
-  body("allowedEmails")
-    .optional()
-    .isArray()
-    .withMessage("allowedEmails must be an array"),
-
-  body("allowedEmails.*")
-    .optional()
-    .isEmail()
-    .withMessage("each allowedEmails item must be a valid email"),
 
   body("discountType").custom((value, { req }) => {
     const { discountType, discountValue, maxDiscountAmount, freeShipping } =
@@ -139,6 +136,13 @@ export const updateCouponValidator = [
 
   body("discountType")
     .optional()
+    .customSanitizer((value) => {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed ? trimmed.toUpperCase() : trimmed;
+      }
+      return value;
+    })
     .isIn(["PERCENT", "FIXED"])
     .withMessage("discountType must be either PERCENT or FIXED"),
 
@@ -207,37 +211,18 @@ export const updateCouponValidator = [
     .isMongoId()
     .withMessage("each allowedUserIds item must be a valid id"),
 
-  body("allowedEmails")
-    .optional()
-    .isArray()
-    .withMessage("allowedEmails must be an array"),
-
-  body("allowedEmails.*")
-    .optional()
-    .isEmail()
-    .withMessage("each allowedEmails item must be a valid email"),
-
   body("discountType").custom((value, { req }) => {
-    const { discountType, discountValue, maxDiscountAmount, freeShipping } =
-      req.body;
+    const { discountType, discountValue, maxDiscountAmount } = req.body;
 
     if (
       discountType === undefined &&
       discountValue === undefined &&
-      maxDiscountAmount === undefined &&
-      freeShipping === undefined
+      maxDiscountAmount === undefined
     ) {
       return true;
     }
 
     const hasDiscountType = !!discountType;
-    const hasFreeShipping = !!freeShipping;
-
-    if (!hasDiscountType && !hasFreeShipping) {
-      throw new Error(
-        "Coupon must have at least one effect: discountType or freeShipping"
-      );
-    }
 
     if (hasDiscountType) {
       if (discountValue == null || Number(discountValue) <= 0) {

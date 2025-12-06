@@ -30,6 +30,7 @@ const cartItemSchema = new Schema(
 
     variantOptionsSnapshot: [
       {
+        _id: false,
         name: { type: String, required: true, trim: true },
         value: { type: String, required: true, trim: true },
       },

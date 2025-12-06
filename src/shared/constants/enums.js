@@ -3,6 +3,7 @@ export const roles = Object.freeze({
   ADMIN: 'admin',
   MODERATOR: 'moderator',
   USER: 'user',
+  GUEST: 'guest'
 });
 
 export const accountStatus = Object.freeze({
@@ -10,6 +11,26 @@ export const accountStatus = Object.freeze({
   CONFIRMED: 'confirmed',
   PANNED: 'panned',
 });
+
+
+export const orderStatusEnum = Object.freeze({
+  PENDING: 'pending',
+  ACCEPTED: 'accepted',
+  SHIPPED: 'shipped',
+  DELIVERED: 'delivered',
+  CANCELLED: 'cancelled',
+});
+
+export const paymentMethodEnum = Object.freeze({
+  COD: 'cod',
+  CARD: 'card',
+});
+export const paymentStatusEnum = Object.freeze({
+  PENDING: 'pending',
+  PAID: 'paid',
+  FAILED: 'failed',
+  REFUNDED: 'refunded'
+})
 
 
 export const enabledControls = Object.freeze({
@@ -20,4 +41,5 @@ export const enabledControls = Object.freeze({
   SUBCATEGORIES: 'subcategories',
   PRODUCTS: 'products',
   ORDERS: 'orders',
+  COUPONES: 'coupons',
 });

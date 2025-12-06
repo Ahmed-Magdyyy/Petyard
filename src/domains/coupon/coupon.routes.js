@@ -26,7 +26,7 @@ const router = Router();
 router.use(
   protect,
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
-  enabledControlsMiddleware(enabledControlsEnum.ORDERS)
+  enabledControlsMiddleware(enabledControlsEnum.COUPONES)
 );
 
 router.get("/", getCoupons);

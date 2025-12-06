@@ -65,6 +65,7 @@ const couponSchema = new Schema(
     maxUsagePerUser: {
       type: Number,
       min: 0,
+      default: 1
     },
 
     usageCount: {
@@ -82,14 +83,6 @@ const couponSchema = new Schema(
       {
         type: Schema.Types.ObjectId,
         ref: "User",
-      },
-    ],
-
-    allowedEmails: [
-      {
-        type: String,
-        trim: true,
-        lowercase: true,
       },
     ],
   },

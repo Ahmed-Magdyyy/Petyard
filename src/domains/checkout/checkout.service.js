@@ -1,15 +1,15 @@
 import { ApiError } from "../../shared/ApiError.js";
-import { getCartService } from "../cart/cart.service.js";
+import { findCart } from "../cart/cart.repository.js";
 import { getWarehouseByIdService } from "../warehouse/warehouse.service.js";
 import {
   findActiveCouponByCodeService,
   computeCouponEffect,
 } from "../coupon/coupon.service.js";
+import { getCartService } from "../cart/cart.service.js";
 
 export async function applyCouponAtCheckoutService({
   userId,
   guestId,
-  warehouseId,
   couponCode,
   lang = "en",
 }) {
@@ -22,13 +22,13 @@ export async function applyCouponAtCheckoutService({
   }
 
   const trimmedCode = couponCode.trim();
+  const filter = userId ? { user: userId } : { guestId };
 
-  const cart = await getCartService({
-    userId: userId || null,
-    guestId: guestId || null,
-    warehouseId,
-    lang,
-  });
+  const cart = await findCart(filter);
+
+  if (!cart) {
+    throw new ApiError("Cart not found", 404);
+  }
 
   const items = Array.isArray(cart.items) ? cart.items : [];
   if (!items.length) {
@@ -44,12 +44,37 @@ export async function applyCouponAtCheckoutService({
     throw new ApiError("Cart total must be greater than 0", 400);
   }
 
+  const warehouseId = cart.warehouse;
+  if (!warehouseId) {
+    throw new ApiError("Cart warehouse is not set", 400);
+  }
+
   const warehouse = await getWarehouseByIdService(warehouseId);
   const rawShipping = warehouse?.defaultShippingPrice;
   const shippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
 
   const coupon = await findActiveCouponByCodeService(trimmedCode);
+
+  const allowedUserIds =
+    Array.isArray(coupon.allowedUserIds) ? coupon.allowedUserIds : [];
+
+  if (allowedUserIds.length > 0) {
+    if (!userId) {
+      throw new ApiError(
+        "This coupon is only available to specific users",
+        403
+      );
+    }
+
+    const isAllowed = allowedUserIds.some(
+      (id) => String(id) === String(userId)
+    );
+
+    if (!isAllowed) {
+      throw new ApiError("This coupon is not valid for this user", 403);
+    }
+  }
 
   if (
     typeof coupon.minOrderTotal === "number" &&
@@ -105,10 +130,106 @@ export async function applyCouponAtCheckoutService({
   };
 
   return {
-    cartId: cart.id,
-    warehouseId: cart.warehouseId,
+    cartId: cart._id,
+    warehouseId,
     currency: cart.currency || "EGP",
     coupon: couponSummary,
     pricing: effect,
+  };
+}
+
+export async function getCheckoutSummaryService({
+  userId,
+  guestId,
+  couponCode,
+  lang = "en",
+}) {
+  if (!userId && !guestId) {
+    throw new ApiError("Either userId or guestId must be provided", 400);
+  }
+
+  const identityFilter = userId ? { user: userId } : { guestId };
+
+  const baseCart = await findCart(identityFilter);
+
+  if (!baseCart) {
+    throw new ApiError("Cart not found", 404);
+  }
+
+  if (!baseCart.warehouse) {
+    throw new ApiError("Cart warehouse is not set", 400);
+  }
+
+  const warehouseId = baseCart.warehouse;
+
+  const cartResponse = await getCartService({
+    userId: userId || null,
+    guestId: guestId || null,
+    warehouseId,
+    lang,
+  });
+
+  const subtotal =
+    typeof cartResponse.totalCartPrice === "number" &&
+    cartResponse.totalCartPrice > 0
+      ? cartResponse.totalCartPrice
+      : 0;
+
+  if (subtotal <= 0) {
+    throw new ApiError("Cart total must be greater than 0", 400);
+  }
+
+  const trimmedCode =
+    typeof couponCode === "string" && couponCode.trim()
+      ? couponCode.trim()
+      : null;
+
+  let coupon = null;
+  let pricing;
+
+  if (trimmedCode) {
+    const couponPreview = await applyCouponAtCheckoutService({
+      userId: userId || null,
+      guestId: guestId || null,
+      couponCode: trimmedCode,
+      lang,
+    });
+
+    const effect = couponPreview.pricing;
+
+    coupon = couponPreview.coupon;
+
+    pricing = {
+      subtotal: effect.orderSubtotal,
+      shippingFee: effect.shippingFee,
+      discountAmount: effect.discountAmount,
+      shippingDiscount: effect.shippingDiscount,
+      totalDiscount: effect.totalDiscount,
+      total: effect.finalTotal,
+    };
+  } else {
+    const warehouse = await getWarehouseByIdService(warehouseId);
+    const rawShipping = warehouse?.defaultShippingPrice;
+    const shippingFee =
+      typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
+
+    pricing = {
+      subtotal,
+      shippingFee,
+      discountAmount: 0,
+      shippingDiscount: 0,
+      totalDiscount: 0,
+      total: subtotal + shippingFee,
+    };
+  }
+
+  return {
+    cartId: cartResponse.id,
+    warehouseId: cartResponse.warehouseId,
+    currency: cartResponse.currency || "EGP",
+    deliveryAddress: cartResponse.deliveryAddress,
+    items: cartResponse.items,
+    pricing,
+    coupon,
   };
 }

@@ -1,4 +1,3 @@
-// utils/ApiError.js (enhanced)
 export class ApiError extends Error {
   constructor(message, statusCode, errors = []) {
     super(message);
