@@ -104,7 +104,7 @@ function mapCartToResponse(cart) {
         name: cart.deliveryAddress.name || null,
         governorate: cart.deliveryAddress.governorate || null,
         area: cart.deliveryAddress.area || null,
-        phone: cart.deliveryAddress.phone || cart.user.phone || null,
+        phone: cart.deliveryAddress.phone || null,
         location: cart.deliveryAddress.location
           ? {
               lat: cart.deliveryAddress.location.lat,

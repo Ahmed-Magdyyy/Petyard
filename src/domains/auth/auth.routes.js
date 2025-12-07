@@ -10,6 +10,8 @@ import {
   forgetPassword,
   verifyPasswordResetCode,
   resetPassword,
+  sendGuestOtp,
+  verifyGuestOtp,
 } from "./auth.controller.js";
 import {
   signupValidator,
@@ -19,6 +21,8 @@ import {
   forgetPasswordValidator,
   verifyResetCodeValidator,
   resetPasswordValidator,
+  guestSendOtpValidator,
+  guestVerifyOtpValidator,
 } from "./auth.validators.js";
 import { authRateLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
 import { protect } from "./auth.middleware.js";
@@ -32,6 +36,8 @@ router.use(authRateLimiter);
 router.post("/signup", signupValidator, signup);
 router.post("/resend-otp", resendOtpValidator, resendOtp);
 router.post("/verify-phone", verifyPhoneValidator, verifyPhone);
+router.post("/guest/send-otp", guestSendOtpValidator, sendGuestOtp);
+router.post("/guest/verify-otp", guestVerifyOtpValidator, verifyGuestOtp);
 router.post("/login", loginValidator, login);
 router.post("/refresh-token", refreshToken);
 router.post("/logout", protect, logout);

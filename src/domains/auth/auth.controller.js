@@ -10,6 +10,8 @@ import {
   forgetPasswordService,
   verifyPasswordResetCodeService,
   resetPasswordService,
+  sendGuestOtpService,
+  verifyGuestOtpService,
 } from "./auth.service.js";
 import { roles } from "../../shared/constants/enums.js";
 
@@ -20,6 +22,28 @@ export const signup = asyncHandler(async (req, res) => {
   const data = await signupService(req.body);
   res.status(201).json({
     message: "User created. OTP sent to phone.",
+    data,
+  });
+});
+
+// POST /auth/guest/send-otp
+// Body: { phone }
+export const sendGuestOtp = asyncHandler(async (req, res) => {
+  const data = await sendGuestOtpService(req.body);
+
+  res.status(200).json({
+    message: "OTP sent to phone.",
+    data,
+  });
+});
+
+// POST /auth/guest/verify-otp
+// Body: { phone, otp }
+export const verifyGuestOtp = asyncHandler(async (req, res) => {
+  const data = await verifyGuestOtpService(req.body);
+
+  res.status(200).json({
+    message: "OTP verified successfully.",
     data,
   });
 });

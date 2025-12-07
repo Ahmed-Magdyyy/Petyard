@@ -67,7 +67,35 @@ export const verifyPhoneValidator = [
     .matches(/^[0-9]+$/)
     .withMessage("OTP must be numeric"),
 
-    validatorMiddleware
+  validatorMiddleware
+];
+
+export const guestSendOtpValidator = [
+  body("phone")
+    .notEmpty()
+    .withMessage("Phone is required")
+    .matches(/^(?:\+201|201|01)[0-2,5][0-9]{8}$/)
+    .withMessage("Phone must be a valid Egyptian mobile number"),
+
+  validatorMiddleware,
+];
+
+export const guestVerifyOtpValidator = [
+  body("phone")
+    .notEmpty()
+    .withMessage("Phone is required")
+    .matches(/^(?:\+201|201|01)[0-2,5][0-9]{8}$/)
+    .withMessage("Phone must be a valid Egyptian mobile number"),
+
+  body("otp")
+    .notEmpty()
+    .withMessage("OTP is required")
+    .isLength({ min: 6, max: 6 })
+    .withMessage("OTP must be 6 digits")
+    .matches(/^[0-9]+$/)
+    .withMessage("OTP must be numeric"),
+
+  validatorMiddleware,
 ];
 
 export const loginValidator = [

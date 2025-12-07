@@ -6,6 +6,7 @@ import {
   computeCouponEffect,
 } from "../coupon/coupon.service.js";
 import { getCartService } from "../cart/cart.service.js";
+import { OrderModel } from "../order/order.model.js";
 
 export async function applyCouponAtCheckoutService({
   userId,
@@ -105,6 +106,22 @@ export async function applyCouponAtCheckoutService({
     coupon.usageCount >= coupon.maxUsageTotal
   ) {
     throw new ApiError("This coupon has reached its maximum usage limit", 400);
+  }
+
+  if (userId && typeof coupon.maxUsagePerUser === "number") {
+    if (coupon.maxUsagePerUser >= 0) {
+      const userUsage = await OrderModel.countDocuments({
+        user: userId,
+        couponCode: coupon.code,
+      });
+
+      if (userUsage >= coupon.maxUsagePerUser) {
+        throw new ApiError(
+          "You have already used this coupon the maximum number of times",
+          400
+        );
+      }
+    }
   }
 
   const effect = computeCouponEffect(coupon, {

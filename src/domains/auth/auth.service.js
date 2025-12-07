@@ -9,6 +9,7 @@ import { createAccessToken, createRefreshToken } from "../../shared/createToken.
 import { roles, accountStatus } from "../../shared/constants/enums.js";
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { forgetPasswordEmailHTML } from "../../shared/Email/emailHtml.js";
+import { getRedisClient } from "../../shared/redisClient.js";
 
 function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -198,6 +199,177 @@ export async function verifyPhoneService({ phone, otp }) {
     email: user.email,
     phone: user.phone,
     phoneVerified: user.phoneVerified,
+  };
+}
+
+export async function sendGuestOtpService({ phone }) {
+  if (!phone) {
+    throw new ApiError("phone is required", 400);
+  }
+
+  let normalizedPhone;
+  try {
+    normalizedPhone = normalizeEgyptianMobile(phone);
+  } catch (err) {
+    throw new ApiError("Invalid Egyptian mobile format", 400);
+  }
+
+  const redisClient = getRedisClient();
+  if (!redisClient || redisClient.status !== "ready") {
+    throw new ApiError("OTP service is temporarily unavailable", 503);
+  }
+
+  const key = `guest:otp:${normalizedPhone}`;
+  const now = Date.now();
+  const RESEND_MIN_INTERVAL_MS = 60 * 1000;
+  const RESEND_MAX_PER_DAY = 5;
+
+  let lastSentAt = null;
+  let sendCountToday = 0;
+
+  try {
+    const raw = await redisClient.get(key);
+    if (raw) {
+      const data = JSON.parse(raw);
+      lastSentAt = typeof data.lastSentAt === "number" ? data.lastSentAt : null;
+      sendCountToday =
+        typeof data.sendCountToday === "number" ? data.sendCountToday : 0;
+
+      if (lastSentAt) {
+        const diff = now - lastSentAt;
+        if (diff < RESEND_MIN_INTERVAL_MS) {
+          throw new ApiError(
+            "Please wait before requesting another OTP",
+            429
+          );
+        }
+
+        const lastDate = new Date(lastSentAt);
+        const isSameDay =
+          lastDate.getUTCFullYear() === new Date(now).getUTCFullYear() &&
+          lastDate.getUTCMonth() === new Date(now).getUTCMonth() &&
+          lastDate.getUTCDate() === new Date(now).getUTCDate();
+
+        if (!isSameDay) {
+          sendCountToday = 0;
+        }
+      }
+
+      if (sendCountToday >= RESEND_MAX_PER_DAY) {
+        throw new ApiError("Daily OTP resend limit reached", 429);
+      }
+    }
+  } catch (err) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    console.error("[Redis] GET error for guest OTP", err.message);
+    throw new ApiError("OTP service is temporarily unavailable", 503);
+  }
+
+  sendCountToday += 1;
+
+  const otp = generateOtp();
+  const codeHash = crypto
+    .createHash("sha256")
+    .update(otp)
+    .digest("hex");
+
+  const expiresAt = now + 5 * 60 * 1000; // 5 minutes
+  const payload = {
+    codeHash,
+    expiresAt,
+    lastSentAt: now,
+    sendCountToday,
+  };
+
+  try {
+    await redisClient.set(key, JSON.stringify(payload), "EX", 5 * 60);
+  } catch (err) {
+    console.error("[Redis] SET error for guest OTP", err.message);
+    throw new ApiError("OTP service is temporarily unavailable", 503);
+  }
+
+  try {
+    await sendOtpSms(normalizedPhone, otp);
+    console.log("guest otp:", otp);
+  } catch (err) {
+    console.error("Failed to send guest OTP SMS", err);
+    throw new ApiError(
+      "Failed to send verification SMS, please try again later",
+      502
+    );
+  }
+
+  return {
+    phone: normalizedPhone,
+    otp
+  };
+}
+
+export async function verifyGuestOtpService({ phone, otp }) {
+  if (!phone || !otp) {
+    throw new ApiError("phone and otp are required", 400);
+  }
+
+  let normalizedPhone;
+  try {
+    normalizedPhone = normalizeEgyptianMobile(phone);
+  } catch (err) {
+    throw new ApiError("Invalid Egyptian mobile format", 400);
+  }
+
+  const redisClient = getRedisClient();
+  if (!redisClient || redisClient.status !== "ready") {
+    throw new ApiError("OTP service is temporarily unavailable", 503);
+  }
+
+  const key = `guest:otp:${normalizedPhone}`;
+  let data;
+
+  try {
+    const raw = await redisClient.get(key);
+    if (!raw) {
+      throw new ApiError("No active OTP, please request a new code", 400);
+    }
+    data = JSON.parse(raw);
+  } catch (err) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    console.error("[Redis] GET error for guest OTP", err.message);
+    throw new ApiError("OTP service is temporarily unavailable", 503);
+  }
+
+  const expiresAt = typeof data.expiresAt === "number" ? data.expiresAt : 0;
+  if (expiresAt < Date.now()) {
+    try {
+      await redisClient.del(key);
+    } catch (err) {
+      console.error("[Redis] DEL error for expired guest OTP", err.message);
+    }
+    throw new ApiError("OTP has expired", 400);
+  }
+
+  const expectedHash = data.codeHash;
+  const providedHash = crypto
+    .createHash("sha256")
+    .update(String(otp))
+    .digest("hex");
+
+  if (!expectedHash || providedHash !== expectedHash) {
+    throw new ApiError("Invalid OTP", 400);
+  }
+
+  try {
+    await redisClient.del(key);
+  } catch (err) {
+    console.error("[Redis] DEL error for guest OTP", err.message);
+  }
+
+  return {
+    phone: normalizedPhone,
+    verified: true,
   };
 }
 

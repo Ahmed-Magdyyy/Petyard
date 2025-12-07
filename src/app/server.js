@@ -14,6 +14,7 @@ import {dbConnection} from "../shared/database.js";
 import { mountRoutes } from "./routes.js";
 import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
 import { startAbandonedCartsJob } from "../shared/jobs/abandonedCarts.job.js";
+import { getRedisClient } from "../shared/redisClient.js";
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -56,7 +57,9 @@ app.use(globalError);
 
 const server = app.listen(PORT , () =>
   console.log(`Example app listening on port ${PORT}!`)
-);
+)
+
+getRedisClient()
 
 // UnhandledRejections event handler (rejection outside express)
 process.on("unhandledRejection", (err) => {
