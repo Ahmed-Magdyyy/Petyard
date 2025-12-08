@@ -18,10 +18,10 @@ export const resolveLocationValidator = [
     .isString()
     .withMessage("governorateCode must be a string"),
 
-  body("source")
+  body("areaCode")
     .optional()
-    .isIn(["gps", "manual"])
-    .withMessage("source must be 'gps' or 'manual'"),
+    .isString()
+    .withMessage("areaCode must be a string"),
 
   validatorMiddleware,
 ];

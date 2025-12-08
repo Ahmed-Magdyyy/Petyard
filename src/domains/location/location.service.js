@@ -241,11 +241,12 @@ export async function resolveLocationByCoordinatesService({
   lat,
   lng,
   governorateCode,
-  source = "gps",
+  areaCode,
 }) {
   const hasCoords = typeof lat !== "undefined" && typeof lng !== "undefined";
+  const source = hasCoords ? "gps" : "manual";
 
-  // Governorate-only mode (manual selection, no precise coordinates)
+  // Governorate/area-only mode (manual selection, no precise coordinates)
   if (!hasCoords) {
     if (!governorateCode || typeof governorateCode !== "string") {
       throw new ApiError("Either (lat & lng) or governorateCode must be provided", 400);
@@ -261,12 +262,68 @@ export async function resolveLocationByCoordinatesService({
     const isSupported = isSupportedGovernorate(govCode);
 
     let productsWarehouse = null;
+    let selectedArea = null;
 
     if (isSupported) {
-      productsWarehouse =
-        (await WarehouseModel.findOne({ governorate: govCode, active: true }).sort({
-          createdAt: 1,
-        })) || (await findDefaultWarehouse());
+      const simpleAreas = Array.isArray(govConfig.areas) ? govConfig.areas : [];
+      const warehouseGroups = Array.isArray(govConfig.warehouses)
+        ? govConfig.warehouses
+        : [];
+
+      const groupedAreas = [];
+      warehouseGroups.forEach((group) => {
+        const groupWarehouseCode = group.code || group.warehouseCode || null;
+        const groupAreas = Array.isArray(group.areas) ? group.areas : [];
+
+        groupAreas.forEach((a) => {
+          groupedAreas.push({
+            ...a,
+            warehouseCode:
+              a.warehouseCode || a.warehouse_code || groupWarehouseCode,
+          });
+        });
+      });
+
+      const flattenedAreas = simpleAreas.concat(groupedAreas);
+
+      const areaCodeNormalized =
+        typeof areaCode === "string" ? areaCode.toLowerCase().trim() : null;
+console.log(areaCodeNormalized);
+
+      if (flattenedAreas.length > 0) {
+        if (!areaCodeNormalized) {
+          throw new ApiError("areaCode is required for this governorate", 400);
+        }
+
+        selectedArea =
+          flattenedAreas.find((a) => {
+            const code =
+              typeof a.code === "string" ? a.code.toLowerCase().trim() : null;
+            return code && code === areaCodeNormalized;
+          }) || null;
+
+        if (!selectedArea) {
+          throw new ApiError("Unknown area code for this governorate", 400);
+        }
+
+        const areaWarehouseCode =
+          selectedArea.warehouseCode || selectedArea.warehouse_code || null;
+
+        if (areaWarehouseCode) {
+          productsWarehouse =
+            (await WarehouseModel.findOne({
+              code: areaWarehouseCode.toUpperCase(),
+              active: true,
+            })) || null;
+        }
+      }
+
+      if (!productsWarehouse) {
+        productsWarehouse =
+          (await WarehouseModel.findOne({ governorate: govCode, active: true }).sort({
+            createdAt: 1,
+          })) || (await findDefaultWarehouse());
+      }
     } else {
       productsWarehouse = await findDefaultWarehouse();
     }
@@ -282,7 +339,7 @@ export async function resolveLocationByCoordinatesService({
       productsWarehouse: warehouseSummary,
       deliveryWarehouse: null,
       location: {
-        source: lat&&lng ?  source : "manual",
+        source,
         coordinates: {
           lat: null,
           lng: null,
@@ -291,6 +348,11 @@ export async function resolveLocationByCoordinatesService({
           name: govCode,
           isSupported,
         },
+        area: selectedArea
+          ? {
+              code: selectedArea.code || null,
+            }
+          : null,
       },
       delivery: {
         canDeliver: false,
@@ -456,7 +518,7 @@ export async function resolveLocationByCoordinatesService({
     productsWarehouse: productsSummary,
     deliveryWarehouse: deliverySummary,
     location: {
-      source: source || "gps",
+      source,
       coordinates: {
         lat: latNum,
         lng: lngNum,

@@ -7,13 +7,13 @@ import {
 
 // POST /locations/resolve
 export const resolveLocation = asyncHandler(async (req, res) => {
-  const { lat, lng, governorateCode, source } = req.body || {};
+  const { lat, lng, governorateCode, areaCode } = req.body || {};
 
   const result = await resolveLocationByCoordinatesService({
     lat,
     lng,
     governorateCode,
-    source,
+    areaCode,
   });
 
   res.status(200).json({ data: result });
