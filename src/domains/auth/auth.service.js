@@ -5,7 +5,10 @@ import jwt from "jsonwebtoken";
 import { UserModel } from "../user/user.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { sendOtpSms, normalizeEgyptianMobile } from "../../shared/utils/sms.js";
-import { createAccessToken, createRefreshToken } from "../../shared/createToken.js";
+import {
+  createAccessToken,
+  createRefreshToken,
+} from "../../shared/createToken.js";
 import { roles, accountStatus } from "../../shared/constants/enums.js";
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { forgetPasswordEmailHTML } from "../../shared/Email/emailHtml.js";
@@ -48,7 +51,6 @@ export async function signupService({ name, email, phone, password }) {
   try {
     await sendOtpSms(user.phone, otp);
     console.log("otp:", otp);
-
   } catch (err) {
     console.error("Failed to send OTP SMS", err);
     await UserModel.findByIdAndDelete(user._id);
@@ -64,7 +66,7 @@ export async function signupService({ name, email, phone, password }) {
     email: user.email,
     phone: user.phone,
     phoneVerified: user.phoneVerified,
-    otp: otp
+    otp: otp,
   };
 }
 
@@ -136,7 +138,7 @@ export async function resendOtpService({ phone }) {
     id: user._id,
     phone: user.phone,
     phoneVerified: user.phoneVerified,
-    otp: otp
+    otp: otp,
   };
 }
 
@@ -151,7 +153,6 @@ export async function verifyPhoneService({ phone, otp }) {
 
     console.log("phone", phone);
     console.log("normalizedPhone", normalizedPhone);
-    
   } catch (err) {
     throw new ApiError("Invalid Egyptian mobile format", 400);
   }
@@ -185,6 +186,9 @@ export async function verifyPhoneService({ phone, otp }) {
     throw new ApiError("Invalid OTP", 400);
   }
 
+  const accessToken = createAccessToken(user._id, user.role);
+  const refreshToken = createRefreshToken(user._id);
+
   user.phoneVerified = true;
   user.phoneVerificationCode = undefined;
   user.phoneVerificationExpires = undefined;
@@ -199,6 +203,9 @@ export async function verifyPhoneService({ phone, otp }) {
     email: user.email,
     phone: user.phone,
     phoneVerified: user.phoneVerified,
+    accessToken,
+    refreshToken,
+    accessTokenExpires: new Date(Date.now() + 3 * 60 * 60 * 1000),
   };
 }
 
@@ -238,10 +245,7 @@ export async function sendGuestOtpService({ phone }) {
       if (lastSentAt) {
         const diff = now - lastSentAt;
         if (diff < RESEND_MIN_INTERVAL_MS) {
-          throw new ApiError(
-            "Please wait before requesting another OTP",
-            429
-          );
+          throw new ApiError("Please wait before requesting another OTP", 429);
         }
 
         const lastDate = new Date(lastSentAt);
@@ -270,10 +274,7 @@ export async function sendGuestOtpService({ phone }) {
   sendCountToday += 1;
 
   const otp = generateOtp();
-  const codeHash = crypto
-    .createHash("sha256")
-    .update(otp)
-    .digest("hex");
+  const codeHash = crypto.createHash("sha256").update(otp).digest("hex");
 
   const expiresAt = now + 5 * 60 * 1000; // 5 minutes
   const payload = {
@@ -303,7 +304,7 @@ export async function sendGuestOtpService({ phone }) {
 
   return {
     phone: normalizedPhone,
-    otp
+    otp,
   };
 }
 
@@ -391,7 +392,10 @@ export async function loginService({ identifier, password }) {
     try {
       normalizedPhone = normalizeEgyptianMobile(trimmed);
     } catch {
-      throw new ApiError("Identifier must be a valid email or Egyptian phone number", 400);
+      throw new ApiError(
+        "Identifier must be a valid email or Egyptian phone number",
+        400
+      );
     }
     query = { phone: normalizedPhone };
   }

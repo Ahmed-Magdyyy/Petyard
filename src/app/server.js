@@ -15,6 +15,7 @@ import { mountRoutes } from "./routes.js";
 import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
 import { startAbandonedCartsJob } from "../shared/jobs/abandonedCarts.job.js";
 import { getRedisClient } from "../shared/redisClient.js";
+import { getFirebaseAdmin } from "../shared/firebaseAdmin.js";
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -60,7 +61,7 @@ const server = app.listen(PORT , () =>
 )
 
 getRedisClient()
-
+getFirebaseAdmin()
 // UnhandledRejections event handler (rejection outside express)
 process.on("unhandledRejection", (err) => {
   console.error(
