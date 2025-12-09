@@ -14,6 +14,7 @@ import {
   findActiveCouponByCodeService,
   computeCouponEffect,
 } from "../coupon/coupon.service.js";
+import { sendOrderStatusChangedNotification } from "../notification/notification.service.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -565,6 +566,11 @@ export async function createOrderForUserService({
     session.endSession();
   }
 
+  if (createdOrder) {
+    // Fire-and-forget notification; no need to await in the main flow
+    void sendOrderStatusChangedNotification(createdOrder);
+  }
+
   return createdOrder;
 }
 
@@ -773,6 +779,11 @@ export async function updateOrderStatusService({
     });
   } finally {
     session.endSession();
+  }
+
+  if (updated) {
+    // Fire-and-forget notification about the status change
+    void sendOrderStatusChangedNotification(updated);
   }
 
   return updated;
