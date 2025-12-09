@@ -31,7 +31,9 @@ export async function registerDeviceForUserService({
 
   const now = new Date();
 
-  let device = await NotificationDeviceModel.findOne({ token: normalizedToken });
+  let device = await NotificationDeviceModel.findOne({
+    token: normalizedToken,
+  });
 
   if (device) {
     device.user = userId;
@@ -95,6 +97,17 @@ export async function sendPushToTokens({ tokens, notification, data }) {
 
   try {
     const response = await admin.messaging().sendEachForMulticast(message);
+
+    console.log(
+      "[Notification] FCM responses:",
+      response.responses.map((r, i) => ({
+        index: i,
+        success: r.success,
+        error: r.error
+          ? { code: r.error.code, message: r.error.message }
+          : null,
+      }))
+    );
     return {
       successCount: response.successCount,
       failureCount: response.failureCount,
