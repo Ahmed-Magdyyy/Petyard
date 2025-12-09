@@ -9,32 +9,45 @@ export function getFirebaseAdmin() {
     return admin;
   }
 
-  const rawPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-
-  if (!rawPath) {
-    console.warn(
-      "[Firebase] FIREBASE_SERVICE_ACCOUNT_PATH is not set. Notifications are disabled."
-    );
-    return null;
-  }
-
-  // Allow either absolute or project-relative paths
-  const resolvedPath = path.isAbsolute(rawPath)
-    ? rawPath
-    : path.resolve(process.cwd(), rawPath);
-
   let serviceAccountJson;
-  try {
-    const fileContents = fs.readFileSync(resolvedPath, "utf8");
-    serviceAccountJson = JSON.parse(fileContents);
-  } catch (err) {
-    console.error(
-      "[Firebase] Failed to read/parse service account JSON at",
-      resolvedPath,
-      "-",
-      err.message
-    );
-    return null;
+  const rawJsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+  if (rawJsonEnv && rawJsonEnv.trim()) {
+    try {
+      serviceAccountJson = JSON.parse(rawJsonEnv);
+    } catch (err) {
+      console.error(
+        "[Firebase] Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON -",
+        err.message
+      );
+      return null;
+    }
+  } else {
+    const rawPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+
+    if (!rawPath) {
+      console.warn(
+        "[Firebase] No FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH set. Notifications are disabled."
+      );
+      return null;
+    }
+
+    const resolvedPath = path.isAbsolute(rawPath)
+      ? rawPath
+      : path.resolve(process.cwd(), rawPath);
+
+    try {
+      const fileContents = fs.readFileSync(resolvedPath, "utf8");
+      serviceAccountJson = JSON.parse(fileContents);
+    } catch (err) {
+      console.error(
+        "[Firebase] Failed to read/parse service account JSON at",
+        resolvedPath,
+        "-",
+        err.message
+      );
+      return null;
+    }
   }
 
   try {
