@@ -23,6 +23,7 @@ import {
   petIdParamValidator,
   petUserIdParamValidator,
 } from "./pet.validators.js";
+import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
 
 const router = Router();
 
@@ -41,6 +42,7 @@ router.post(
   "/admin/user/:userId",
   allowedTo(roles.SUPER_ADMIN),
   petUserIdParamValidator,
+  uploadSingleImage("image"),
   createPetValidator,
   createUserPet
 );
@@ -56,12 +58,22 @@ router.delete(
 router
   .route("/")
   .get(allowedTo(roles.USER), getPets)
-  .post(allowedTo(roles.USER), createPetValidator, createPet);
+  .post(
+    allowedTo(roles.USER),
+    uploadSingleImage("image"),
+    createPetValidator,
+    createPet
+  );
 
 router
   .route("/:id")
   .get(allowedTo(roles.USER), petIdParamValidator, getPet)
-  .patch(allowedTo(roles.USER), updatePetValidator, updatePet)
+  .patch(
+    allowedTo(roles.USER),
+    uploadSingleImage("image"),
+    updatePetValidator,
+    updatePet
+  )
   .delete(allowedTo(roles.USER), petIdParamValidator, deletePet);
 
 export default router;

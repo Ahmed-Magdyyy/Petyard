@@ -12,6 +12,10 @@ const petSchema = new Schema(
     birthDate: { type: Date },
     chronic_conditions: { type: [String], default: [] }, // array of condition codes
     temp_health_issues: { type: [String], default: [] }, // array of condition codes
+    image: {
+      public_id: { type: String },
+      url: { type: String },
+    },
   },
   { timestamps: true }
 );

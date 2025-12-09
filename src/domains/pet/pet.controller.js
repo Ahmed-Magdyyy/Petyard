@@ -26,7 +26,7 @@ export const getUserPets = asyncHandler(async (req, res) => {
 
 // POST /pets/admin/user/:userId
 export const createUserPet = asyncHandler(async (req, res) => {
-  const pet = await createPetService(req.params.userId, req.body);
+  const pet = await createPetService(req.params.userId, req.body, req.file || null);
   res.status(201).json({ data: pet });
 });
 
@@ -52,7 +52,7 @@ export const getPet = asyncHandler(async (req, res) => {
 
 // POST /pets
 export const createPet = asyncHandler(async (req, res) => {
-  const pet = await createPetService(req.user._id, req.body);
+  const pet = await createPetService(req.user._id, req.body, req.file || null);
   res.status(201).json({ data: pet });
 });
 
@@ -61,7 +61,8 @@ export const updatePet = asyncHandler(async (req, res) => {
   const pet = await updatePetForOwnerService(
     req.user._id,
     req.params.id,
-    req.body
+    req.body,
+    req.file || null
   );
   res.status(200).json({ data: pet });
 });
