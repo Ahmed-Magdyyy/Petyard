@@ -135,11 +135,10 @@ userSchema.index({ role: 1 });
 userSchema.index({ active: 1 });
 userSchema.index({ "refreshTokens.expiresAt": 1 });
 
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+userSchema.pre("save", async function () {
+  // In Mongoose 8+, async middleware should not use the next callback.
+  if (!this.isModified("password")) return;
   this.password = await bcrypt.hash(this.password, 12);
-  next();
 });
-
 
 export const UserModel = model("User", userSchema);

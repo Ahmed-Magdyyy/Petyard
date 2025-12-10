@@ -1,4 +1,4 @@
-import {ApiError} from "../ApiError.js";
+import { ApiError } from "../ApiError.js";
 // const { deleteImageCloud } = require("../utils/Cloudinary/cloud");
 
 const handelJwtInvalidSignature = () =>
@@ -14,8 +14,8 @@ const handleDuplicateFieldsDB = (err) => {
 };
 
 const handleValidationErrorDB = (err) => {
-  const errors = Object.values(err.errors).map(el => el.message);
-  const message = `Invalid input data: ${errors.join('. ')}`;
+  const errors = Object.values(err.errors).map((el) => el.message);
+  const message = `Invalid input data: ${errors.join(". ")}`;
   return new ApiError(message, 400);
 };
 
@@ -25,7 +25,7 @@ const handleCastErrorDB = (err) => {
 };
 
 const sendErrorForDev = (err, res) => {
-  console.log(err)
+  console.log(err);
   return res.status(err.statusCode).json({
     status: err.status,
     error: err.errors || [],
@@ -39,31 +39,30 @@ const sendErrorForProd = (err, res) => {
     res.status(err.statusCode).json({
       status: err.status,
       message: err.message,
-      errors: err.errors || []
+      errors: err.errors || [],
     });
   } else {
-    console.error('ERROR 💥', err);
+    console.error("ERROR 💥", err);
     res.status(500).json({
-      status: 'error',
-      message: 'Something went very wrong!'
+      status: "error",
+      message: "Something went very wrong!",
     });
   }
 };
 
-
-export const globalError =async (err, req, res, next) => {
-
+export const globalError = async (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
+  console.log("error", err);
 
   let error = { ...err };
   error.message = err.message;
 
   if (error.code === 11000) error = handleDuplicateFieldsDB(error);
-  if (error.name === 'ValidationError') error = handleValidationErrorDB(error);
-  if (error.name === 'CastError') error = handleCastErrorDB(error);
-  if (error.name === 'JsonWebTokenError') error = handelJwtInvalidSignature();
-  if (error.name === 'TokenExpiredError') error = handelJwtExpire();
+  if (error.name === "ValidationError") error = handleValidationErrorDB(error);
+  if (error.name === "CastError") error = handleCastErrorDB(error);
+  if (error.name === "JsonWebTokenError") error = handelJwtInvalidSignature();
+  if (error.name === "TokenExpiredError") error = handelJwtExpire();
 
   // Send response
   if (process.env.NODE_ENV === "development") {
