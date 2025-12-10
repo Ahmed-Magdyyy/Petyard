@@ -36,6 +36,4 @@ const categorySchema = new Schema(
   { timestamps: true }
 );
 
-categorySchema.index({ slug: 1 }, { unique: true });
-
 export const CategoryModel = model("Category", categorySchema);

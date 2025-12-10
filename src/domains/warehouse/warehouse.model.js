@@ -70,7 +70,6 @@ const warehouseSchema = new Schema(
   { timestamps: true }
 );
 
-warehouseSchema.index({ code: 1 }, { unique: true });
 warehouseSchema.index({ active: 1 });
 warehouseSchema.index({ governorate: 1, active: 1 });
 warehouseSchema.index({ isDefault: 1 });

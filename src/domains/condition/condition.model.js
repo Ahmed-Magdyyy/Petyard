@@ -33,7 +33,6 @@ const conditionSchema = new Schema(
   { timestamps: true }
 );
 
-conditionSchema.index({ slug: 1 }, { unique: true });
 conditionSchema.index({ type: 1, visible: 1 });
 
 export const ConditionModel = model("Condition", conditionSchema);

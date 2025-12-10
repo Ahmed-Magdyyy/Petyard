@@ -135,7 +135,6 @@ const cartSchema = new Schema(
 );
 
 cartSchema.index({ user: 1 });
-cartSchema.index({ guestId: 1 });
 cartSchema.index({ status: 1, lastActivityAt: 1 });
 
 export const CartModel = model("Cart", cartSchema);

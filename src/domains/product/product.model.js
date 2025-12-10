@@ -174,7 +174,6 @@ const productSchema = new Schema(
   { timestamps: true }
 );
 
-productSchema.index({ slug: 1 }, { unique: true });
 productSchema.index({ subcategory: 1 });
 productSchema.index({ category: 1 });
 productSchema.index({ brand: 1 });

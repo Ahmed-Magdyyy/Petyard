@@ -36,6 +36,4 @@ const brandSchema = new Schema(
   { timestamps: true }
 );
 
-brandSchema.index({ slug: 1 }, { unique: true });
-
 export const BrandModel = model("Brand", brandSchema);

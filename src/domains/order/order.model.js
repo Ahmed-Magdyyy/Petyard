@@ -43,7 +43,61 @@ const historyEntrySchema = new Schema(
     byUserId: { type: Schema.Types.ObjectId, ref: "User" },
     visibleToUser: { type: Boolean, default: true },
   },
-  { _id: false }
+  {
+    _id: false,
+    toJSON: {
+      virtuals: true,
+      transform(doc, ret) {
+        const userVal = ret.byUserId;
+        let byUser = null;
+
+        if (userVal && typeof userVal === "object") {
+          const id = userVal._id ? String(userVal._id) : undefined;
+          const name = typeof userVal.name === "string" ? userVal.name : undefined;
+          const role = userVal.role;
+          byUser = {};
+          if (id) byUser.id = id;
+          if (name) byUser.name = name;
+          if (role) byUser.role = role;
+        } else if (userVal) {
+          byUser = { id: String(userVal) };
+        }
+
+        if (byUser) {
+          ret.byUser = byUser;
+        }
+
+        delete ret.byUserId;
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform(doc, ret) {
+        const userVal = ret.byUserId;
+        let byUser = null;
+
+        if (userVal && typeof userVal === "object") {
+          const id = userVal._id ? String(userVal._id) : undefined;
+          const name = typeof userVal.name === "string" ? userVal.name : undefined;
+          const role = userVal.role;
+          byUser = {};
+          if (id) byUser.id = id;
+          if (name) byUser.name = name;
+          if (role) byUser.role = role;
+        } else if (userVal) {
+          byUser = { id: String(userVal) };
+        }
+
+        if (byUser) {
+          ret.byUser = byUser;
+        }
+
+        delete ret.byUserId;
+        return ret;
+      },
+    },
+  }
 );
 
 const orderSchema = new Schema(

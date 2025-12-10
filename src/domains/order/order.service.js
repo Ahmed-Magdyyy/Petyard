@@ -706,7 +706,8 @@ export async function listOrdersForAdminService(query = {}) {
   const orders = await OrderModel.find(filter)
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(limitNum);
+    .limit(limitNum)
+    .populate({ path: "history.byUserId", select: "name role" });
 
   return {
     totalPages: Math.ceil(totalCount / limitNum) || 1,
@@ -717,7 +718,10 @@ export async function listOrdersForAdminService(query = {}) {
 }
 
 export async function getOrderByIdForAdminService(orderId) {
-  const order = await OrderModel.findById(orderId);
+  const order = await OrderModel.findById(orderId).populate({
+    path: "history.byUserId",
+    select: "name role",
+  });
   if (!order) {
     throw new ApiError("Order not found", 404);
   }

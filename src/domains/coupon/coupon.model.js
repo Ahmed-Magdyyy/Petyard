@@ -89,7 +89,6 @@ const couponSchema = new Schema(
   { timestamps: true }
 );
 
-couponSchema.index({ code: 1 }, { unique: true });
 couponSchema.index({ isActive: 1, startsAt: 1, expiresAt: 1 });
 
 export const CouponModel = model("Coupon", couponSchema);

@@ -131,8 +131,6 @@ const userSchema = new Schema(
   }
 );
 
-userSchema.index({ email: 1 });
-userSchema.index({ phone: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ active: 1 });
 userSchema.index({ "refreshTokens.expiresAt": 1 });
