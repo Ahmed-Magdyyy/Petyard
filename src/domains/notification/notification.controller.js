@@ -3,7 +3,7 @@ import { ApiError } from "../../shared/ApiError.js";
 import {
   registerDeviceForUserService,
   sendAdminCustomNotificationToUsers,
-  sendTestPushToToken,
+  sendBroadcastNotificationToAllDevices,
 } from "./notification.service.js";
 
 export const registerDevice = asyncHandler(async (req, res) => {
@@ -26,36 +26,34 @@ export const registerDevice = asyncHandler(async (req, res) => {
 export const adminSendNotification = asyncHandler(async (req, res) => {
   const { target, notification, data } = req.body || {};
 
-  const userIds =
-    target && target.type === "users" && Array.isArray(target.userIds)
-      ? target.userIds
-      : [];
+  const targetType = target && target.type;
 
-  if (!userIds.length) {
-    throw new ApiError("target.userIds must be a non-empty array", 400);
+  if (targetType === "users") {
+    const userIds = Array.isArray(target.userIds) ? target.userIds : [];
+
+    if (!userIds.length) {
+      throw new ApiError("target.userIds must be a non-empty array", 400);
+    }
+
+    const result = await sendAdminCustomNotificationToUsers({
+      userIds,
+      notification,
+      data,
+    });
+
+    res.status(200).json({ data: result });
+    return;
   }
 
-  const result = await sendAdminCustomNotificationToUsers({
-    userIds,
-    notification,
-    data,
-  });
+  if (targetType === "all_devices") {
+    const result = await sendBroadcastNotificationToAllDevices({
+      notification,
+      data,
+    });
 
-  res.status(200).json({ data: result });
-});
+    res.status(200).json({ data: result });
+    return;
+  }
 
-export const devSendTestPush = asyncHandler(async (req, res) => {
-  const { token, title, body, data } = req.body || {};
-
-  const notification =
-    title || body
-      ? {
-          title: title || "Test notification",
-          body: body || "This is a test push notification.",
-        }
-      : undefined;
-
-  const result = await sendTestPushToToken({ token, notification, data });
-
-  res.status(200).json({ data: result });
+  throw new ApiError("Invalid target.type", 400);
 });

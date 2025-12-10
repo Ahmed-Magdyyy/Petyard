@@ -4,12 +4,10 @@ import { roles } from "../../shared/constants/enums.js";
 import {
   registerDevice,
   adminSendNotification,
-  devSendTestPush,
 } from "./notification.controller.js";
 import {
   registerDeviceValidator,
   adminSendNotificationValidator,
-  devSendTestPushValidator,
 } from "./notification.validators.js";
 
 const router = Router();
@@ -27,14 +25,6 @@ router.post(
   allowedTo(roles.ADMIN, roles.SUPER_ADMIN),
   adminSendNotificationValidator,
   adminSendNotification
-);
-
-router.post(
-  "/admin/dev/send-test",
-  protect,
-  allowedTo(roles.ADMIN, roles.SUPER_ADMIN),
-  devSendTestPushValidator,
-  devSendTestPush
 );
 
 export default router;

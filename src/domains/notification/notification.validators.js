@@ -25,14 +25,16 @@ export const adminSendNotificationValidator = [
   body("target.type")
     .notEmpty()
     .withMessage("target.type is required")
-    .isIn(["users"])
-    .withMessage("target.type must be 'users'"),
+    .isIn(["users", "all_devices"])
+    .withMessage("target.type must be 'users' or 'all_devices'"),
 
   body("target.userIds")
+    .optional()
     .isArray({ min: 1 })
     .withMessage("target.userIds must be a non-empty array"),
 
   body("target.userIds.*")
+    .optional()
     .isMongoId()
     .withMessage("each user id must be a valid Mongo id"),
 
@@ -47,36 +49,6 @@ export const adminSendNotificationValidator = [
     .withMessage("notification.body is required")
     .isString()
     .withMessage("notification.body must be a string"),
-
-  body("data")
-    .optional()
-    .custom((value) => {
-      if (value == null) return true;
-      if (typeof value !== "object" || Array.isArray(value)) {
-        throw new Error("data must be an object");
-      }
-      return true;
-    }),
-
-  validatorMiddleware,
-];
-
-export const devSendTestPushValidator = [
-  body("token")
-    .notEmpty()
-    .withMessage("token is required")
-    .isString()
-    .withMessage("token must be a string"),
-
-  body("title")
-    .optional()
-    .isString()
-    .withMessage("title must be a string"),
-
-  body("body")
-    .optional()
-    .isString()
-    .withMessage("body must be a string"),
 
   body("data")
     .optional()

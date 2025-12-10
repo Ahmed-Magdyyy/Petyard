@@ -71,7 +71,7 @@ function buildDataPayload(data) {
   return out;
 }
 
-export async function sendPushToTokens({ tokens, notification, data }) {
+async function sendPushToTokens({ tokens, notification, data }) {
   const admin = getFirebaseAdmin();
   if (!admin) {
     return { skipped: true, successCount: 0, failureCount: 0 };
@@ -88,37 +88,52 @@ export async function sendPushToTokens({ tokens, notification, data }) {
   if (!uniqueTokens.length) {
     return { successCount: 0, failureCount: 0 };
   }
+  const payloadData = buildDataPayload(data);
 
-  const message = {
-    tokens: uniqueTokens,
-    notification: notification || undefined,
-    data: buildDataPayload(data),
-  };
+  let totalSuccess = 0;
+  let totalFailure = 0;
 
-  try {
-    const response = await admin.messaging().sendEachForMulticast(message);
+  const batchSize = 500;
 
-    console.log(
-      "[Notification] FCM responses:",
-      response.responses.map((r, i) => ({
-        index: i,
-        success: r.success,
-        error: r.error
-          ? { code: r.error.code, message: r.error.message }
-          : null,
-      }))
-    );
-    return {
-      successCount: response.successCount,
-      failureCount: response.failureCount,
+  for (let start = 0; start < uniqueTokens.length; start += batchSize) {
+    const batchTokens = uniqueTokens.slice(start, start + batchSize);
+
+    const message = {
+      tokens: batchTokens,
+      notification: notification || undefined,
+      data: payloadData,
     };
-  } catch (err) {
-    console.error("[Notification] Failed to send push:", err.message);
-    return { successCount: 0, failureCount: uniqueTokens.length };
+
+    try {
+      const response = await admin.messaging().sendEachForMulticast(message);
+
+      console.log(
+        "[Notification] FCM responses (batch starting at index %d):",
+        start,
+        response.responses.map((r, i) => ({
+          index: start + i,
+          success: r.success,
+          error: r.error
+            ? { code: r.error.code, message: r.error.message }
+            : null,
+        }))
+      );
+
+      totalSuccess += response.successCount;
+      totalFailure += response.failureCount;
+    } catch (err) {
+      console.error("[Notification] Failed to send push batch:", err.message);
+      totalFailure += batchTokens.length;
+    }
   }
+
+  return {
+    successCount: totalSuccess,
+    failureCount: totalFailure,
+  };
 }
 
-export async function sendPushToUser({ userId, notification, data }) {
+async function sendPushToUser({ userId, notification, data }) {
   if (!userId) {
     throw new ApiError("userId is required", 400);
   }
@@ -190,14 +205,14 @@ export async function sendAdminCustomNotificationToUsers({
   };
 }
 
-export async function sendTestPushToToken({ token, notification, data }) {
-  if (!token || typeof token !== "string" || !token.trim()) {
-    throw new ApiError("token is required", 400);
-  }
+export async function sendBroadcastNotificationToAllDevices({ notification, data }) {
+  const devices = await NotificationDeviceModel.find({});
+  const tokens = devices.map((d) => d.token).filter(Boolean);
 
-  return sendPushToTokens({
-    tokens: [token.trim()],
-    notification,
-    data,
-  });
+  const result = await sendPushToTokens({ tokens, notification, data });
+
+  return {
+    deviceCount: devices.length,
+    ...result,
+  };
 }
