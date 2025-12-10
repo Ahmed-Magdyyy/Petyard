@@ -8,6 +8,22 @@ function normalizePlatform(value) {
   return "android";
 }
 
+async function sendPushToGuest({ guestId, notification, data }) {
+  if (!guestId) {
+    throw new ApiError("guestId is required", 400);
+  }
+
+  const devices = await NotificationDeviceModel.find({ guestId });
+  const tokens = devices.map((d) => d.token).filter(Boolean);
+
+  const result = await sendPushToTokens({ tokens, notification, data });
+
+  return {
+    deviceCount: devices.length,
+    ...result,
+  };
+}
+
 function normalizeLang(value) {
   return value === "ar" ? "ar" : "en";
 }
@@ -37,6 +53,7 @@ export async function registerDeviceForUserService({
 
   if (device) {
     device.user = userId;
+    device.guestId = undefined;
     device.platform = normalizedPlatform;
     device.lang = normalizedLang;
     device.lastUsedAt = now;
@@ -44,6 +61,7 @@ export async function registerDeviceForUserService({
   } else {
     device = await NotificationDeviceModel.create({
       user: userId,
+      guestId: undefined,
       token: normalizedToken,
       platform: normalizedPlatform,
       lang: normalizedLang,
@@ -54,6 +72,56 @@ export async function registerDeviceForUserService({
   return {
     id: device._id,
     userId: device.user,
+    token: device.token,
+    platform: device.platform,
+    lang: device.lang,
+    lastUsedAt: device.lastUsedAt,
+  };
+}
+
+export async function registerDeviceForGuestService({
+  guestId,
+  token,
+  platform,
+  lang,
+}) {
+  if (!guestId) {
+    throw new ApiError("guestId is required", 400);
+  }
+  if (!token || typeof token !== "string" || !token.trim()) {
+    throw new ApiError("token is required", 400);
+  }
+
+  const normalizedToken = token.trim();
+  const normalizedPlatform = normalizePlatform(platform);
+  const normalizedLang = normalizeLang(lang);
+
+  const now = new Date();
+
+  let device = await NotificationDeviceModel.findOne({
+    token: normalizedToken,
+  });
+
+  if (device) {
+    device.user = undefined;
+    device.guestId = guestId;
+    device.platform = normalizedPlatform;
+    device.lang = normalizedLang;
+    device.lastUsedAt = now;
+    await device.save();
+  } else {
+    device = await NotificationDeviceModel.create({
+      guestId,
+      token: normalizedToken,
+      platform: normalizedPlatform,
+      lang: normalizedLang,
+      lastUsedAt: now,
+    });
+  }
+
+  return {
+    id: device._id,
+    guestId: device.guestId,
     token: device.token,
     platform: device.platform,
     lang: device.lang,
@@ -150,7 +218,7 @@ async function sendPushToUser({ userId, notification, data }) {
 }
 
 export async function sendOrderStatusChangedNotification(order) {
-  if (!order || !order.user) {
+  if (!order) {
     return { skipped: true };
   }
 
@@ -165,12 +233,25 @@ export async function sendOrderStatusChangedNotification(order) {
   };
 
   try {
-    const result = await sendPushToUser({
-      userId: order.user,
-      notification: { title, body },
-      data,
-    });
-    return result;
+    if (order.user) {
+      const result = await sendPushToUser({
+        userId: order.user,
+        notification: { title, body },
+        data,
+      });
+      return result;
+    }
+
+    if (order.guestId) {
+      const result = await sendPushToGuest({
+        guestId: order.guestId,
+        notification: { title, body },
+        data,
+      });
+      return result;
+    }
+
+    return { skipped: true };
   } catch (err) {
     console.error(
       "[Notification] Failed to send order status notification:",

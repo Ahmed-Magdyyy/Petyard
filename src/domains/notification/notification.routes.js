@@ -3,10 +3,12 @@ import { protect, allowedTo } from "../auth/auth.middleware.js";
 import { roles } from "../../shared/constants/enums.js";
 import {
   registerDevice,
+  registerGuestDevice,
   adminSendNotification,
 } from "./notification.controller.js";
 import {
   registerDeviceValidator,
+  registerGuestDeviceValidator,
   adminSendNotificationValidator,
 } from "./notification.validators.js";
 
@@ -17,6 +19,12 @@ router.post(
   protect,
   registerDeviceValidator,
   registerDevice
+);
+
+router.post(
+  "/devices/register-guest",
+  registerGuestDeviceValidator,
+  registerGuestDevice
 );
 
 router.post(

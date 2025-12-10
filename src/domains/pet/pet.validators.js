@@ -2,7 +2,7 @@
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 
-const petTypes = ["dog", "cat", "other"];
+const petTypes = ["dog", "cat", "bird", "small-animal"];
 const genders = ["male", "female", "unknown"];
 
 function conditionArrayValidators(fieldName) {

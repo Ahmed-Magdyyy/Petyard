@@ -21,6 +21,32 @@ export const registerDeviceValidator = [
   validatorMiddleware,
 ];
 
+export const registerGuestDeviceValidator = [
+  body("guestId")
+    .notEmpty()
+    .withMessage("guestId is required")
+    .isString()
+    .withMessage("guestId must be a string"),
+
+  body("token")
+    .notEmpty()
+    .withMessage("token is required")
+    .isString()
+    .withMessage("token must be a string"),
+
+  body("platform")
+    .optional()
+    .isIn(["android", "ios", "web"])
+    .withMessage("platform must be one of: android, ios, web"),
+
+  body("lang")
+    .optional()
+    .isIn(["en", "ar"])
+    .withMessage("lang must be 'en' or 'ar'"),
+
+  validatorMiddleware,
+];
+
 export const adminSendNotificationValidator = [
   body("target.type")
     .notEmpty()

@@ -2,6 +2,7 @@ import asyncHandler from "express-async-handler";
 import { ApiError } from "../../shared/ApiError.js";
 import {
   registerDeviceForUserService,
+  registerDeviceForGuestService,
   sendAdminCustomNotificationToUsers,
   sendBroadcastNotificationToAllDevices,
 } from "./notification.service.js";
@@ -15,6 +16,19 @@ export const registerDevice = asyncHandler(async (req, res) => {
 
   const device = await registerDeviceForUserService({
     userId: req.user._id,
+    token,
+    platform,
+    lang,
+  });
+
+  res.status(200).json({ data: device });
+});
+
+export const registerGuestDevice = asyncHandler(async (req, res) => {
+  const { guestId, token, platform, lang } = req.body || {};
+
+  const device = await registerDeviceForGuestService({
+    guestId,
     token,
     platform,
     lang,
