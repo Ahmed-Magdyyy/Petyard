@@ -7,6 +7,14 @@ import {
   sendBroadcastNotificationToAllDevices,
 } from "./notification.service.js";
 
+function getGuestId(req) {
+  const headerValue = req.headers["x-guest-id"];
+  if (typeof headerValue === "string" && headerValue.trim()) {
+    return headerValue.trim();
+  }
+  return null;
+}
+
 export const registerDevice = asyncHandler(async (req, res) => {
   if (!req.user || !req.user._id) {
     throw new ApiError("Authentication required", 401);
@@ -18,20 +26,25 @@ export const registerDevice = asyncHandler(async (req, res) => {
     userId: req.user._id,
     token,
     platform,
-    lang,
+    lang: lang || "en",
   });
 
   res.status(200).json({ data: device });
 });
 
 export const registerGuestDevice = asyncHandler(async (req, res) => {
-  const { guestId, token, platform, lang } = req.body || {};
+  const guestId = getGuestId(req);
+  if (!guestId) {
+    throw new ApiError("x-guest-id header is required", 400);
+  }
+
+  const { token, platform, lang } = req.body || {};
 
   const device = await registerDeviceForGuestService({
     guestId,
     token,
     platform,
-    lang,
+    lang: lang || "en",
   });
 
   res.status(200).json({ data: device });

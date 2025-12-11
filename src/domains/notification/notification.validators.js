@@ -1,4 +1,4 @@
-import { body } from "express-validator";
+import { body, header } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 
 export const registerDeviceValidator = [
@@ -22,11 +22,11 @@ export const registerDeviceValidator = [
 ];
 
 export const registerGuestDeviceValidator = [
-  body("guestId")
+  header("x-guest-id")
     .notEmpty()
-    .withMessage("guestId is required")
+    .withMessage("x-guest-id header is required")
     .isString()
-    .withMessage("guestId must be a string"),
+    .withMessage("x-guest-id header must be a string"),
 
   body("token")
     .notEmpty()
