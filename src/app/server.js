@@ -45,9 +45,9 @@ mountRoutes(app)
 // Background jobs
 startAbandonedCartsJob();
 
-// app.get('/', (req, res) => {
-//   res.send('Petyard API is running.');
-// });
+app.get('/', (req, res) => {
+  res.send('Petyard API is running.');
+});
 
 app.all("*", (req, res, next) => {
   next(new ApiError(`can't find this route: ${req.originalUrl}`, 400));
