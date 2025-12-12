@@ -9,6 +9,19 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 
+function applyIsDefaultFilter(filter, isDefault) {
+  if (typeof isDefault === "string") {
+    const v = isDefault.trim().toLowerCase();
+    if (v === "true" || v === "1" || v === "yes" || v === "on") {
+      filter.isDefault = true;
+    } else if (v === "false" || v === "0" || v === "no" || v === "off") {
+      filter.isDefault = false;
+    }
+  } else if (typeof isDefault === "boolean") {
+    filter.isDefault = isDefault;
+  }
+}
+
 async function validateConditionSlugs({ chronicSlugs, tempSlugs }) {
   if (chronicSlugs && chronicSlugs.length > 0) {
     const uniqueChronic = [...new Set(chronicSlugs)];
@@ -71,9 +84,11 @@ export async function setDefaultPetForOwnerService(ownerId, petId) {
 }
 
 export async function getAllPetsService(queryParams = {}) {
-  const { page, limit } = queryParams;
+  const { page, limit, isDefault } = queryParams;
 
   const filter = {};
+
+  applyIsDefaultFilter(filter, isDefault);
 
   const totalPetsCount = await PetModel.countDocuments(filter);
 
@@ -153,9 +168,11 @@ export async function createPetService(ownerId, payload, file) {
 }
 
 export async function getPetsForOwnerService(ownerId, queryParams = {}) {
-  const { page, limit } = queryParams;
+  const { page, limit, isDefault } = queryParams;
 
   const filter = { petOwner: ownerId };
+
+  applyIsDefaultFilter(filter, isDefault);
 
   const totalPetsCount = await PetModel.countDocuments(filter);
 
