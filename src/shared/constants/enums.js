@@ -42,4 +42,5 @@ export const enabledControls = Object.freeze({
   PRODUCTS: 'products',
   ORDERS: 'orders',
   COUPONES: 'coupons',
+  BANNERS: 'banners'
 });
