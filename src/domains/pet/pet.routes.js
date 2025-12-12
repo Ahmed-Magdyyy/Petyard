@@ -16,6 +16,7 @@ import {
   updatePet,
   deletePet,
   deletePetAdmin,
+  setDefaultPet,
 } from "./pet.controller.js";
 import {
   createPetValidator,
@@ -75,5 +76,12 @@ router
     updatePet
   )
   .delete(allowedTo(roles.USER), petIdParamValidator, deletePet);
+
+router.patch(
+  "/:id/default",
+  allowedTo(roles.USER),
+  petIdParamValidator,
+  setDefaultPet
+);
 
 export default router;

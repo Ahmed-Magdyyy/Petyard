@@ -1,4 +1,3 @@
-// src/domains/pet/pet.controller.js
 import asyncHandler from "express-async-handler";
 import {
   getAllPetsService,
@@ -8,6 +7,7 @@ import {
   updatePetForOwnerService,
   deletePetForOwnerService,
   deletePetByIdService,
+  setDefaultPetForOwnerService,
 } from "./pet.service.js";
 
 // ----- Admin Controllers -----
@@ -71,4 +71,10 @@ export const updatePet = asyncHandler(async (req, res) => {
 export const deletePet = asyncHandler(async (req, res) => {
   await deletePetForOwnerService(req.user._id, req.params.id);
   res.status(204).json({ message: "Pet deleted successfully" });
+});
+
+// PATCH /pets/:id/default
+export const setDefaultPet = asyncHandler(async (req, res) => {
+  const pet = await setDefaultPetForOwnerService(req.user._id, req.params.id);
+  res.status(200).json({ data: pet });
 });

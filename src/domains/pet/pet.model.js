@@ -12,6 +12,7 @@ const petSchema = new Schema(
     birthDate: { type: Date },
     chronic_conditions: { type: [String], default: [] }, // array of condition codes
     temp_health_issues: { type: [String], default: [] }, // array of condition codes
+    isDefault: { type: Boolean, default: false },
     image: {
       public_id: { type: String },
       url: { type: String },
@@ -21,6 +22,10 @@ const petSchema = new Schema(
 );
 
 petSchema.index({ petOwner: 1 });
+petSchema.index(
+  { petOwner: 1, isDefault: 1 },
+  { unique: true, partialFilterExpression: { isDefault: true } }
+);
 petSchema.index({ chronic_conditions: 1 });
 petSchema.index({ temp_health_issues: 1 });
 

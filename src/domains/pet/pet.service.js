@@ -53,6 +53,23 @@ async function validateConditionSlugs({ chronicSlugs, tempSlugs }) {
   }
 }
 
+export async function setDefaultPetForOwnerService(ownerId, petId) {
+  const pet = await PetModel.findOne({ _id: petId, petOwner: ownerId });
+  if (!pet) {
+    throw new ApiError(`No pet found for this id: ${petId}`, 404);
+  }
+
+  await PetModel.updateMany(
+    { petOwner: ownerId, isDefault: true },
+    { $set: { isDefault: false } }
+  );
+
+  pet.isDefault = true;
+  await pet.save();
+
+  return pet;
+}
+
 export async function getAllPetsService(queryParams = {}) {
   const { page, limit } = queryParams;
 
@@ -109,6 +126,9 @@ export async function createPetService(ownerId, payload, file) {
     uploadedPublicId = image?.public_id;
   }
 
+  const hasAnyPets = await PetModel.exists({ petOwner: ownerId });
+  const shouldBeDefault = !hasAnyPets;
+
   try {
     const pet = await PetModel.create({
       petOwner: ownerId,
@@ -119,6 +139,7 @@ export async function createPetService(ownerId, payload, file) {
       birthDate,
       chronic_conditions,
       temp_health_issues,
+      isDefault: shouldBeDefault,
       ...(image && { image }),
     });
 
