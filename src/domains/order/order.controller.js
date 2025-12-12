@@ -58,6 +58,7 @@ export const getMyOrders = asyncHandler(async (req, res) => {
     userId: req.user._id,
     page,
     limit,
+    lang: req.lang,
   });
 
   res.status(200).json(result);
@@ -69,20 +70,24 @@ export const getMyOrder = asyncHandler(async (req, res) => {
   const order = await getMyOrderByIdService({
     userId: req.user._id,
     orderId,
+    lang: req.lang,
   });
 
   res.status(200).json({ data: order });
 });
 
 export const listOrdersForAdmin = asyncHandler(async (req, res) => {
-  const result = await listOrdersForAdminService(req.query);
+  const result = await listOrdersForAdminService({
+    ...req.query,
+    lang: req.lang,
+  });
   res.status(200).json(result);
 });
 
 export const getOrderForAdmin = asyncHandler(async (req, res) => {
   const orderId = req.params.id;
 
-  const order = await getOrderByIdForAdminService(orderId);
+  const order = await getOrderByIdForAdminService(orderId, req.lang);
 
   res.status(200).json({ data: order });
 });

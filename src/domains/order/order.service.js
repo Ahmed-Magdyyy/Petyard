@@ -15,6 +15,7 @@ import {
   computeCouponEffect,
 } from "../coupon/coupon.service.js";
 import { sendOrderStatusChangedNotification } from "../notification/notification.service.js";
+import { pickLocalizedField } from "../../shared/utils/i18n.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -64,12 +65,6 @@ function isValidStatusTransition(oldStatus, newStatus) {
   const next = allowedStatusTransitions[oldStatus];
   if (!Array.isArray(next)) return false;
   return next.includes(newStatus);
-}
-
-function buildIdentityFilter({ userId, guestId }) {
-  if (userId) return { user: userId };
-  if (guestId) return { guestId };
-  throw new ApiError("Either userId or guestId must be provided", 400);
 }
 
 function mapCartItemToOrderItem(item) {
@@ -215,6 +210,54 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
   for (const product of products) {
     await product.save({ session });
   }
+}
+
+async function rebindOrdersLocalization(ordersOrOrder, lang = "en") {
+  if (!ordersOrOrder) return ordersOrOrder;
+
+  const orders = Array.isArray(ordersOrOrder) ? ordersOrOrder : [ordersOrOrder];
+  if (!orders.length) return ordersOrOrder;
+
+  const normalizedLang = normalizeLang(lang);
+
+  const allItems = [];
+
+  for (const order of orders) {
+    const items = Array.isArray(order.items) ? order.items : [];
+    for (const item of items) {
+      if (!item.product) continue;
+      allItems.push({
+        order,
+        item,
+        productId: String(item.product),
+      });
+    }
+  }
+
+  if (!allItems.length) {
+    return ordersOrOrder;
+  }
+
+  const productIds = [
+    ...new Set(allItems.map((entry) => entry.productId)),
+  ];
+
+  const products = await ProductModel.find({
+    _id: { $in: productIds },
+  });
+  const productById = new Map(products.map((p) => [String(p._id), p]));
+
+  for (const entry of allItems) {
+    const product = productById.get(entry.productId);
+    if (!product) continue;
+
+    const localizedName = pickLocalizedField(product, "name", normalizedLang);
+    entry.item.productName = localizedName;
+  }
+
+  await Promise.all(orders.map((order) => order.save()));
+
+  return ordersOrOrder;
 }
 
 async function restoreStockForOrder({ session, order }) {
@@ -619,7 +662,7 @@ export async function createOrderForGuestService({
   return createdOrder;
 }
 
-export async function getMyOrdersService({ userId, page, limit }) {
+export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
   const skip = (pageNum - 1) * limitNum;
@@ -633,6 +676,8 @@ export async function getMyOrdersService({ userId, page, limit }) {
     .limit(limitNum)
     .populate({path: "history.byUserId", select: "name role"})
 
+  await rebindOrdersLocalization(orders, lang);
+
   return {
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     page: pageNum,
@@ -641,11 +686,12 @@ export async function getMyOrdersService({ userId, page, limit }) {
   };
 }
 
-export async function getMyOrderByIdService({ userId, orderId }) {
+export async function getMyOrderByIdService({ userId, orderId, lang = "en" }) {
   const order = await OrderModel.findById(orderId).populate({path: "history.byUserId", select: "role name"})
   if (!order || String(order.user) !== String(userId)) {
     throw new ApiError("Order not found", 404);
   }
+  await rebindOrdersLocalization(order, lang);
   return order;
 }
 
@@ -660,6 +706,7 @@ export async function listOrdersForAdminService(query = {}) {
     guestId,
     from,
     to,
+    lang = "en",
   } = query;
 
   const filter = {};
@@ -709,6 +756,8 @@ export async function listOrdersForAdminService(query = {}) {
     .limit(limitNum)
     .populate({ path: "history.byUserId", select: "name role" });
 
+  await rebindOrdersLocalization(orders, lang);
+
   return {
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     page: pageNum,
@@ -717,7 +766,7 @@ export async function listOrdersForAdminService(query = {}) {
   };
 }
 
-export async function getOrderByIdForAdminService(orderId) {
+export async function getOrderByIdForAdminService(orderId, lang = "en") {
   const order = await OrderModel.findById(orderId).populate({
     path: "history.byUserId",
     select: "name role",
@@ -725,6 +774,7 @@ export async function getOrderByIdForAdminService(orderId) {
   if (!order) {
     throw new ApiError("Order not found", 404);
   }
+  await rebindOrdersLocalization(order, lang);
   return order;
 }
 
