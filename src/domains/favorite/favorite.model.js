@@ -38,11 +38,9 @@ const favoriteSchema = new Schema(
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      index: true,
     },
     guestId: {
       type: String,
-      index: true,
     },
     items: {
       type: [favoriteItemSchema],
