@@ -10,6 +10,7 @@ import {
   paymentMethodEnum,
   paymentStatusEnum,
 } from "../../shared/constants/enums.js";
+import { deleteCacheKey } from "../../shared/cache.js";
 import {
   findActiveCouponByCodeService,
   computeCouponEffect,
@@ -42,6 +43,21 @@ function generateOrderNumber() {
   }
 
   return `PY-${datePart}-${random}`;
+}
+
+async function invalidateProductCaches(productIds) {
+  const uniqueIds = [
+    ...new Set((productIds || []).map((id) => (id ? String(id) : null)).filter(Boolean)),
+  ];
+
+  if (!uniqueIds.length) return;
+
+  await Promise.all(
+    uniqueIds.flatMap((id) => [
+      deleteCacheKey(`product:${id}:en`),
+      deleteCacheKey(`product:${id}:ar`),
+    ])
+  );
 }
 
 const allowedStatusTransitions = {
@@ -610,6 +626,12 @@ export async function createOrderForUserService({
   }
 
   if (createdOrder) {
+    const productIds = Array.isArray(createdOrder.items)
+      ? createdOrder.items.map((i) => i.product)
+      : [];
+
+    await invalidateProductCaches(productIds);
+
     // Fire-and-forget notification; no need to await in the main flow
     void sendOrderStatusChangedNotification(createdOrder);
   }
@@ -657,6 +679,14 @@ export async function createOrderForGuestService({
     });
   } finally {
     session.endSession();
+  }
+
+  if (createdOrder) {
+    const productIds = Array.isArray(createdOrder.items)
+      ? createdOrder.items.map((i) => i.product)
+      : [];
+
+    await invalidateProductCaches(productIds);
   }
 
   return createdOrder;
