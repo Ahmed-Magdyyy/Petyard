@@ -90,8 +90,6 @@ async function reverseGeocodeGovernorate({ latNum, lngNum }) {
       return { raw: null, normalized: null };
     }
 
-    console.log("reverse geo result:", data.results);
-    
     let govName = null;
 
     for (const result of data.results) {
@@ -288,7 +286,6 @@ export async function resolveLocationByCoordinatesService({
 
       const areaCodeNormalized =
         typeof areaCode === "string" ? areaCode.toLowerCase().trim() : null;
-console.log(areaCodeNormalized);
 
       if (flattenedAreas.length > 0) {
         if (!areaCodeNormalized) {
@@ -336,8 +333,6 @@ console.log(areaCodeNormalized);
 
     return {
       warehouse: warehouseSummary,
-      productsWarehouse: warehouseSummary,
-      deliveryWarehouse: null,
       location: {
         source,
         coordinates: {
@@ -455,9 +450,7 @@ console.log(areaCodeNormalized);
   }
 
   let productsWarehouseDoc;
-  let deliveryWarehouseDoc;
   let coverageStatus;
-  let scenario;
   let reasonCode = null;
   let reasonMessage = null;
   let canDeliver;
@@ -468,9 +461,7 @@ console.log(areaCodeNormalized);
       lngNum,
     });
     productsWarehouseDoc = chosen;
-    deliveryWarehouseDoc = chosen;
     coverageStatus = "INSIDE_BOUNDARY";
-    scenario = "INSIDE_BOUNDARY";
     canDeliver = true;
   } else if (decisionNormalizedGov && isDecisionGovSupported) {
     let nearest = await findNearestWarehouseByGovernorate({
@@ -484,9 +475,7 @@ console.log(areaCodeNormalized);
     }
 
     productsWarehouseDoc = nearest;
-    deliveryWarehouseDoc = null;
     coverageStatus = "OUTSIDE_BOUNDARIES_SUPPORTED_GOVERNORATE";
-    scenario = "OUTSIDE_BOUNDARIES_SUPPORTED_GOVERNORATE";
     canDeliver = false;
     reasonCode = "NON_DELIVERABLE_OUTSIDE_BOUNDARIES_SUPPORTED_GOV";
     reasonMessage =
@@ -497,9 +486,7 @@ console.log(areaCodeNormalized);
       throw new ApiError("No active warehouse configured", 500);
     }
     productsWarehouseDoc = defaultWarehouse;
-    deliveryWarehouseDoc = defaultWarehouse;
     coverageStatus = "OUTSIDE_BOUNDARIES_UNSUPPORTED_GOVERNORATE";
-    scenario = "OUTSIDE_BOUNDARIES_UNSUPPORTED_GOVERNORATE";
     canDeliver = true;
   }
 
@@ -507,16 +494,12 @@ console.log(areaCodeNormalized);
   const normalizedGov = decisionNormalizedGov || normalizedFromWarehouse;
   const isSupported = isSupportedGovernorate(normalizedGov);
 
-  const priceSource = deliveryWarehouseDoc || productsWarehouseDoc;
-  const effectiveShippingPrice = priceSource.defaultShippingPrice ?? 0;
+  const effectiveShippingPrice = productsWarehouseDoc.defaultShippingPrice ?? 0;
 
   const productsSummary = summarizeWarehouse(productsWarehouseDoc);
-  const deliverySummary = summarizeWarehouse(deliveryWarehouseDoc);
 
   return {
     warehouse: productsSummary,
-    productsWarehouse: productsSummary,
-    deliveryWarehouse: deliverySummary,
     location: {
       source,
       coordinates: {
@@ -532,7 +515,6 @@ console.log(areaCodeNormalized);
     delivery: {
       canDeliver,
       coverageStatus,
-      scenario,
       reasonCode,
       reasonMessage,
       requiresPreciseLocation: false,

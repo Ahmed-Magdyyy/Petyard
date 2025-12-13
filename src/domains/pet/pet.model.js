@@ -6,12 +6,12 @@ const petSchema = new Schema(
   {
     petOwner: { type: Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true },
-    type: { type: String, required: true }, // dog/cat/other
+    type: { type: String, required: true },
     breed: { type: String },
-    gender: { type: String }, // 'male' | 'female' | 'unknown'
+    gender: { type: String },
     birthDate: { type: Date },
-    chronic_conditions: { type: [String], default: [] }, // array of condition codes
-    temp_health_issues: { type: [String], default: [] }, // array of condition codes
+    chronic_conditions: { type: [String], default: [] },
+    temp_health_issues: { type: [String], default: [] },
     isDefault: { type: Boolean, default: false },
     image: {
       public_id: { type: String },
