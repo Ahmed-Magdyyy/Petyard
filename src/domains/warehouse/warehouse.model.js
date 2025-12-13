@@ -43,7 +43,6 @@ const warehouseSchema = new Schema(
         default: undefined,
       },
     },
-    // Optional GeoJSON polygon for configured delivery boundary
     boundaryGeometry: {
       type: {
         type: String,
@@ -62,6 +61,12 @@ const warehouseSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    moderators: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     active: {
       type: Boolean,
       default: true,
@@ -73,6 +78,7 @@ const warehouseSchema = new Schema(
 warehouseSchema.index({ active: 1 });
 warehouseSchema.index({ governorate: 1, active: 1 });
 warehouseSchema.index({ isDefault: 1 });
+warehouseSchema.index({ moderators: 1 });
 warehouseSchema.index({ location: "2dsphere" });
 
 export const WarehouseModel = model("Warehouse", warehouseSchema);

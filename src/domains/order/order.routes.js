@@ -8,6 +8,7 @@ import {
   getOrderForAdmin,
   updateOrderStatusForAdmin,
 } from "./order.controller.js";
+import { scopeOrdersToModeratorWarehouses } from "./order.middleware.js";
 import {
   protect,
   allowedTo,
@@ -40,8 +41,9 @@ router.get("/me/:id", orderIdParamValidator, getMyOrder);
 router.use(
   "/admin",
   protect,
-  allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
-  enabledControlsMiddleware(enabledControlsEnum.ORDERS)
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
+  enabledControlsMiddleware(enabledControlsEnum.ORDERS),
+  scopeOrdersToModeratorWarehouses
 );
 
 router.get("/admin", listOrdersForAdmin);

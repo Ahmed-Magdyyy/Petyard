@@ -79,6 +79,7 @@ export const getMyOrder = asyncHandler(async (req, res) => {
 export const listOrdersForAdmin = asyncHandler(async (req, res) => {
   const result = await listOrdersForAdminService({
     ...req.query,
+    warehouseScope: req.orderWarehouseScope,
     lang: req.lang,
   });
   res.status(200).json(result);
@@ -87,7 +88,11 @@ export const listOrdersForAdmin = asyncHandler(async (req, res) => {
 export const getOrderForAdmin = asyncHandler(async (req, res) => {
   const orderId = req.params.id;
 
-  const order = await getOrderByIdForAdminService(orderId, req.lang);
+  const order = await getOrderByIdForAdminService(
+    orderId,
+    req.lang,
+    req.orderWarehouseScope
+  );
 
   res.status(200).json({ data: order });
 });
@@ -100,6 +105,7 @@ export const updateOrderStatusForAdmin = asyncHandler(async (req, res) => {
     orderId,
     newStatus: status,
     actorUserId: req.user._id,
+    warehouseScope: req.orderWarehouseScope,
   });
 
   res.status(200).json({ data: updated });

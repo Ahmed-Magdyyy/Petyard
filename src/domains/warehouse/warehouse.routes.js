@@ -21,7 +21,7 @@ const router = Router();
 // Admin-only routes for managing warehouses
 router.use(
   protect,
-  allowedTo(roles.SUPER_ADMIN)
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN)
 );
 
 router

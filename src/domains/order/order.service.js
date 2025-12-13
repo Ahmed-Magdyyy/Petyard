@@ -736,10 +736,22 @@ export async function listOrdersForAdminService(query = {}) {
     guestId,
     from,
     to,
+    warehouseScope,
     lang = "en",
   } = query;
 
   const filter = {};
+
+  const hasWarehouseScope = Array.isArray(warehouseScope);
+  if (hasWarehouseScope && warehouseScope.length === 0) {
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    return {
+      totalPages: 1,
+      page: pageNum,
+      results: 0,
+      data: [],
+    };
+  }
 
   if (status) {
     const v = String(status).trim().toLowerCase();
@@ -754,7 +766,17 @@ export async function listOrdersForAdminService(query = {}) {
   }
 
   if (warehouse) {
+    if (hasWarehouseScope) {
+      const allowed = warehouseScope.some(
+        (w) => String(w) === String(warehouse)
+      );
+      if (!allowed) {
+        throw new ApiError("You are not allowed to access this route", 403);
+      }
+    }
     filter.warehouse = warehouse;
+  } else if (hasWarehouseScope) {
+    filter.warehouse = { $in: warehouseScope };
   }
 
   if (user) {
@@ -796,7 +818,11 @@ export async function listOrdersForAdminService(query = {}) {
   };
 }
 
-export async function getOrderByIdForAdminService(orderId, lang = "en") {
+export async function getOrderByIdForAdminService(
+  orderId,
+  lang = "en",
+  warehouseScope
+) {
   const order = await OrderModel.findById(orderId).populate({
     path: "history.byUserId",
     select: "name role",
@@ -804,6 +830,16 @@ export async function getOrderByIdForAdminService(orderId, lang = "en") {
   if (!order) {
     throw new ApiError("Order not found", 404);
   }
+
+  if (Array.isArray(warehouseScope)) {
+    const allowed = warehouseScope.some(
+      (w) => String(w) === String(order.warehouse)
+    );
+    if (!allowed) {
+      throw new ApiError("Order not found", 404);
+    }
+  }
+
   await rebindOrdersLocalization(order, lang);
   return order;
 }
@@ -812,6 +848,7 @@ export async function updateOrderStatusService({
   orderId,
   newStatus,
   actorUserId,
+  warehouseScope,
 }) {
   const allowed = Object.values(orderStatusEnum);
   if (!allowed.includes(newStatus)) {
@@ -826,6 +863,15 @@ export async function updateOrderStatusService({
       const order = await OrderModel.findById(orderId).session(session);
       if (!order) {
         throw new ApiError("Order not found", 404);
+      }
+
+      if (Array.isArray(warehouseScope)) {
+        const allowedWarehouse = warehouseScope.some(
+          (w) => String(w) === String(order.warehouse)
+        );
+        if (!allowedWarehouse) {
+          throw new ApiError("Order not found", 404);
+        }
       }
 
       const oldStatus = order.status;

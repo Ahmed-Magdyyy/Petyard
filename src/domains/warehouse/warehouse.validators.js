@@ -74,6 +74,16 @@ export const createWarehouseValidator = [
     .isFloat({ min: 0 })
     .withMessage("defaultShippingPrice must be a non-negative number"),
 
+  body("moderators")
+    .optional()
+    .isArray()
+    .withMessage("moderators must be an array"),
+
+  body("moderators.*")
+    .optional()
+    .isMongoId()
+    .withMessage("Invalid moderator id"),
+
   validatorMiddleware,
 ];
 
@@ -134,6 +144,16 @@ export const updateWarehouseValidator = [
     .optional()
     .isBoolean()
     .withMessage("active must be a boolean"),
+
+  body("moderators")
+    .optional()
+    .isArray()
+    .withMessage("moderators must be an array"),
+
+  body("moderators.*")
+    .optional()
+    .isMongoId()
+    .withMessage("Invalid moderator id"),
 
   validatorMiddleware,
 ];
