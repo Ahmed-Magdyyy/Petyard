@@ -5,6 +5,8 @@ import { CartModel } from "../cart/cart.model.js";
 import { ProductModel } from "../product/product.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { CouponModel } from "../coupon/coupon.model.js";
+import { UserModel } from "../user/user.model.js";
+import { WalletTransactionModel } from "../wallet/walletTransaction.model.js";
 import {
   orderStatusEnum,
   paymentMethodEnum,
@@ -276,7 +278,7 @@ async function rebindOrdersLocalization(ordersOrOrder, lang = "en") {
   return ordersOrOrder;
 }
 
-async function restoreStockForOrder({ session, order }) {
+export async function restoreStockForOrder({ session, order }) {
   const items = Array.isArray(order.items) ? order.items : [];
   if (!items.length) {
     return;
@@ -469,6 +471,30 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
   };
 }
 
+async function applyWalletIfUser({ session, userId, netSubtotal }) {
+  if (!userId) {
+    return { walletUsed: 0, finalSubtotal: netSubtotal };
+  }
+
+  if (netSubtotal <= 0) {
+    return { walletUsed: 0, finalSubtotal: 0 };
+  }
+
+  const user = await UserModel.findById(userId).session(session).select("walletBalance");
+  if (!user) {
+    return { walletUsed: 0, finalSubtotal: netSubtotal };
+  }
+
+  const walletBalance = typeof user.walletBalance === "number" && user.walletBalance >= 0
+    ? user.walletBalance
+    : 0;
+
+  const walletUsed = Math.min(walletBalance, netSubtotal);
+  const finalSubtotal = netSubtotal - walletUsed;
+
+  return { walletUsed, finalSubtotal };
+}
+
 async function processOrderCreationWithCart({
   session,
   cart,
@@ -518,6 +544,17 @@ async function processOrderCreationWithCart({
     shippingFee,
   });
 
+  const netSubtotal = Math.max(0, subtotal - couponResult.discountAmount);
+  const netShipping = Math.max(0, shippingFee - couponResult.shippingDiscount);
+
+  const walletResult = await applyWalletIfUser({
+    session,
+    userId: orderUserId,
+    netSubtotal,
+  });
+
+  const finalTotal = walletResult.finalSubtotal + netShipping;
+
   const orderItems = items.map(mapCartItemToOrderItem);
 
   const deliveryAddress = mapCartDeliveryAddressToOrder(cart, addressUser);
@@ -553,7 +590,8 @@ async function processOrderCreationWithCart({
     discountAmount: couponResult.discountAmount,
     shippingDiscount: couponResult.shippingDiscount,
     totalDiscount: couponResult.totalDiscount,
-    total: couponResult.total,
+    walletUsed: walletResult.walletUsed,
+    total: finalTotal,
     couponCode: couponResult.couponCode,
     status: orderStatusEnum.PENDING,
     paymentMethod: pm,
@@ -565,6 +603,42 @@ async function processOrderCreationWithCart({
   const createdOrder = await OrderModel.create([orderDoc], { session }).then(
     (res) => res[0]
   );
+
+  if (walletResult.walletUsed > 0 && orderUserId) {
+    const updateResult = await UserModel.updateOne(
+      {
+        _id: orderUserId,
+        walletBalance: { $gte: walletResult.walletUsed },
+      },
+      { $inc: { walletBalance: -walletResult.walletUsed } },
+      { session }
+    );
+
+    if (updateResult.matchedCount === 0) {
+      throw new ApiError(
+        "Insufficient wallet balance or concurrent modification",
+        400
+      );
+    }
+
+    const userAfterDebit = await UserModel.findById(orderUserId)
+      .session(session)
+      .select("walletBalance");
+
+    await WalletTransactionModel.create(
+      [
+        {
+          user: orderUserId,
+          amount: -walletResult.walletUsed,
+          type: "ORDER_DEBIT",
+          referenceType: "ORDER",
+          referenceId: createdOrder._id,
+          balanceAfter: userAfterDebit?.walletBalance ?? 0,
+        },
+      ],
+      { session }
+    );
+  }
 
   if (couponResult.couponCode) {
     await CouponModel.updateOne(
@@ -895,7 +969,47 @@ export async function updateOrderStatusService({
         await restoreStockForOrder({ session, order });
       }
 
+      const shouldRefundWallet =
+        newStatus === orderStatusEnum.CANCELLED &&
+        oldStatus !== orderStatusEnum.CANCELLED &&
+        order.user &&
+        typeof order.walletUsed === "number" &&
+        order.walletUsed > 0;
+
+      if (shouldRefundWallet) {
+        await UserModel.updateOne(
+          { _id: order.user },
+          { $inc: { walletBalance: order.walletUsed } },
+          { session }
+        );
+
+        const userAfterRefund = await UserModel.findById(order.user)
+          .session(session)
+          .select("walletBalance");
+
+        await WalletTransactionModel.create(
+          [
+            {
+              user: order.user,
+              amount: order.walletUsed,
+              type: "ORDER_REFUND",
+              referenceType: "ORDER",
+              referenceId: order._id,
+              balanceAfter: userAfterRefund?.walletBalance ?? 0,
+              note: `Refund for cancelled order ${order.orderNumber}`,
+            },
+          ],
+          { session }
+        );
+      }
+
       order.status = newStatus;
+
+      if (newStatus === orderStatusEnum.DELIVERED && 
+          order.paymentMethod === paymentMethodEnum.COD && 
+          order.paymentStatus !== paymentStatusEnum.PAID) {
+        order.paymentStatus = paymentStatusEnum.PAID;
+      }
 
       order.history = Array.isArray(order.history) ? order.history : [];
       order.history.push({

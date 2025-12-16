@@ -153,6 +153,7 @@ const orderSchema = new Schema(
     discountAmount: { type: Number, required: true, min: 0, default: 0 },
     shippingDiscount: { type: Number, required: true, min: 0, default: 0 },
     totalDiscount: { type: Number, required: true, min: 0, default: 0 },
+    walletUsed: { type: Number, required: true, min: 0, default: 0 },
     total: { type: Number, required: true, min: 0 },
     couponCode: { type: String },
     status: {

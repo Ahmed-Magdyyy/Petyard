@@ -19,6 +19,7 @@ export const orderStatusEnum = Object.freeze({
   SHIPPED: 'shipped',
   DELIVERED: 'delivered',
   CANCELLED: 'cancelled',
+  RETURNED: 'returned'
 });
 
 export const paymentMethodEnum = Object.freeze({
@@ -30,7 +31,13 @@ export const paymentStatusEnum = Object.freeze({
   PAID: 'paid',
   FAILED: 'failed',
   REFUNDED: 'refunded'
-})
+});
+
+export const returnStatusEnum = Object.freeze({
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected'
+});
 
 
 export const enabledControls = Object.freeze({

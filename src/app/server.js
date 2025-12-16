@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 import morgan from "morgan";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
-
+import https from "https";
 import {ApiError} from "../shared/ApiError.js";
 import {globalError} from "../shared/middlewares/errorMiddleware.js";
 import {dbConnection} from "../shared/database.js";
@@ -62,6 +62,26 @@ const server = app.listen(PORT , () =>
 
 getRedisClient()
 getFirebaseAdmin()
+
+// Ping the server immediately after starting the server
+pingServer();
+
+// Ping the server every 14 minutes (14 * 60 * 1000 milliseconds)
+const pingInterval = 15 * 60 * 1000;
+setInterval(pingServer, pingInterval);
+
+// Function to ping the server by hitting the specified API route
+function pingServer() {
+  const pingEndpoint = 'https://petyard.onrender.com/api/v1/banners';
+
+  // Send a GET request to the ping endpoint
+  https.get(pingEndpoint, (res) => {
+    console.log(`Ping sent to server: ${res.statusCode}`);
+  }).on('error', (err) => {
+    console.error('Error while sending ping:', err);
+  });
+}
+
 // UnhandledRejections event handler (rejection outside express)
 process.on("unhandledRejection", (err) => {
   console.error(

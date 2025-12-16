@@ -261,6 +261,55 @@ export async function sendOrderStatusChangedNotification(order) {
   }
 }
 
+export async function sendReturnStatusChangedNotification(returnRequest) {
+  if (!returnRequest) {
+    return { skipped: true };
+  }
+
+  const status = returnRequest.status || "";
+  const statusText = status.toLowerCase();
+  
+  let body;
+  if (statusText === "approved") {
+    body = "Your return request has been approved. Refund will be credited to your wallet.";
+  } else if (statusText === "rejected") {
+    body = "Your return request has been rejected.";
+  } else {
+    body = `Your return request status: ${statusText}`;
+  }
+
+  const title = "Return Request Update";
+
+  const data = {
+    type: "return_status",
+    returnId: String(returnRequest._id),
+    status: status,
+  };
+
+  try {
+    if (returnRequest.user) {
+      const userId = typeof returnRequest.user === "object" 
+        ? returnRequest.user._id 
+        : returnRequest.user;
+      
+      const result = await sendPushToUser({
+        userId,
+        notification: { title, body },
+        data,
+      });
+      return result;
+    }
+
+    return { skipped: true };
+  } catch (err) {
+    console.error(
+      "[Notification] Failed to send return status notification:",
+      err.message
+    );
+    return { skipped: true };
+  }
+}
+
 export async function sendAdminCustomNotificationToUsers({
   userIds,
   notification,

@@ -7,6 +7,7 @@ import {
 } from "../coupon/coupon.service.js";
 import { getCartService } from "../cart/cart.service.js";
 import { OrderModel } from "../order/order.model.js";
+import { UserModel } from "../user/user.model.js";
 
 export async function applyCouponAtCheckoutService({
   userId,
@@ -217,8 +218,8 @@ export async function getCheckoutSummaryService({
     coupon = couponPreview.coupon;
 
     pricing = {
-      subtotal: effect.orderSubtotal,
-      shippingFee: effect.shippingFee,
+      subtotal: effect.subtotal,
+      shippingFee: effect.shippingBefore,
       discountAmount: effect.discountAmount,
       shippingDiscount: effect.shippingDiscount,
       totalDiscount: effect.totalDiscount,
@@ -240,13 +241,38 @@ export async function getCheckoutSummaryService({
     };
   }
 
+  // Calculate wallet deduction for authenticated users
+  let walletBalance = 0;
+  let walletUsed = 0;
+  let finalTotal = pricing.total;
+
+  if (userId) {
+    const user = await UserModel.findById(userId).select("walletBalance");
+    if (user && typeof user.walletBalance === "number" && user.walletBalance > 0) {
+      walletBalance = user.walletBalance;
+      
+      // Wallet applies only to items after discount (not shipping)
+      const netSubtotal = Math.max(0, pricing.subtotal - pricing.discountAmount);
+      walletUsed = Math.min(walletBalance, netSubtotal);
+      
+      // Final total = (netSubtotal - walletUsed) + shipping
+      const remainingSubtotal = netSubtotal - walletUsed;
+      finalTotal = remainingSubtotal + (pricing.shippingFee - pricing.shippingDiscount);
+    }
+  }
+
   return {
     cartId: cartResponse.id,
     warehouseId: cartResponse.warehouseId,
     currency: cartResponse.currency || "EGP",
     deliveryAddress: cartResponse.deliveryAddress,
     items: cartResponse.items,
-    pricing,
+    pricing: {
+      ...pricing,
+      walletBalance,
+      walletUsed,
+      finalTotal,
+    },
     coupon,
   };
 }
