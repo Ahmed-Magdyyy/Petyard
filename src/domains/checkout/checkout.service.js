@@ -1,13 +1,14 @@
 import { ApiError } from "../../shared/ApiError.js";
 import { findCart } from "../cart/cart.repository.js";
+import { getCartService } from "../cart/cart.service.js";
 import { getWarehouseByIdService } from "../warehouse/warehouse.service.js";
 import {
   findActiveCouponByCodeService,
   computeCouponEffect,
 } from "../coupon/coupon.service.js";
-import { getCartService } from "../cart/cart.service.js";
-import { OrderModel } from "../order/order.model.js";
 import { UserModel } from "../user/user.model.js";
+import { calculateLoyaltyPointsForOrder } from "../loyalty/loyalty.service.js";
+import { OrderModel } from "../order/order.model.js";
 
 export async function applyCouponAtCheckoutService({
   userId,
@@ -241,10 +242,11 @@ export async function getCheckoutSummaryService({
     };
   }
 
-  // Calculate wallet deduction for authenticated users
+  // Calculate wallet deduction and loyalty points for authenticated users
   let walletBalance = 0;
   let walletUsed = 0;
   let finalTotal = pricing.total;
+  let estimatedLoyaltyPoints = 0;
 
   if (userId) {
     const user = await UserModel.findById(userId).select("walletBalance");
@@ -259,6 +261,9 @@ export async function getCheckoutSummaryService({
       const remainingSubtotal = netSubtotal - walletUsed;
       finalTotal = remainingSubtotal + (pricing.shippingFee - pricing.shippingDiscount);
     }
+    
+    // Calculate estimated loyalty points (awarded on delivery)
+    estimatedLoyaltyPoints = await calculateLoyaltyPointsForOrder(finalTotal);
   }
 
   return {
@@ -272,6 +277,7 @@ export async function getCheckoutSummaryService({
       walletBalance,
       walletUsed,
       finalTotal,
+      loyaltyPoints: estimatedLoyaltyPoints,
     },
     coupon,
   };

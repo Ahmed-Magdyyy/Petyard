@@ -4,6 +4,7 @@ import { ReturnRequestModel } from "./return.model.js";
 import { OrderModel } from "../order/order.model.js";
 import { UserModel } from "../user/user.model.js";
 import { WalletTransactionModel } from "../wallet/walletTransaction.model.js";
+import { LoyaltyTransactionModel } from "../loyalty/loyaltyTransaction.model.js";
 import { orderStatusEnum, returnStatusEnum, paymentStatusEnum } from "../../shared/constants/enums.js";
 import { restoreStockForOrder } from "../order/order.service.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
@@ -169,6 +170,7 @@ export async function processReturnRequestService({
       }
 
       if (normalizedAction === returnStatusEnum.APPROVED) {
+        // Wallet refund
         if (returnRequest.walletRefund > 0 && returnRequest.user) {
           await UserModel.updateOne(
             { _id: returnRequest.user },
@@ -190,6 +192,30 @@ export async function processReturnRequestService({
                 referenceId: order._id,
                 balanceAfter: userAfterRefund?.walletBalance ?? 0,
                 note: `Refund for returned order ${order.orderNumber}`,
+              },
+            ],
+            { session }
+          );
+        }
+
+        // Deduct loyalty points if order had awarded points
+        if (returnRequest.user && order.loyaltyPointsAwarded > 0) {
+          const userAfterDeduction = await UserModel.findOneAndUpdate(
+            { _id: returnRequest.user },
+            { $inc: { loyaltyPoints: -order.loyaltyPointsAwarded } },
+            { session, new: true, select: "loyaltyPoints" }
+          );
+
+          await LoyaltyTransactionModel.create(
+            [
+              {
+                user: returnRequest.user,
+                points: -order.loyaltyPointsAwarded,
+                type: "DEDUCTED",
+                referenceType: "ORDER",
+                referenceId: order._id,
+                balanceAfter: Math.max(0, userAfterDeduction?.loyaltyPoints ?? 0),
+                description: `Deducted ${order.loyaltyPointsAwarded} points due to returned order ${order.orderNumber}`,
               },
             ],
             { session }

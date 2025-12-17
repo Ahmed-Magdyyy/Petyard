@@ -156,6 +156,7 @@ const orderSchema = new Schema(
     walletUsed: { type: Number, required: true, min: 0, default: 0 },
     total: { type: Number, required: true, min: 0 },
     couponCode: { type: String },
+    loyaltyPointsAwarded: { type: Number, min: 0, default: 0 },
     status: {
       type: String,
       enum: Object.values(orderStatusEnum),

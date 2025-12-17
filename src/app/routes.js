@@ -17,6 +17,8 @@ import returnRoutes from "../domains/return/return.routes.js";
 import notificationRoutes from "../domains/notification/notification.routes.js";
 import bannerRoutes from "../domains/banner/banner.routes.js";
 import favoriteRoutes from "../domains/favorite/favorite.routes.js";
+import loyaltyRoutes from "../domains/loyalty/loyalty.routes.js";
+import walletRoutes from "../domains/wallet/wallet.routes.js";
 
 export function mountRoutes(app) {
   app.use("/api/v1/auth", authRoutes);
@@ -37,4 +39,6 @@ export function mountRoutes(app) {
   app.use("/api/v1/notifications", notificationRoutes);
   app.use("/api/v1/banners", bannerRoutes);
   app.use("/api/v1/favorites", favoriteRoutes);
+  app.use("/api/v1/loyalty", loyaltyRoutes);
+  app.use("/api/v1/wallet", walletRoutes);
 }

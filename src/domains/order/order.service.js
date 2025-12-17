@@ -19,6 +19,8 @@ import {
 } from "../coupon/coupon.service.js";
 import { sendOrderStatusChangedNotification } from "../notification/notification.service.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
+import { calculateLoyaltyPointsForOrder } from "../loyalty/loyalty.service.js";
+import { LoyaltyTransactionModel } from "../loyalty/loyaltyTransaction.model.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -1005,10 +1007,68 @@ export async function updateOrderStatusService({
 
       order.status = newStatus;
 
+      // Auto-mark COD payments as paid when delivered
       if (newStatus === orderStatusEnum.DELIVERED && 
           order.paymentMethod === paymentMethodEnum.COD && 
           order.paymentStatus !== paymentStatusEnum.PAID) {
         order.paymentStatus = paymentStatusEnum.PAID;
+      }
+
+      // Award loyalty points when order is delivered
+      if (newStatus === orderStatusEnum.DELIVERED && order.user) {
+        const amountPaid = Math.max(0, order.total || 0);
+        const pointsToAward = await calculateLoyaltyPointsForOrder(amountPaid);
+        
+        if (pointsToAward > 0) {
+          const userAfterPoints = await UserModel.findOneAndUpdate(
+            { _id: order.user },
+            { $inc: { loyaltyPoints: pointsToAward } },
+            { session, new: true, select: "loyaltyPoints" }
+          );
+          
+          order.loyaltyPointsAwarded = pointsToAward;
+          
+          await LoyaltyTransactionModel.create(
+            [
+              {
+                user: order.user,
+                points: pointsToAward,
+                type: "EARNED",
+                referenceType: "ORDER",
+                referenceId: order._id,
+                balanceAfter: userAfterPoints?.loyaltyPoints ?? pointsToAward,
+                description: `Earned ${pointsToAward} points from order ${order.orderNumber}`,
+              },
+            ],
+            { session }
+          );
+        }
+      }
+
+      // Deduct loyalty points if order is cancelled/returned after points were awarded
+      if ((newStatus === orderStatusEnum.CANCELLED || newStatus === orderStatusEnum.RETURNED) && 
+          order.user && 
+          order.loyaltyPointsAwarded > 0) {
+        const userAfterDeduction = await UserModel.findOneAndUpdate(
+          { _id: order.user },
+          { $inc: { loyaltyPoints: -order.loyaltyPointsAwarded } },
+          { session, new: true, select: "loyaltyPoints" }
+        );
+        
+        await LoyaltyTransactionModel.create(
+          [
+            {
+              user: order.user,
+              points: -order.loyaltyPointsAwarded,
+              type: "DEDUCTED",
+              referenceType: "ORDER",
+              referenceId: order._id,
+              balanceAfter: Math.max(0, userAfterDeduction?.loyaltyPoints ?? 0),
+              description: `Deducted ${order.loyaltyPointsAwarded} points due to ${newStatus} order ${order.orderNumber}`,
+            },
+          ],
+          { session }
+        );
       }
 
       order.history = Array.isArray(order.history) ? order.history : [];
