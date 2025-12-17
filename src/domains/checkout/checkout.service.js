@@ -249,12 +249,14 @@ export async function getCheckoutSummaryService({
   let estimatedLoyaltyPoints = 0;
 
   if (userId) {
+    // Calculate net subtotal for wallet and loyalty points
+    const netSubtotal = Math.max(0, pricing.subtotal - pricing.discountAmount);
+    
     const user = await UserModel.findById(userId).select("walletBalance");
     if (user && typeof user.walletBalance === "number" && user.walletBalance > 0) {
       walletBalance = user.walletBalance;
       
       // Wallet applies only to items after discount (not shipping)
-      const netSubtotal = Math.max(0, pricing.subtotal - pricing.discountAmount);
       walletUsed = Math.min(walletBalance, netSubtotal);
       
       // Final total = (netSubtotal - walletUsed) + shipping
@@ -263,7 +265,8 @@ export async function getCheckoutSummaryService({
     }
     
     // Calculate estimated loyalty points (awarded on delivery)
-    estimatedLoyaltyPoints = await calculateLoyaltyPointsForOrder(finalTotal);
+    // Points on items only (subtotal - discounts), excluding shipping
+    estimatedLoyaltyPoints = await calculateLoyaltyPointsForOrder(netSubtotal);
   }
 
   return {

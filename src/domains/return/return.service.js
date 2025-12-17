@@ -9,6 +9,7 @@ import { orderStatusEnum, returnStatusEnum, paymentStatusEnum } from "../../shar
 import { restoreStockForOrder } from "../order/order.service.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
 import { sendReturnStatusChangedNotification } from "../notification/notification.service.js";
+import { deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
 
 const RETURN_WINDOW_DAYS = 14;
 
@@ -170,13 +171,51 @@ export async function processReturnRequestService({
       }
 
       if (normalizedAction === returnStatusEnum.APPROVED) {
-        // Wallet refund
-        if (returnRequest.walletRefund > 0 && returnRequest.user) {
-          await UserModel.updateOne(
-            { _id: returnRequest.user },
-            { $inc: { walletBalance: returnRequest.walletRefund } },
+        let walletDeductedForPoints = 0;
+        
+        // Deduct loyalty points if order had awarded points
+        if (returnRequest.user && order.loyaltyPointsAwarded > 0) {
+          const deductionResult = await deductLoyaltyPointsOnReturnService({
+            userId: returnRequest.user,
+            pointsToDeduct: order.loyaltyPointsAwarded,
+            session,
+          });
+          
+          walletDeductedForPoints = deductionResult.walletDeducted;
+          
+          const userAfterDeduction = await UserModel.findById(returnRequest.user)
+            .select("loyaltyPoints")
+            .session(session);
+
+          await LoyaltyTransactionModel.create(
+            [
+              {
+                user: returnRequest.user,
+                points: -(deductionResult.pointsDeducted),
+                type: "DEDUCTED",
+                referenceType: "ORDER",
+                referenceId: order._id,
+                balanceAfter: userAfterDeduction?.loyaltyPoints ?? 0,
+                description: walletDeductedForPoints > 0
+                  ? `Deducted ${deductionResult.pointsDeducted} points and ${walletDeductedForPoints} EGP from wallet for returned order ${order.orderNumber}`
+                  : `Deducted ${order.loyaltyPointsAwarded} points due to returned order ${order.orderNumber}`,
+              },
+            ],
             { session }
           );
+        }
+
+        // Wallet refund (minus any wallet deducted for points)
+        if (returnRequest.walletRefund > 0 && returnRequest.user) {
+          const netRefund = Math.max(0, returnRequest.walletRefund - walletDeductedForPoints);
+          
+          if (netRefund > 0) {
+            await UserModel.updateOne(
+              { _id: returnRequest.user },
+              { $inc: { walletBalance: netRefund } },
+              { session }
+            );
+          }
 
           const userAfterRefund = await UserModel.findById(returnRequest.user)
             .session(session)
@@ -186,36 +225,14 @@ export async function processReturnRequestService({
             [
               {
                 user: returnRequest.user,
-                amount: returnRequest.walletRefund,
+                amount: netRefund,
                 type: "ORDER_REFUND",
                 referenceType: "ORDER",
                 referenceId: order._id,
                 balanceAfter: userAfterRefund?.walletBalance ?? 0,
-                note: `Refund for returned order ${order.orderNumber}`,
-              },
-            ],
-            { session }
-          );
-        }
-
-        // Deduct loyalty points if order had awarded points
-        if (returnRequest.user && order.loyaltyPointsAwarded > 0) {
-          const userAfterDeduction = await UserModel.findOneAndUpdate(
-            { _id: returnRequest.user },
-            { $inc: { loyaltyPoints: -order.loyaltyPointsAwarded } },
-            { session, new: true, select: "loyaltyPoints" }
-          );
-
-          await LoyaltyTransactionModel.create(
-            [
-              {
-                user: returnRequest.user,
-                points: -order.loyaltyPointsAwarded,
-                type: "DEDUCTED",
-                referenceType: "ORDER",
-                referenceId: order._id,
-                balanceAfter: Math.max(0, userAfterDeduction?.loyaltyPoints ?? 0),
-                description: `Deducted ${order.loyaltyPointsAwarded} points due to returned order ${order.orderNumber}`,
+                description: walletDeductedForPoints > 0
+                  ? `Refund for returned order ${order.orderNumber} (${returnRequest.walletRefund} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
+                  : `Refund for returned order ${order.orderNumber}`,
               },
             ],
             { session }

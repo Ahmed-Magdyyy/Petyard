@@ -19,7 +19,7 @@ import {
 } from "../coupon/coupon.service.js";
 import { sendOrderStatusChangedNotification } from "../notification/notification.service.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
-import { calculateLoyaltyPointsForOrder } from "../loyalty/loyalty.service.js";
+import { calculateLoyaltyPointsForOrder, deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
 import { LoyaltyTransactionModel } from "../loyalty/loyaltyTransaction.model.js";
 
 function normalizeLang(lang) {
@@ -1016,8 +1016,9 @@ export async function updateOrderStatusService({
 
       // Award loyalty points when order is delivered
       if (newStatus === orderStatusEnum.DELIVERED && order.user) {
-        const amountPaid = Math.max(0, order.total || 0);
-        const pointsToAward = await calculateLoyaltyPointsForOrder(amountPaid);
+        // Points on items only (subtotal - discounts), excluding shipping
+        const itemsValue = Math.max(0, (order.subtotal || 0) - (order.discountAmount || 0));
+        const pointsToAward = await calculateLoyaltyPointsForOrder(itemsValue);
         
         if (pointsToAward > 0) {
           const userAfterPoints = await UserModel.findOneAndUpdate(
@@ -1049,22 +1050,28 @@ export async function updateOrderStatusService({
       if ((newStatus === orderStatusEnum.CANCELLED || newStatus === orderStatusEnum.RETURNED) && 
           order.user && 
           order.loyaltyPointsAwarded > 0) {
-        const userAfterDeduction = await UserModel.findOneAndUpdate(
-          { _id: order.user },
-          { $inc: { loyaltyPoints: -order.loyaltyPointsAwarded } },
-          { session, new: true, select: "loyaltyPoints" }
-        );
+        const deductionResult = await deductLoyaltyPointsOnReturnService({
+          userId: order.user,
+          pointsToDeduct: order.loyaltyPointsAwarded,
+          session,
+        });
+        
+        const userAfterDeduction = await UserModel.findById(order.user)
+          .select("loyaltyPoints")
+          .session(session);
         
         await LoyaltyTransactionModel.create(
           [
             {
               user: order.user,
-              points: -order.loyaltyPointsAwarded,
+              points: -(deductionResult.pointsDeducted),
               type: "DEDUCTED",
               referenceType: "ORDER",
               referenceId: order._id,
-              balanceAfter: Math.max(0, userAfterDeduction?.loyaltyPoints ?? 0),
-              description: `Deducted ${order.loyaltyPointsAwarded} points due to ${newStatus} order ${order.orderNumber}`,
+              balanceAfter: userAfterDeduction?.loyaltyPoints ?? 0,
+              description: deductionResult.walletDeducted > 0
+                ? `Deducted ${deductionResult.pointsDeducted} points and ${deductionResult.walletDeducted} EGP from wallet for ${newStatus} order ${order.orderNumber}`
+                : `Deducted ${order.loyaltyPointsAwarded} points due to ${newStatus} order ${order.orderNumber}`,
             },
           ],
           { session }
