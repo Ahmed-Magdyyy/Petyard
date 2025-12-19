@@ -19,13 +19,14 @@ import {
   createProductValidator,
   updateProductValidator,
   productIdParamValidator,
+  listProductsQueryValidator,
 } from "./product.validators.js";
 import { uploadMultipleImages } from "../../shared/middlewares/uploadMiddleware.js";
 import reviewRoutes from "../review/review.routes.js";
 
 const router = Router();
 
-router.get("/", getProducts);
+router.get("/", listProductsQueryValidator, getProducts);
 router.get("/:id", productIdParamValidator, getProduct);
 
 router.use("/:id/reviews", reviewRoutes);

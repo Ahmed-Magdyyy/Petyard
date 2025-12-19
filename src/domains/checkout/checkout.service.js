@@ -27,15 +27,35 @@ export async function applyCouponAtCheckoutService({
   const trimmedCode = couponCode.trim();
   const filter = userId ? { user: userId } : { guestId };
 
-  const cart = await findCart(filter);
+  const baseCart = await findCart(filter);
 
-  if (!cart) {
+  if (!baseCart) {
     throw new ApiError("Cart not found", 404);
   }
+
+  const warehouseId = baseCart.warehouse;
+  if (!warehouseId) {
+    throw new ApiError("Cart warehouse is not set", 400);
+  }
+
+  const cart = await getCartService({
+    userId: userId || null,
+    guestId: guestId || null,
+    warehouseId,
+    lang,
+  });
 
   const items = Array.isArray(cart.items) ? cart.items : [];
   if (!items.length) {
     throw new ApiError("Cart is empty", 400);
+  }
+
+  const hasPromotionalItems = items.some((it) => !!it.promotion);
+  if (hasPromotionalItems) {
+    throw new ApiError(
+      "Coupons cannot be applied when the cart contains promotional items",
+      400
+    );
   }
 
   const subtotal =
@@ -45,11 +65,6 @@ export async function applyCouponAtCheckoutService({
 
   if (subtotal <= 0) {
     throw new ApiError("Cart total must be greater than 0", 400);
-  }
-
-  const warehouseId = cart.warehouse;
-  if (!warehouseId) {
-    throw new ApiError("Cart warehouse is not set", 400);
   }
 
   const warehouse = await getWarehouseByIdService(warehouseId);
@@ -149,7 +164,7 @@ export async function applyCouponAtCheckoutService({
   };
 
   return {
-    cartId: cart._id,
+    cartId: cart.id,
     warehouseId,
     currency: cart.currency || "EGP",
     coupon: couponSummary,

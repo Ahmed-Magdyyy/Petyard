@@ -30,6 +30,13 @@ const orderItemSchema = new Schema(
       },
     ],
     quantity: { type: Number, required: true, min: 1 },
+    baseEffectivePrice: { type: Number, min: 0 },
+    promotion: {
+      collectionId: { type: Schema.Types.ObjectId, ref: "Collection" },
+      collectionSlug: { type: String },
+      discountPercent: { type: Number, min: 0, max: 100 },
+    },
+    promotionDiscountedPrice: { type: Number, min: 0 },
     itemPrice: { type: Number, required: true, min: 0 },
     lineTotal: { type: Number, required: true, min: 0 },
   },

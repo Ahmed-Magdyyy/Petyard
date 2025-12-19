@@ -18,6 +18,22 @@ function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+async function assertRedisReadyOrThrow(redisClient) {
+  if (!redisClient || redisClient.status !== "ready") {
+    throw new ApiError("OTP service is temporarily unavailable", 503);
+  }
+
+  try {
+    const pong = await redisClient.ping();
+    if (pong !== "PONG") {
+      throw new Error(`Unexpected Redis PING response: ${pong}`);
+    }
+  } catch (err) {
+    console.error("[Redis] PING error", err.message);
+    throw new ApiError("OTP service is temporarily unavailable", 503);
+  }
+}
+
 export async function signupService({ name, email, phone, password }) {
   if (!name || !email || !phone || !password) {
     throw new ApiError("name, email, phone and password are required", 400);
@@ -222,9 +238,7 @@ export async function sendGuestOtpService({ phone }) {
   }
 
   const redisClient = getRedisClient();
-  if (!redisClient || redisClient.status !== "ready") {
-    throw new ApiError("OTP service is temporarily unavailable", 503);
-  }
+  await assertRedisReadyOrThrow(redisClient);
 
   const key = `guest:otp:${normalizedPhone}`;
   const now = Date.now();
@@ -321,9 +335,7 @@ export async function verifyGuestOtpService({ phone, otp }) {
   }
 
   const redisClient = getRedisClient();
-  if (!redisClient || redisClient.status !== "ready") {
-    throw new ApiError("OTP service is temporarily unavailable", 503);
-  }
+  await assertRedisReadyOrThrow(redisClient);
 
   const key = `guest:otp:${normalizedPhone}`;
   let data;

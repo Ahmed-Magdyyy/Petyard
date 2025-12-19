@@ -46,8 +46,10 @@ export const enabledControls = Object.freeze({
   PETS: 'pets',
   CATEGORIES: 'categories',
   SUBCATEGORIES: 'subcategories',
+  BRANDS: 'brands',
   PRODUCTS: 'products',
   ORDERS: 'orders',
   COUPONES: 'coupons',
-  BANNERS: 'banners'
+  BANNERS: 'banners',
+  COLLECTIONS: 'collections'
 });

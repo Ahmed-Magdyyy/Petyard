@@ -5,7 +5,18 @@ let initialized = false;
 
 export function getRedisClient() {
   if (initialized) {
-    return redisClient;
+    if (
+      redisClient &&
+      (redisClient.status === "end" || redisClient.status === "close")
+    ) {
+      try {
+        redisClient.disconnect();
+      } catch {}
+      redisClient = null;
+      initialized = false;
+    } else {
+      return redisClient;
+    }
   }
 
   initialized = true;

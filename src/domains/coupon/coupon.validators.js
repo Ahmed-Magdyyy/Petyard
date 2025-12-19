@@ -19,7 +19,18 @@ export const createCouponValidator = [
   body("discountValue")
     .optional()
     .isNumeric()
-    .withMessage("discountValue must be a number"),
+    .withMessage("discountValue must be a number")
+    .custom((value, {req}) => {
+      const {discountType} = req.body
+      if (discountType){
+        if (typeof discountType === "string" && discountType === "PERCENT") {
+          if (value < 0 || value > 100) {
+            throw new Error("discountValue must be between 0 and 100 for PERCENT discountType");
+          }
+        }
+      }
+      return true
+    }),
 
   body("maxDiscountAmount")
     .optional()

@@ -19,6 +19,7 @@ import bannerRoutes from "../domains/banner/banner.routes.js";
 import favoriteRoutes from "../domains/favorite/favorite.routes.js";
 import loyaltyRoutes from "../domains/loyalty/loyalty.routes.js";
 import walletRoutes from "../domains/wallet/wallet.routes.js";
+import collectionRoutes from "../domains/collection/collection.routes.js";
 
 export function mountRoutes(app) {
   app.use("/api/v1/auth", authRoutes);
@@ -30,6 +31,7 @@ export function mountRoutes(app) {
   app.use("/api/v1/categories", categoryRoutes);
   app.use("/api/v1/subcategories", subcategoryRoutes);
   app.use("/api/v1/brands", brandRoutes);
+  app.use("/api/v1/collections", collectionRoutes);
   app.use("/api/v1/products", productRoutes);
   app.use("/api/v1/cart", cartRoutes);
   app.use("/api/v1/coupons", couponRoutes);

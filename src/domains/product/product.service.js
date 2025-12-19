@@ -10,6 +10,7 @@ import {
 import { SubcategoryModel } from "../subcategory/subcategory.model.js";
 import { BrandModel } from "../brand/brand.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
+import { CollectionModel } from "../collection/collection.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
@@ -25,6 +26,10 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 import { getOrSetCache, deleteCacheKey } from "../../shared/cache.js";
+import {
+  autoHideExpiredCollections,
+  findActivePromotionForProduct,
+} from "../collection/collection.promotion.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -64,6 +69,44 @@ function normalizeProductOptions(options) {
       return { name, values };
     })
     .filter(Boolean);
+}
+
+function roundMoney(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) return value;
+  return Math.round(value * 100) / 100;
+}
+
+function applyPercentDiscount(amount, percent) {
+  const amt = typeof amount === "number" ? amount : Number(amount);
+  const pct = typeof percent === "number" ? percent : Number(percent);
+  if (!Number.isFinite(amt) || !Number.isFinite(pct)) return amt;
+  if (pct <= 0) return amt;
+  if (pct >= 100) return 0;
+  return roundMoney(amt * (1 - pct / 100));
+}
+
+function computeFinalDiscountedPrice({ price, discountedPrice, promoPercent }) {
+  const basePrice = typeof price === "number" ? price : null;
+  const baseDiscounted =
+    typeof discountedPrice === "number" ? discountedPrice : null;
+
+  if (basePrice == null) {
+    return { basePrice: null, baseDiscountedPrice: baseDiscounted, final: null };
+  }
+
+  const baseEffective = baseDiscounted != null ? baseDiscounted : basePrice;
+  const finalEffective =
+    typeof promoPercent === "number"
+      ? applyPercentDiscount(baseEffective, promoPercent)
+      : baseEffective;
+
+  const finalDiscounted = finalEffective < basePrice ? finalEffective : null;
+
+  return {
+    basePrice,
+    baseDiscountedPrice: baseDiscounted,
+    final: finalDiscounted,
+  };
 }
 
 function validateVariantOptionsMatrix(productOptions, rawVariants) {
@@ -225,6 +268,48 @@ function mapLocalizedRef(ref, normalizedLang) {
   return { id: ref };
 }
 
+async function resolveCollectionFilter(collectionId) {
+  if (!collectionId) return null;
+
+  let collection;
+  try {
+    collection = await CollectionModel.findById(collectionId)
+      .select("selector isVisible")
+      .lean();
+  } catch (err) {
+    if (err?.name === "CastError") {
+      throw new ApiError("Invalid collection id", 400);
+    }
+    throw err;
+  }
+  
+  if (!collection || !collection.isVisible) {
+    return { _id: null }; 
+  }
+
+  const { productIds, subcategoryIds, brandIds } = collection.selector || {};
+  const orConditions = [];
+
+  if (Array.isArray(productIds) && productIds.length > 0) {
+    orConditions.push({ _id: { $in: productIds } });
+  }
+
+  if (Array.isArray(subcategoryIds) && subcategoryIds.length > 0) {
+    orConditions.push({ subcategory: { $in: subcategoryIds } });
+  }
+
+  if (Array.isArray(brandIds) && brandIds.length > 0) {
+    orConditions.push({ brand: { $in: brandIds } });
+  }
+
+  if (orConditions.length === 0) {
+    // Empty selector matches nothing
+    return { _id: null };
+  }
+
+  return { $or: orConditions };
+}
+
 export async function getProductsService(queryParams = {}, lang = "en") {
   const {
     page,
@@ -238,6 +323,7 @@ export async function getProductsService(queryParams = {}, lang = "en") {
     type,
     isFeatured,
     isActive,
+    collection,
     ...rest
   } = queryParams;
 
@@ -272,6 +358,12 @@ export async function getProductsService(queryParams = {}, lang = "en") {
     if (isActive === true || isActive === "true") filter.isActive = true;
     else if (isActive === false || isActive === "false")
       filter.isActive = false;
+  }
+
+  // Collection filter
+  if (collection) {
+    const collectionFilter = await resolveCollectionFilter(collection);
+    Object.assign(filter, collectionFilter);
   }
 
   // Free-text search on name_en, name_ar, sku, and tags
@@ -348,13 +440,15 @@ export async function getProductsService(queryParams = {}, lang = "en") {
     sort = buildSort(queryParams, "-createdAt");
   }
 
+  await autoHideExpiredCollections();
+
   const products = await findProducts(mongoFilter, {
     skip,
     limit: limitNum,
     sort,
   });
 
-  const data = products.map((p) => {
+  const data = await Promise.all(products.map(async (p) => {
     const mainImage = pickMainImage(p.images);
 
     let stock = 0;
@@ -364,8 +458,23 @@ export async function getProductsService(queryParams = {}, lang = "en") {
       stock = computeTotalStockForVariants(p);
     }
 
+    const promotion = await findActivePromotionForProduct(
+      {
+        productId: p._id,
+        subcategoryId: p.subcategory?._id || p.subcategory,
+        brandId: p.brand?._id || p.brand,
+      },
+      new Date()
+    );
+
+    const promoPercent =
+      promotion && typeof promotion.discountPercent === "number"
+        ? promotion.discountPercent
+        : null;
+
     let effectivePrice = p.price;
     let effectiveDiscountedPrice = p.discountedPrice;
+    let promotionDiscountedPrice = null;
 
     if (
       p.type === "VARIANT" &&
@@ -373,15 +482,27 @@ export async function getProductsService(queryParams = {}, lang = "en") {
       p.variants.length > 0
     ) {
       let minPrice = Infinity;
-      let minDiscounted = undefined;
+      let minDiscounted;
+      let minPromoEffective = Infinity;
 
       for (const v of p.variants) {
         if (typeof v.price === "number" && v.price < minPrice) {
           minPrice = v.price;
           minDiscounted =
-            typeof v.discountedPrice === "number"
-              ? v.discountedPrice
-              : undefined;
+            typeof v.discountedPrice === "number" ? v.discountedPrice : undefined;
+        }
+
+        const basePrice = typeof v.price === "number" ? v.price : null;
+        if (basePrice == null) continue;
+        const baseDiscounted =
+          typeof v.discountedPrice === "number" ? v.discountedPrice : null;
+        const baseEffective = baseDiscounted != null ? baseDiscounted : basePrice;
+
+        if (typeof promoPercent === "number") {
+          const promoEffective = applyPercentDiscount(baseEffective, promoPercent);
+          if (promoEffective < minPromoEffective) {
+            minPromoEffective = promoEffective;
+          }
         }
       }
 
@@ -389,6 +510,25 @@ export async function getProductsService(queryParams = {}, lang = "en") {
         effectivePrice = minPrice;
         if (minDiscounted !== undefined) {
           effectiveDiscountedPrice = minDiscounted;
+        } else {
+          effectiveDiscountedPrice = null;
+        }
+      }
+
+      if (typeof promoPercent === "number" && minPromoEffective !== Infinity) {
+        promotionDiscountedPrice = minPromoEffective;
+      }
+    } else {
+      if (typeof promoPercent === "number") {
+        const baseEffective =
+          typeof effectiveDiscountedPrice === "number"
+            ? effectiveDiscountedPrice
+            : effectivePrice;
+        if (typeof baseEffective === "number") {
+          promotionDiscountedPrice = applyPercentDiscount(
+            baseEffective,
+            promoPercent
+          );
         }
       }
     }
@@ -405,12 +545,17 @@ export async function getProductsService(queryParams = {}, lang = "en") {
       subcategory,
       brand,
       name: pickLocalizedField(p, "name", normalizedLang),
-      desc: pickLocalizedField(p, "desc", normalizedLang),
-      tags: p.tags || [],
+      // desc: pickLocalizedField(p, "desc", normalizedLang),
+      // tags: p.tags || [],
       price: typeof effectivePrice === "number" ? effectivePrice : null,
       discountedPrice:
         typeof effectiveDiscountedPrice === "number"
           ? effectiveDiscountedPrice
+          : null,
+      promotion: promotion || null,
+      promotionDiscountedPrice:
+        typeof promotionDiscountedPrice === "number"
+          ? promotionDiscountedPrice
           : null,
       stock,
       inStock: stock > 0,
@@ -424,7 +569,7 @@ export async function getProductsService(queryParams = {}, lang = "en") {
       ratingCount:
         typeof p.ratingCount === "number" ? p.ratingCount : 0,
     };
-  });
+  }));
 
   const totalPages = Math.ceil(totalProductsCount / limitNum) || 1;
 
@@ -440,7 +585,9 @@ export async function getProductByIdService(id, lang = "en") {
   const normalizedLang = normalizeLang(lang);
   const cacheKey = `product:${id}:${normalizedLang}`;
 
-  return getOrSetCache(cacheKey, 3600, async () => {
+  return getOrSetCache(cacheKey, 60, async () => {
+    await autoHideExpiredCollections();
+
     const product = await findProductByIdWithRefs(id);
 
     if (!product) {
@@ -464,32 +611,61 @@ export async function getProductByIdService(id, lang = "en") {
         }))
       : [];
 
+    const promotion = await findActivePromotionForProduct(
+      {
+        productId: product._id,
+        subcategoryId: product.subcategory?._id || product.subcategory,
+        brandId: product.brand?._id || product.brand,
+      },
+      new Date()
+    );
+
+    const promoPercent =
+      promotion && typeof promotion.discountPercent === "number"
+        ? promotion.discountPercent
+        : null;
+
     const variants =
       product.type === "VARIANT" &&
       Array.isArray(product.variants) &&
       product.variants.length > 0
-        ? product.variants.map((v, index) => ({
-            id: v._id || null,
-            index,
-            sku: v.sku || null,
-            price: v.price,
-            discountedPrice:
-              typeof v.discountedPrice === "number" ? v.discountedPrice : null,
-            options: Array.isArray(v.options) ? v.options : [],
-            images: Array.isArray(v.images)
-              ? v.images.map((img) => ({
-                  // public_id: img.public_id,
-                  url: img.url,
-                }))
-              : [],
-            warehouseStocks: Array.isArray(v.warehouseStocks)
-              ? v.warehouseStocks.map((ws) => ({
-                  warehouse: ws.warehouse,
-                  quantity: ws.quantity,
-                }))
-              : [],
-            isDefault: !!v.isDefault,
-          }))
+        ? product.variants.map((v, index) => {
+            const baseEffective =
+              typeof v.discountedPrice === "number"
+                ? v.discountedPrice
+                : typeof v.price === "number"
+                  ? v.price
+                  : null;
+
+            const promotionDiscountedPrice =
+              typeof promoPercent === "number" && typeof baseEffective === "number"
+                ? applyPercentDiscount(baseEffective, promoPercent)
+                : null;
+
+            return {
+              id: v._id || null,
+              index,
+              sku: v.sku || null,
+              price: v.price,
+              discountedPrice:
+                typeof v.discountedPrice === "number" ? v.discountedPrice : null,
+              promotionDiscountedPrice,
+              options: Array.isArray(v.options) ? v.options : [],
+              images: Array.isArray(v.images)
+                ? v.images.map((img) => ({
+                    // public_id: img.public_id,
+                    url: img.url,
+                  }))
+                : [],
+              warehouseStocks: Array.isArray(v.warehouseStocks)
+                ? v.warehouseStocks.map((ws) => ({
+                    warehouse: ws.warehouse,
+                    quantity: ws.quantity,
+                  }))
+                : [],
+              isDefault: !!v.isDefault,
+            };
+          })
         : undefined;
 
     const warehouseStocks =
@@ -504,6 +680,28 @@ export async function getProductByIdService(id, lang = "en") {
     const subcategory = mapLocalizedRef(product.subcategory, normalizedLang);
     const brand = mapLocalizedRef(product.brand, normalizedLang);
 
+    let promotionDiscountedPrice = null;
+    if (typeof promoPercent === "number") {
+      if (product.type === "SIMPLE") {
+        const baseEffective =
+          typeof product.discountedPrice === "number"
+            ? product.discountedPrice
+            : typeof product.price === "number"
+              ? product.price
+              : null;
+        if (typeof baseEffective === "number") {
+          promotionDiscountedPrice = applyPercentDiscount(baseEffective, promoPercent);
+        }
+      } else if (Array.isArray(variants) && variants.length > 0) {
+        const prices = variants
+          .map((v) => v.promotionDiscountedPrice)
+          .filter((n) => typeof n === "number");
+        if (prices.length > 0) {
+          promotionDiscountedPrice = Math.min(...prices);
+        }
+      }
+    }
+
     return {
       id: product._id,
       slug: product.slug,
@@ -517,9 +715,10 @@ export async function getProductByIdService(id, lang = "en") {
       tags: product.tags || [],
       price: typeof product.price === "number" ? product.price : null,
       discountedPrice:
-        typeof product.discountedPrice === "number"
-          ? product.discountedPrice
-          : null,
+        typeof product.discountedPrice === "number" ? product.discountedPrice : null,
+      promotion: promotion || null,
+      promotionDiscountedPrice:
+        typeof promotionDiscountedPrice === "number" ? promotionDiscountedPrice : null,
       stock,
       inStock: stock > 0,
       images,

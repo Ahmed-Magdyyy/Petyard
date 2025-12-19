@@ -57,7 +57,10 @@ export const allowedTo = (...allowedRoles) =>
 export const enabledControls = (...scope) =>
   asyncHandler(async (req, res, next) => {
     if (req.user.role === roles.ADMIN) {
-      const hasControl = scope.every((s) => req.user.enabledControls?.includes(s));
+      const normalizedScope = scope.flat();
+      const hasControl = normalizedScope.every((s) =>
+        req.user.enabledControls?.includes(s)
+      );
       if (!hasControl) {
         throw new ApiError(
           "You don't have the permission to access this. Contact support to enable it.",

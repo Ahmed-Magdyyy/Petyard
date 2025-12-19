@@ -21,9 +21,27 @@ import { sendOrderStatusChangedNotification } from "../notification/notification
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { calculateLoyaltyPointsForOrder, deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
 import { LoyaltyTransactionModel } from "../loyalty/loyaltyTransaction.model.js";
+import {
+  autoHideExpiredCollections,
+  findActivePromotionForProduct,
+} from "../collection/collection.promotion.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
+}
+
+function roundMoney(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) return value;
+  return Math.round(value * 100) / 100;
+}
+
+function applyPercentDiscount(amount, percent) {
+  const amt = typeof amount === "number" ? amount : Number(amount);
+  const pct = typeof percent === "number" ? percent : Number(percent);
+  if (!Number.isFinite(amt) || !Number.isFinite(pct)) return amt;
+  if (pct <= 0) return amt;
+  if (pct >= 100) return 0;
+  return roundMoney(amt * (1 - pct / 100));
 }
 
 function normalizePaymentMethod(method) {
@@ -110,8 +128,145 @@ function mapCartItemToOrderItem(item) {
     variantId: item.variantId || undefined,
     variantOptions,
     quantity,
+    baseEffectivePrice:
+      typeof item.baseEffectivePrice === "number" ? item.baseEffectivePrice : null,
+    promotion: item.promotion || null,
+    promotionDiscountedPrice:
+      typeof item.promotionDiscountedPrice === "number"
+        ? item.promotionDiscountedPrice
+        : null,
     itemPrice,
     lineTotal: quantity * itemPrice,
+  };
+}
+
+async function buildOrderItemsWithPromotions({ session, cart }) {
+  await autoHideExpiredCollections();
+
+  const items = Array.isArray(cart.items) ? cart.items : [];
+  if (!items.length) {
+    throw new ApiError("Cart is empty", 400);
+  }
+
+  const productIds = [
+    ...new Set(
+      items
+        .map((item) => (item.product ? String(item.product) : null))
+        .filter(Boolean)
+    ),
+  ];
+
+  const products = await ProductModel.find({ _id: { $in: productIds } })
+    .session(session)
+    .select("_id type price discountedPrice subcategory brand variants images");
+
+  const productById = new Map(products.map((p) => [String(p._id), p]));
+  const promotionByProductId = new Map();
+  const now = new Date();
+
+  async function getPromotionForProduct(product) {
+    const pid = product?._id ? String(product._id) : null;
+    if (!pid) return null;
+    if (promotionByProductId.has(pid)) {
+      return promotionByProductId.get(pid);
+    }
+    const promotion = await findActivePromotionForProduct(
+      {
+        productId: product._id,
+        subcategoryId: product.subcategory,
+        brandId: product.brand,
+      },
+      now
+    );
+    promotionByProductId.set(pid, promotion || null);
+    return promotion || null;
+  }
+
+  let subtotal = 0;
+  let hasPromotionalItems = false;
+
+  const orderItems = [];
+
+  for (const item of items) {
+    const product = productById.get(String(item.product));
+    if (!product) {
+      throw new ApiError("Product no longer exists", 400);
+    }
+
+    if (product.type !== item.productType) {
+      throw new ApiError("Product type mismatch for cart item", 400);
+    }
+
+    const quantity =
+      typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 0;
+    if (quantity <= 0) {
+      throw new ApiError("Cart item quantity must be greater than 0", 400);
+    }
+
+    const promotion = await getPromotionForProduct(product);
+    const promoPercent =
+      promotion && typeof promotion.discountPercent === "number"
+        ? promotion.discountPercent
+        : null;
+
+    let baseEffectivePrice = 0;
+    if (product.type === "SIMPLE") {
+      const baseDiscounted =
+        typeof product.discountedPrice === "number" ? product.discountedPrice : null;
+      const basePrice = typeof product.price === "number" ? product.price : 0;
+      baseEffectivePrice = typeof baseDiscounted === "number" ? baseDiscounted : basePrice;
+    } else {
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const variant = variants.find(
+        (v) => String(v._id) === String(item.variantId)
+      );
+      if (!variant) {
+        throw new ApiError("Variant not found on this product", 404);
+      }
+      const baseDiscounted =
+        typeof variant.discountedPrice === "number" ? variant.discountedPrice : null;
+      const basePrice = typeof variant.price === "number" ? variant.price : 0;
+      baseEffectivePrice = typeof baseDiscounted === "number" ? baseDiscounted : basePrice;
+    }
+
+    const promotionDiscountedPrice =
+      typeof promoPercent === "number"
+        ? applyPercentDiscount(baseEffectivePrice, promoPercent)
+        : null;
+
+    const itemPrice =
+      typeof promotionDiscountedPrice === "number"
+        ? promotionDiscountedPrice
+        : baseEffectivePrice;
+
+    if (promotion) {
+      hasPromotionalItems = true;
+    }
+
+    const lineTotal = quantity * itemPrice;
+    subtotal += lineTotal;
+
+    orderItems.push(
+      mapCartItemToOrderItem({
+        product: item.product,
+        productType: item.productType,
+        productName: item.productName || "",
+        productImageUrl: item.productImageUrl || null,
+        variantId: item.variantId || undefined,
+        variantOptionsSnapshot: item.variantOptionsSnapshot,
+        quantity,
+        baseEffectivePrice,
+        promotion: promotion || null,
+        promotionDiscountedPrice,
+        itemPrice,
+      })
+    );
+  }
+
+  return {
+    orderItems,
+    subtotal: typeof subtotal === "number" && subtotal > 0 ? subtotal : 0,
+    hasPromotionalItems,
   };
 }
 
@@ -510,19 +665,12 @@ async function processOrderCreationWithCart({
   addressUser,
   historyByUserId,
 }) {
-  const items = Array.isArray(cart.items) ? cart.items : [];
-  if (!items.length) {
-    throw new ApiError("Cart is empty", 400);
-  }
+  const { orderItems, subtotal, hasPromotionalItems } =
+    await buildOrderItemsWithPromotions({ session, cart });
 
   if (!cart.warehouse) {
     throw new ApiError("Cart warehouse is not set", 400);
   }
-
-  const subtotal =
-    typeof cart.totalCartPrice === "number" && cart.totalCartPrice > 0
-      ? cart.totalCartPrice
-      : 0;
 
   if (subtotal <= 0) {
     throw new ApiError("Cart total must be greater than 0", 400);
@@ -538,6 +686,13 @@ async function processOrderCreationWithCart({
   const rawShipping = warehouse.defaultShippingPrice;
   const shippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
+
+  if (couponCode && hasPromotionalItems) {
+    throw new ApiError(
+      "Coupons cannot be applied when the cart contains promotional items",
+      400
+    );
+  }
 
   const couponResult = await applyCouponIfAny({
     couponCode,
@@ -556,8 +711,6 @@ async function processOrderCreationWithCart({
   });
 
   const finalTotal = walletResult.finalSubtotal + netShipping;
-
-  const orderItems = items.map(mapCartItemToOrderItem);
 
   const deliveryAddress = mapCartDeliveryAddressToOrder(cart, addressUser);
   if (!deliveryAddress) {

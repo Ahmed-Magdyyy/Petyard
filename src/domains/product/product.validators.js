@@ -1,4 +1,5 @@
-import { body, param } from "express-validator";
+import { body, param, query } from "express-validator";
+import validator from "validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
 
@@ -255,7 +256,7 @@ export const updateProductValidator = [
     .optional()
     .isArray()
     .withMessage("variants must be an array"),
-    
+
   body("variants.*._id")
     .optional()
     .isMongoId()
@@ -291,6 +292,85 @@ export const updateProductValidator = [
 
 export const productIdParamValidator = [
   param("id").isMongoId().withMessage("Invalid product id"),
+
+  validatorMiddleware,
+];
+
+function mongoIdOrCsvValidator(fieldName) {
+  return (value) => {
+    const str = String(value).trim();
+    if (!str) {
+      throw new Error(message);
+    }
+
+    const ids = str.split(",").map((s) => s.trim());
+    if (ids.length === 0 || ids.some((id) => !validator.isMongoId(id))) {
+      throw new Error(`${fieldName} must be a mongo id or comma-separated ids`);
+    }
+
+    return true;
+  };
+}
+
+export const listProductsQueryValidator = [
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("page must be a positive integer"),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("limit must be an integer between 1 and 100"),
+
+  query("sort").optional().isString().withMessage("sort must be a string"),
+
+  query("sortKey")
+    .optional()
+    .isIn([
+      "featured",
+      "alpha_asc",
+      "alpha_desc",
+      "price_asc",
+      "price_desc",
+      "date_asc",
+      "date_desc",
+    ])
+    .withMessage("Invalid sortKey"),
+
+  query("q").optional().isString().withMessage("q must be a string"),
+
+  query("category").optional().custom(mongoIdOrCsvValidator("category")),
+
+  query("subcategory").optional().custom(mongoIdOrCsvValidator("subcategory")),
+
+  query("brand").optional().custom(mongoIdOrCsvValidator("brand")),
+
+  query("warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("warehouse must be a valid id"),
+
+  query("type")
+    .optional()
+    .customSanitizer((value) => normalizeProductType(value))
+    .isIn(["SIMPLE", "VARIANT"])
+    .withMessage("type must be either SIMPLE or VARIANT"),
+
+  query("isFeatured")
+    .optional()
+    .isBoolean()
+    .withMessage("isFeatured must be a boolean"),
+
+  query("isActive")
+    .optional()
+    .isBoolean()
+    .withMessage("isActive must be a boolean"),
+
+  query("collection")
+    .optional()
+    .isMongoId()
+    .withMessage("collection must be a valid id"),
 
   validatorMiddleware,
 ];
