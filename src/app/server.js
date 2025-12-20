@@ -6,6 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 import morgan from "morgan";
 import helmet from "helmet";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import https from "https";
 import {ApiError} from "../shared/ApiError.js";
@@ -27,6 +28,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "uploads")));
 app.use(cookieParser());
+app.use(compression());
 app.use(i18nMiddleware);
 
 if (process.env.NODE_ENV === "development") {
