@@ -24,10 +24,10 @@ const router = Router();
 
 router.get("/guest", guestFavoriteHeaderValidator, getFavoriteGuest);
 
-router.post("/guest/items", addToFavoriteGuestValidator, addToFavoriteGuest);
+router.post("/guest/items/:productId", addToFavoriteGuestValidator, addToFavoriteGuest);
 
 router.delete(
-  "/guest/items",
+  "/guest/items/:productId",
   removeFromFavoriteGuestValidator,
   removeFromFavoriteGuest
 );
@@ -40,9 +40,9 @@ router.post("/merge", guestFavoriteHeaderValidator, mergeGuestFavoriteIntoMyFavo
 
 router.get("/", getFavorite);
 
-router.post("/items", addToFavoriteValidator, addToFavorite);
+router.post("/items/:productId", addToFavoriteValidator, addToFavorite);
 
-router.delete("/items", removeFromFavoriteValidator, removeFromFavorite);
+router.delete("/items/:productId", removeFromFavoriteValidator, removeFromFavorite);
 
 router.delete("/", clearFavorite);
 

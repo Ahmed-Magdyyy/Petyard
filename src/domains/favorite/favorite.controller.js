@@ -27,7 +27,7 @@ export const getFavorite = asyncHandler(async (req, res) => {
 
 export const addToFavorite = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-  const { productId } = req.body;
+  const { productId } = req.params;
   const lang = req.lang || "en";
 
   const result = await addToFavoriteService({
@@ -41,7 +41,7 @@ export const addToFavorite = asyncHandler(async (req, res) => {
 
 export const removeFromFavorite = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-  const { productId } = req.body;
+  const { productId } = req.params;
 
   const result = await removeFromFavoriteService({
     userId,
@@ -78,7 +78,7 @@ export const addToFavoriteGuest = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const { productId } = req.body;
+  const { productId } = req.params;
   const lang = req.lang || "en";
 
   const result = await addToFavoriteService({
@@ -96,7 +96,7 @@ export const removeFromFavoriteGuest = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const { productId } = req.body;
+  const { productId } = req.params;
 
   const result = await removeFromFavoriteService({
     guestId,

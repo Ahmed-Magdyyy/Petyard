@@ -1,8 +1,8 @@
-import { body, header } from "express-validator";
+import { header, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 
 export const addToFavoriteValidator = [
-  body("productId")
+  param("productId")
     .notEmpty()
     .withMessage("productId is required")
     .isMongoId()
@@ -12,7 +12,7 @@ export const addToFavoriteValidator = [
 ];
 
 export const removeFromFavoriteValidator = [
-  body("productId")
+  param("productId")
     .notEmpty()
     .withMessage("productId is required")
     .isMongoId()
@@ -38,7 +38,7 @@ export const addToFavoriteGuestValidator = [
     .isString()
     .withMessage("x-guest-id header must be a string"),
 
-  body("productId")
+  param("productId")
     .notEmpty()
     .withMessage("productId is required")
     .isMongoId()
@@ -54,7 +54,7 @@ export const removeFromFavoriteGuestValidator = [
     .isString()
     .withMessage("x-guest-id header must be a string"),
 
-  body("productId")
+  param("productId")
     .notEmpty()
     .withMessage("productId is required")
     .isMongoId()
