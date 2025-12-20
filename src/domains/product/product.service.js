@@ -28,6 +28,7 @@ import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
   autoHideExpiredCollections,
   findActivePromotionForProduct,
+  findActivePromotionsForProducts,
 } from "../collection/collection.promotion.js";
 import { brandExists } from "../brand/brand.repository.js";
 import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
@@ -218,6 +219,19 @@ function mapProductSortKey(sortKey) {
       return { createdAt: -1 };
     default:
       return null;
+  }
+}
+
+let lastAutoHideExpiredCollectionsRunAt = 0;
+async function autoHideExpiredCollectionsThrottled(minIntervalMs = 60_000) {
+  const now = Date.now();
+  if (now - lastAutoHideExpiredCollectionsRunAt < minIntervalMs) return;
+  lastAutoHideExpiredCollectionsRunAt = now;
+  try {
+    await autoHideExpiredCollections();
+  } catch (err) {
+    // Ignore auto-hide failures to avoid impacting read endpoints
+    console.error("[autoHideExpiredCollections] error", err?.message || err);
   }
 }
 
@@ -712,7 +726,7 @@ async function getProductsService(queryParams = {}, lang = "en") {
   const mongoFilter =
     andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
-  const totalProductsCount = await countProducts(mongoFilter);
+  await autoHideExpiredCollectionsThrottled();
 
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
 
@@ -721,31 +735,31 @@ async function getProductsService(queryParams = {}, lang = "en") {
     sort = buildSort(queryParams, "-createdAt");
   }
 
-  await autoHideExpiredCollections();
 
-  const products = await findProducts(mongoFilter, {
-    skip,
-    limit: limitNum,
-    sort,
+  const listSelect =
+    "_id slug type name_en name_ar price discountedPrice variants images warehouseStocks ratingAverage ratingCount category subcategory brand";
+
+  const [totalProductsCount, products] = await Promise.all([
+    countProducts(mongoFilter),
+    findProducts(mongoFilter, {
+      skip,
+      limit: limitNum,
+      sort,
+      select: listSelect,
+      lean: true,
+    }),
+  ]);
+
+  const now = new Date();
+  const promotionsByProductId = await findActivePromotionsForProducts(products, now);
+
+  const data = products.map((p) => {
+    const promotion = promotionsByProductId.get(String(p._id)) || null;
+    return mapProductToCardDto(p, {
+      lang: normalizedLang,
+      promotion,
+    });
   });
-
-  const data = await Promise.all(
-    products.map(async (p) => {
-      const promotion = await findActivePromotionForProduct(
-        {
-          productId: p._id,
-          subcategoryId: p.subcategory?._id || p.subcategory,
-          brandId: p.brand?._id || p.brand,
-        },
-        new Date()
-      );
-
-      return mapProductToCardDto(p, {
-        lang: normalizedLang,
-        promotion,
-      });
-    })
-  );
 
   const totalPages = Math.ceil(totalProductsCount / limitNum) || 1;
 

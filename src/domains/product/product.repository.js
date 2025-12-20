@@ -4,11 +4,22 @@ export async function countProducts(filter = {}) {
   return ProductModel.countDocuments(filter);
 }
 
-export async function findProducts(filter = {}, { skip, limit, sort } = {}) {
+export async function findProducts(
+  filter = {},
+  { skip, limit, sort, select, lean } = {}
+) {
   const query = ProductModel.find(filter)
     .populate("category", "_id slug name_en name_ar")
     .populate("subcategory", "_id slug name_en name_ar")
     .populate("brand", "_id slug name_en name_ar");
+
+  if (select) {
+    query.select(select);
+  }
+
+  if (lean) {
+    query.lean();
+  }
 
   if (typeof skip === "number" && skip > 0) {
     query.skip(skip);

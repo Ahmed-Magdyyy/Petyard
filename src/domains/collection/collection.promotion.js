@@ -187,3 +187,135 @@ export async function findActivePromotionForProduct(
         : null,
   };
 }
+
+export async function findActivePromotionsForProducts(products = [], now = new Date()) {
+  const list = Array.isArray(products) ? products : [];
+  if (list.length === 0) return new Map();
+
+  const productIds = [];
+  const subcategoryIds = [];
+  const brandIds = [];
+
+  for (const p of list) {
+    if (p?._id) {
+      productIds.push(p._id);
+    }
+    const subId = p?.subcategory?._id || p?.subcategory;
+    if (subId) {
+      subcategoryIds.push(subId);
+    }
+    const brandId = p?.brand?._id || p?.brand;
+    if (brandId) {
+      brandIds.push(brandId);
+    }
+  }
+
+  const or = [];
+  if (productIds.length > 0) {
+    or.push({ "selector.productIds": { $in: productIds } });
+  }
+  if (subcategoryIds.length > 0) {
+    or.push({ "selector.subcategoryIds": { $in: subcategoryIds } });
+  }
+  if (brandIds.length > 0) {
+    or.push({ "selector.brandIds": { $in: brandIds } });
+  }
+
+  if (or.length === 0) return new Map();
+
+  const collections = await CollectionModel.find(
+    {
+      isVisible: true,
+      "promotion.enabled": true,
+      "promotion.isActive": true,
+      "promotion.startsAt": { $lte: now },
+      "promotion.endsAt": { $gt: now },
+      $or: or,
+    },
+    {
+      _id: 1,
+      slug: 1,
+      promotion: 1,
+      selector: 1,
+    }
+  ).lean();
+
+  if (!Array.isArray(collections) || collections.length === 0) {
+    return new Map();
+  }
+
+  const promoByProductId = new Map();
+  const promoBySubcategoryId = new Map();
+  const promoByBrandId = new Map();
+
+  for (const c of collections) {
+    if (!c?.promotion) continue;
+
+    const promo = {
+      collectionId: c._id,
+      collectionSlug: c.slug,
+      discountPercent:
+        typeof c.promotion.discountPercent === "number"
+          ? c.promotion.discountPercent
+          : null,
+    };
+
+    const selectorProductIds = Array.isArray(c.selector?.productIds)
+      ? c.selector.productIds
+      : [];
+    const selectorSubcategoryIds = Array.isArray(c.selector?.subcategoryIds)
+      ? c.selector.subcategoryIds
+      : [];
+    const selectorBrandIds = Array.isArray(c.selector?.brandIds)
+      ? c.selector.brandIds
+      : [];
+
+    for (const id of selectorProductIds) {
+      const key = id != null ? String(id) : "";
+      if (key && !promoByProductId.has(key)) {
+        promoByProductId.set(key, promo);
+      }
+    }
+
+    for (const id of selectorSubcategoryIds) {
+      const key = id != null ? String(id) : "";
+      if (key && !promoBySubcategoryId.has(key)) {
+        promoBySubcategoryId.set(key, promo);
+      }
+    }
+
+    for (const id of selectorBrandIds) {
+      const key = id != null ? String(id) : "";
+      if (key && !promoByBrandId.has(key)) {
+        promoByBrandId.set(key, promo);
+      }
+    }
+  }
+
+  const result = new Map();
+  for (const p of list) {
+    const pid = p?._id != null ? String(p._id) : "";
+    if (!pid) continue;
+
+    const direct = promoByProductId.get(pid);
+    if (direct) {
+      result.set(pid, direct);
+      continue;
+    }
+
+    const subId = p?.subcategory?._id || p?.subcategory;
+    const subPromo = subId != null ? promoBySubcategoryId.get(String(subId)) : null;
+    if (subPromo) {
+      result.set(pid, subPromo);
+      continue;
+    }
+
+    const brandId = p?.brand?._id || p?.brand;
+    const brandPromo = brandId != null ? promoByBrandId.get(String(brandId)) : null;
+    if (brandPromo) {
+      result.set(pid, brandPromo);
+    }
+  }
+
+  return result;
+}
