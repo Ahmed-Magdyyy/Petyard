@@ -52,3 +52,22 @@ export async function findProductsByIds(ids = []) {
   if (!Array.isArray(ids) || ids.length === 0) return [];
   return ProductModel.find({ _id: { $in: ids } });
 }
+
+export async function findProductsByIdsWithOptions(
+  ids = [],
+  { select, lean } = {}
+) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+
+  const query = ProductModel.find({ _id: { $in: ids } });
+
+  if (select) {
+    query.select(select);
+  }
+
+  if (lean) {
+    query.lean();
+  }
+
+  return query;
+}

@@ -21,6 +21,7 @@ import { sendOrderStatusChangedNotification } from "../notification/notification
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { calculateLoyaltyPointsForOrder, deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
 import { LoyaltyTransactionModel } from "../loyalty/loyaltyTransaction.model.js";
+import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
   autoHideExpiredCollections,
   findActivePromotionForProduct,
@@ -28,20 +29,6 @@ import {
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
-}
-
-function roundMoney(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) return value;
-  return Math.round(value * 100) / 100;
-}
-
-function applyPercentDiscount(amount, percent) {
-  const amt = typeof amount === "number" ? amount : Number(amount);
-  const pct = typeof percent === "number" ? percent : Number(percent);
-  if (!Number.isFinite(amt) || !Number.isFinite(pct)) return amt;
-  if (pct <= 0) return amt;
-  if (pct >= 100) return 0;
-  return roundMoney(amt * (1 - pct / 100));
 }
 
 function normalizePaymentMethod(method) {
@@ -209,37 +196,40 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
         ? promotion.discountPercent
         : null;
 
-    let baseEffectivePrice = 0;
+    let basePrice = 0;
+    let baseDiscounted = null;
+
     if (product.type === "SIMPLE") {
-      const baseDiscounted =
+      basePrice = typeof product.price === "number" ? product.price : 0;
+      baseDiscounted =
         typeof product.discountedPrice === "number" ? product.discountedPrice : null;
-      const basePrice = typeof product.price === "number" ? product.price : 0;
-      baseEffectivePrice = typeof baseDiscounted === "number" ? baseDiscounted : basePrice;
     } else {
       const variants = Array.isArray(product.variants) ? product.variants : [];
-      const variant = variants.find(
-        (v) => String(v._id) === String(item.variantId)
-      );
+      const variant = variants.find((v) => String(v._id) === String(item.variantId));
       if (!variant) {
         throw new ApiError("Variant not found on this product", 404);
       }
-      const baseDiscounted =
+      basePrice = typeof variant.price === "number" ? variant.price : 0;
+      baseDiscounted =
         typeof variant.discountedPrice === "number" ? variant.discountedPrice : null;
-      const basePrice = typeof variant.price === "number" ? variant.price : 0;
-      baseEffectivePrice = typeof baseDiscounted === "number" ? baseDiscounted : basePrice;
     }
 
-    const promotionDiscountedPrice =
-      typeof promoPercent === "number"
-        ? applyPercentDiscount(baseEffectivePrice, promoPercent)
-        : null;
+    const pricing = computeFinalDiscountedPrice({
+      price: basePrice,
+      discountedPrice: baseDiscounted,
+      promoPercent,
+    });
 
-    const itemPrice =
-      typeof promotionDiscountedPrice === "number"
-        ? promotionDiscountedPrice
-        : baseEffectivePrice;
+    const baseEffectivePrice =
+      typeof pricing.baseDiscountedPrice === "number"
+        ? Math.min(pricing.basePrice, pricing.baseDiscountedPrice)
+        : pricing.basePrice;
 
-    if (promotion) {
+    const appliedPromotion = !!pricing.appliedPromotion;
+    const promotionDiscountedPrice = appliedPromotion ? pricing.promoPrice : null;
+    const itemPrice = typeof pricing.finalEffective === "number" ? pricing.finalEffective : 0;
+
+    if (appliedPromotion) {
       hasPromotionalItems = true;
     }
 
@@ -256,7 +246,7 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
         variantOptionsSnapshot: item.variantOptionsSnapshot,
         quantity,
         baseEffectivePrice,
-        promotion: promotion || null,
+        promotion: appliedPromotion ? promotion || null : null,
         promotionDiscountedPrice,
         itemPrice,
       })

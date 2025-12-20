@@ -1,6 +1,7 @@
 import {
   findProductById,
   findProductsByIds,
+  findProductsByIdsWithOptions,
 } from "../product/product.repository.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { UserModel } from "../user/user.model.js";
@@ -11,6 +12,7 @@ import {
   autoHideExpiredCollections,
   findActivePromotionForProduct,
 } from "../collection/collection.promotion.js";
+import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
   findCart,
   createCart,
@@ -25,22 +27,32 @@ import { abandonedCart } from "../../shared/Email/emailHtml.js";
 const MAX_ABANDON_EMAILS_PER_CART = 3;
 const ABANDON_EMAIL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+const AUTO_HIDE_EXPIRED_COLLECTIONS_COOLDOWN_MS = 60 * 1000;
+let lastAutoHideExpiredCollectionsAt = 0;
+let autoHideExpiredCollectionsInFlight = null;
+
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
 }
 
-function roundMoney(value) {
-  if (typeof value !== "number" || Number.isNaN(value)) return value;
-  return Math.round(value * 100) / 100;
-}
-
-function applyPercentDiscount(amount, percent) {
-  const amt = typeof amount === "number" ? amount : Number(amount);
-  const pct = typeof percent === "number" ? percent : Number(percent);
-  if (!Number.isFinite(amt) || !Number.isFinite(pct)) return amt;
-  if (pct <= 0) return amt;
-  if (pct >= 100) return 0;
-  return roundMoney(amt * (1 - pct / 100));
+async function autoHideExpiredCollectionsThrottled() {
+  const now = Date.now();
+  if (
+    now - lastAutoHideExpiredCollectionsAt <
+    AUTO_HIDE_EXPIRED_COLLECTIONS_COOLDOWN_MS
+  ) {
+    return;
+  }
+  if (autoHideExpiredCollectionsInFlight) {
+    return autoHideExpiredCollectionsInFlight;
+  }
+  autoHideExpiredCollectionsInFlight = autoHideExpiredCollections()
+    .catch(() => undefined)
+    .finally(() => {
+      lastAutoHideExpiredCollectionsAt = Date.now();
+      autoHideExpiredCollectionsInFlight = null;
+    });
+  return autoHideExpiredCollectionsInFlight;
 }
 
 async function assertWarehouseExists(warehouseId) {
@@ -205,9 +217,7 @@ function findVariantWarehouseStock(variant, warehouseId) {
 async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
   if (!cart) return null;
 
-  await assertWarehouseExists(warehouseId);
-
-  await autoHideExpiredCollections();
+  await autoHideExpiredCollectionsThrottled();
 
   const normalizedLang = normalizeLang(lang);
 
@@ -231,28 +241,31 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
     ),
   ];
 
-  const products = await findProductsByIds(productIds);
+  const products = await findProductsByIdsWithOptions(productIds, {
+    select:
+      "_id type price discountedPrice subcategory brand name_en name_ar images warehouseStocks variants",
+    lean: true,
+  });
   const productById = new Map(products.map((p) => [String(p._id), p]));
 
   const promotionByProductId = new Map();
+  const promoNow = new Date();
 
-  async function getPromotionForProduct(product) {
-    const pid = product?._id ? String(product._id) : null;
-    if (!pid) return null;
-    if (promotionByProductId.has(pid)) {
-      return promotionByProductId.get(pid);
-    }
-    const promotion = await findActivePromotionForProduct(
-      {
-        productId: product._id,
-        subcategoryId: product.subcategory,
-        brandId: product.brand,
-      },
-      new Date()
-    );
-    promotionByProductId.set(pid, promotion || null);
-    return promotion || null;
-  }
+  await Promise.all(
+    products.map(async (product) => {
+      const pid = product?._id ? String(product._id) : null;
+      if (!pid) return;
+      const promotion = await findActivePromotionForProduct(
+        {
+          productId: product._id,
+          subcategoryId: product.subcategory,
+          brandId: product.brand,
+        },
+        promoNow
+      );
+      promotionByProductId.set(pid, promotion || null);
+    })
+  );
 
   const keptItems = [];
 
@@ -274,13 +287,14 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
     let newVariantOptionsSnapshot = item.variantOptionsSnapshot;
     const productName = pickLocalizedField(product, "name", normalizedLang);
 
-    const promotion = await getPromotionForProduct(product);
+    const promotion = promotionByProductId.get(String(product._id)) || null;
     const promoPercent =
       promotion && typeof promotion.discountPercent === "number"
         ? promotion.discountPercent
         : null;
     let baseEffectivePrice = null;
     let promotionDiscountedPrice = null;
+    let appliedPromotion = false;
 
     if (product.type === "SIMPLE") {
       const stock = findSimpleWarehouseStock(product, warehouseId);
@@ -293,22 +307,22 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
 
       const price = typeof product.price === "number" ? product.price : 0;
       const discounted =
-        typeof product.discountedPrice === "number"
-          ? product.discountedPrice
-          : undefined;
-      baseEffectivePrice = typeof discounted === "number" ? discounted : price;
+        typeof product.discountedPrice === "number" ? product.discountedPrice : null;
 
-      if (typeof promoPercent === "number") {
-        promotionDiscountedPrice = applyPercentDiscount(
-          baseEffectivePrice,
-          promoPercent
-        );
-      }
+      const pricing = computeFinalDiscountedPrice({
+        price,
+        discountedPrice: discounted,
+        promoPercent,
+      });
 
-      newItemPrice =
-        typeof promotionDiscountedPrice === "number"
-          ? promotionDiscountedPrice
-          : baseEffectivePrice;
+      baseEffectivePrice =
+        typeof pricing.baseDiscountedPrice === "number"
+          ? Math.min(pricing.basePrice, pricing.baseDiscountedPrice)
+          : pricing.basePrice;
+
+      appliedPromotion = !!pricing.appliedPromotion;
+      promotionDiscountedPrice = appliedPromotion ? pricing.promoPrice : null;
+      newItemPrice = typeof pricing.finalEffective === "number" ? pricing.finalEffective : 0;
 
       newProductImageUrl = pickMainImageUrl(product.images);
       newVariantId = undefined;
@@ -327,22 +341,22 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
 
       const price = typeof variant.price === "number" ? variant.price : 0;
       const discounted =
-        typeof variant.discountedPrice === "number"
-          ? variant.discountedPrice
-          : undefined;
-      baseEffectivePrice = typeof discounted === "number" ? discounted : price;
+        typeof variant.discountedPrice === "number" ? variant.discountedPrice : null;
 
-      if (typeof promoPercent === "number") {
-        promotionDiscountedPrice = applyPercentDiscount(
-          baseEffectivePrice,
-          promoPercent
-        );
-      }
+      const pricing = computeFinalDiscountedPrice({
+        price,
+        discountedPrice: discounted,
+        promoPercent,
+      });
 
-      newItemPrice =
-        typeof promotionDiscountedPrice === "number"
-          ? promotionDiscountedPrice
-          : baseEffectivePrice;
+      baseEffectivePrice =
+        typeof pricing.baseDiscountedPrice === "number"
+          ? Math.min(pricing.basePrice, pricing.baseDiscountedPrice)
+          : pricing.basePrice;
+
+      appliedPromotion = !!pricing.appliedPromotion;
+      promotionDiscountedPrice = appliedPromotion ? pricing.promoPrice : null;
+      newItemPrice = typeof pricing.finalEffective === "number" ? pricing.finalEffective : 0;
 
       newVariantOptionsSnapshot = Array.isArray(variant.options)
         ? variant.options.map((o) => ({
@@ -365,7 +379,7 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
     item.productImageUrl = newProductImageUrl || null;
     item.variantId = newVariantId;
     item.variantOptionsSnapshot = newVariantOptionsSnapshot;
-    item._promotion = promotion || null;
+    item._promotion = appliedPromotion ? promotion || null : null;
     item._baseEffectivePrice =
       typeof baseEffectivePrice === "number" ? baseEffectivePrice : null;
     item._promotionDiscountedPrice =

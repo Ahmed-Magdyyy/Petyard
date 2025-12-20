@@ -1,6 +1,6 @@
 import { CartModel } from "./cart.model.js";
 
-export async function findCart(filter = {}) {
+export function findCart(filter = {}) {
   return CartModel.findOne(filter);
 }
 
@@ -12,7 +12,7 @@ export async function deleteCart(filter = {}) {
   return CartModel.deleteOne(filter);
 }
 
-export async function findCarts(filter = {}, { skip, limit, sort, populate } = {}) {
+export function findCarts(filter = {}, { skip, limit, sort, populate } = {}) {
   const query = CartModel.find(filter);
 
   if (typeof skip === "number" && skip > 0) {

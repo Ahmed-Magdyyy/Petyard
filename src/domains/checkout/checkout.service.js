@@ -27,7 +27,7 @@ export async function applyCouponAtCheckoutService({
   const trimmedCode = couponCode.trim();
   const filter = userId ? { user: userId } : { guestId };
 
-  const baseCart = await findCart(filter);
+  const baseCart = await findCart(filter).select("_id warehouse");
 
   if (!baseCart) {
     throw new ApiError("Cart not found", 404);
@@ -184,7 +184,7 @@ export async function getCheckoutSummaryService({
 
   const identityFilter = userId ? { user: userId } : { guestId };
 
-  const baseCart = await findCart(identityFilter);
+  const baseCart = await findCart(identityFilter).select("_id warehouse");
 
   if (!baseCart) {
     throw new ApiError("Cart not found", 404);
@@ -222,16 +222,110 @@ export async function getCheckoutSummaryService({
   let pricing;
 
   if (trimmedCode) {
-    const couponPreview = await applyCouponAtCheckoutService({
-      userId: userId || null,
-      guestId: guestId || null,
-      couponCode: trimmedCode,
-      lang,
+    const items = Array.isArray(cartResponse.items) ? cartResponse.items : [];
+    const hasPromotionalItems = items.some((it) => !!it.promotion);
+    if (hasPromotionalItems) {
+      throw new ApiError(
+        "Coupons cannot be applied when the cart contains promotional items",
+        400
+      );
+    }
+
+    const warehouse = await getWarehouseByIdService(warehouseId);
+    const rawShipping = warehouse?.defaultShippingPrice;
+    const shippingFee =
+      typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
+
+    const couponDoc = await findActiveCouponByCodeService(trimmedCode);
+
+    const allowedUserIds =
+      Array.isArray(couponDoc.allowedUserIds) ? couponDoc.allowedUserIds : [];
+
+    if (allowedUserIds.length > 0) {
+      if (!userId) {
+        throw new ApiError(
+          "This coupon is only available to specific users",
+          403
+        );
+      }
+
+      const isAllowed = allowedUserIds.some(
+        (id) => String(id) === String(userId)
+      );
+
+      if (!isAllowed) {
+        throw new ApiError("This coupon is not valid for this user", 403);
+      }
+    }
+
+    if (
+      typeof couponDoc.minOrderTotal === "number" &&
+      couponDoc.minOrderTotal > 0 &&
+      subtotal < couponDoc.minOrderTotal
+    ) {
+      throw new ApiError(
+        `This coupon requires a minimum order total of ${couponDoc.minOrderTotal}`,
+        400
+      );
+    }
+
+    if (
+      typeof couponDoc.maxOrderTotal === "number" &&
+      couponDoc.maxOrderTotal > 0 &&
+      subtotal > couponDoc.maxOrderTotal
+    ) {
+      throw new ApiError(
+        `This coupon can only be applied to orders up to ${couponDoc.maxOrderTotal}`,
+        400
+      );
+    }
+
+    if (
+      typeof couponDoc.maxUsageTotal === "number" &&
+      couponDoc.maxUsageTotal >= 0 &&
+      typeof couponDoc.usageCount === "number" &&
+      couponDoc.usageCount >= couponDoc.maxUsageTotal
+    ) {
+      throw new ApiError("This coupon has reached its maximum usage limit", 400);
+    }
+
+    if (userId && typeof couponDoc.maxUsagePerUser === "number") {
+      if (couponDoc.maxUsagePerUser >= 0) {
+        const userUsage = await OrderModel.countDocuments({
+          user: userId,
+          couponCode: couponDoc.code,
+        });
+
+        if (userUsage >= couponDoc.maxUsagePerUser) {
+          throw new ApiError(
+            "You have already used this coupon the maximum number of times",
+            400
+          );
+        }
+      }
+    }
+
+    const effect = computeCouponEffect(couponDoc, {
+      orderSubtotal: subtotal,
+      shippingFee,
     });
 
-    const effect = couponPreview.pricing;
-
-    coupon = couponPreview.coupon;
+    coupon = {
+      id: couponDoc._id,
+      code: couponDoc.code,
+      discountType: couponDoc.discountType || null,
+      discountValue:
+        typeof couponDoc.discountValue === "number" ? couponDoc.discountValue : null,
+      maxDiscountAmount:
+        typeof couponDoc.maxDiscountAmount === "number"
+          ? couponDoc.maxDiscountAmount
+          : null,
+      freeShipping: !!couponDoc.freeShipping,
+      minOrderTotal:
+        typeof couponDoc.minOrderTotal === "number" ? couponDoc.minOrderTotal : null,
+      maxOrderTotal:
+        typeof couponDoc.maxOrderTotal === "number" ? couponDoc.maxOrderTotal : null,
+    };
 
     pricing = {
       subtotal: effect.subtotal,
