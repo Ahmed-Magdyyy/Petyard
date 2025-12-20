@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { cartStatusEnum, productTypeEnum } from "../../shared/constants/enums.js";
 
 const { Schema, model } = mongoose;
 
@@ -12,7 +13,7 @@ const cartItemSchema = new Schema(
 
     productType: {
       type: String,
-      enum: ["SIMPLE", "VARIANT"],
+      enum: Object.values(productTypeEnum),
       required: true,
     },
 
@@ -107,8 +108,8 @@ const cartSchema = new Schema(
 
     status: {
       type: String,
-      enum: ["ACTIVE", "ABANDONED"],
-      default: "ACTIVE",
+      enum: Object.values(cartStatusEnum),
+      default: cartStatusEnum.ACTIVE,
       index: true,
     },
 

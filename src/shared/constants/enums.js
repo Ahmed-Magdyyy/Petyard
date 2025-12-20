@@ -53,3 +53,13 @@ export const enabledControls = Object.freeze({
   BANNERS: 'banners',
   COLLECTIONS: 'collections'
 });
+
+export const productTypeEnum = Object.freeze({
+  SIMPLE: 'SIMPLE',
+  VARIANT: 'VARIANT',
+});
+
+export const cartStatusEnum = Object.freeze({
+  ACTIVE: 'ACTIVE',
+  ABANDONED: 'ABANDONED',
+});

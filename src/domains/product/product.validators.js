@@ -2,13 +2,14 @@ import { body, param, query } from "express-validator";
 import validator from "validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
+import { productTypeEnum } from "../../shared/constants/enums.js";
 
 export const createProductValidator = [
   body("type")
     .notEmpty()
     .withMessage("type is required")
     .customSanitizer((value) => normalizeProductType(value))
-    .isIn(["SIMPLE", "VARIANT"])
+    .isIn(Object.values(productTypeEnum))
     .withMessage("type must be either SIMPLE or VARIANT"),
 
   body("subcategory")
@@ -142,7 +143,7 @@ export const createProductValidator = [
     .withMessage("variant option value must be a string"),
 
   body("type").custom((value, { req }) => {
-    if (value === "SIMPLE") {
+    if (value === productTypeEnum.SIMPLE) {
       if (
         !Array.isArray(req.body.warehouseStocks) ||
         req.body.warehouseStocks.length === 0
@@ -162,7 +163,7 @@ export const createProductValidator = [
       }
     }
 
-    if (value === "VARIANT") {
+    if (value === productTypeEnum.VARIANT) {
       if (!Array.isArray(req.body.variants) || req.body.variants.length === 0) {
         throw new Error("variants are required for VARIANT products");
       }
@@ -354,7 +355,7 @@ export const listProductsQueryValidator = [
   query("type")
     .optional()
     .customSanitizer((value) => normalizeProductType(value))
-    .isIn(["SIMPLE", "VARIANT"])
+    .isIn(Object.values(productTypeEnum))
     .withMessage("type must be either SIMPLE or VARIANT"),
 
   query("isFeatured")

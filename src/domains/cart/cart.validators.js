@@ -1,6 +1,7 @@
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
+import { productTypeEnum } from "../../shared/constants/enums.js";
 
 export const warehouseIdParamValidator = [
   param("warehouseId").isMongoId().withMessage("Invalid warehouse id"),
@@ -23,7 +24,7 @@ export const upsertCartItemValidator = [
     .notEmpty()
     .withMessage("productType is required")
     .customSanitizer((value) => normalizeProductType(value))
-    .isIn(["SIMPLE", "VARIANT"])
+    .isIn(Object.values(productTypeEnum))
     .withMessage("productType must be either SIMPLE or VARIANT"),
 
   body("quantity")
@@ -33,7 +34,7 @@ export const upsertCartItemValidator = [
     .withMessage("quantity must be at least 1"),
 
   body("variantId")
-    .if(body("productType").equals("VARIANT"))
+    .if(body("productType").equals(productTypeEnum.VARIANT))
     .notEmpty()
     .withMessage("variantId is required for VARIANT products")
     .isMongoId()

@@ -8,6 +8,7 @@ import { UserModel } from "../user/user.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
+import { cartStatusEnum, productTypeEnum } from "../../shared/constants/enums.js";
 import {
   autoHideExpiredCollections,
   findActivePromotionForProduct,
@@ -83,7 +84,7 @@ async function getOrCreateCart({ userId, guestId, warehouseId }) {
       warehouse: warehouseId,
       items: [],
       totalCartPrice: 0,
-      status: "ACTIVE",
+      status: cartStatusEnum.ACTIVE,
       lastActivityAt: new Date(),
     });
   }
@@ -214,42 +215,60 @@ function findVariantWarehouseStock(variant, warehouseId) {
   );
 }
 
-async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
-  if (!cart) return null;
+function buildVariantOptionsSnapshot(variant) {
+  return Array.isArray(variant?.options)
+    ? variant.options.map((o) => ({
+        name: typeof o.name === "string" ? o.name : "",
+        value: typeof o.value === "string" ? o.value : "",
+      }))
+    : [];
+}
 
-  await autoHideExpiredCollectionsThrottled();
+function computeCartItemPricing({ price, discountedPrice, promoPercent }) {
+  const pricing = computeFinalDiscountedPrice({
+    price,
+    discountedPrice,
+    promoPercent,
+  });
 
-  const normalizedLang = normalizeLang(lang);
+  const baseEffectivePrice =
+    typeof pricing.baseDiscountedPrice === "number"
+      ? Math.min(pricing.basePrice, pricing.baseDiscountedPrice)
+      : pricing.basePrice;
 
-  const items = Array.isArray(cart.items) ? cart.items : [];
-  const originalItems = [...items];
+  const appliedPromotion = !!pricing.appliedPromotion;
+  const promotionDiscountedPrice = appliedPromotion ? pricing.promoPrice : null;
+  const itemPrice =
+    typeof pricing.finalEffective === "number" ? pricing.finalEffective : 0;
 
-  if (!items.length) {
-    cart.warehouse = warehouseId;
-    computeTotalCartPrice(cart);
-    cart.lastActivityAt = new Date();
-    cart.status = "ACTIVE";
-    await cart.save();
-    return cart;
-  }
+  return {
+    baseEffectivePrice,
+    appliedPromotion,
+    promotionDiscountedPrice,
+    itemPrice,
+  };
+}
 
-  const productIds = [
+function buildCartProductIds(items) {
+  return [
     ...new Set(
       items
         .map((item) => (item.product ? String(item.product) : null))
         .filter(Boolean)
     ),
   ];
+}
 
-  const products = await findProductsByIdsWithOptions(productIds, {
+async function fetchProductsForCart(productIds) {
+  return findProductsByIdsWithOptions(productIds, {
     select:
       "_id type price discountedPrice subcategory brand name_en name_ar images warehouseStocks variants",
     lean: true,
   });
-  const productById = new Map(products.map((p) => [String(p._id), p]));
+}
 
+async function fetchPromotionsForProducts(products, now) {
   const promotionByProductId = new Map();
-  const promoNow = new Date();
 
   await Promise.all(
     products.map(async (product) => {
@@ -261,11 +280,71 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
           subcategoryId: product.subcategory,
           brandId: product.brand,
         },
-        promoNow
+        now
       );
       promotionByProductId.set(pid, promotion || null);
     })
   );
+
+  return promotionByProductId;
+}
+
+function buildRemovedItems({ originalItems, keptItems, productById, normalizedLang }) {
+  const keptIds = new Set(keptItems.map((it) => String(it._id)));
+  const removedRaw = originalItems.filter((it) => !keptIds.has(String(it._id)));
+
+  return removedRaw.map((it) => {
+    const product = productById.get(String(it.product));
+    const localizedName = product
+      ? pickLocalizedField(product, "name", normalizedLang)
+      : it.productName || null;
+
+    return {
+      id: it._id,
+      productId: it.product,
+      productType: it.productType,
+      productName: localizedName,
+      productImageUrl: it.productImageUrl || null,
+      variantId: it.variantId || null,
+      quantity: it.quantity,
+      itemPrice: it.itemPrice,
+    };
+  });
+}
+
+async function finalizeActiveCartAndSave(cart, warehouseId) {
+  cart.items = Array.isArray(cart.items) ? cart.items : [];
+  cart.warehouse = warehouseId;
+  computeTotalCartPrice(cart);
+  cart.lastActivityAt = new Date();
+  cart.status = cartStatusEnum.ACTIVE;
+  await cart.save();
+  return cart;
+}
+
+async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
+  if (!cart) return null;
+
+  await autoHideExpiredCollectionsThrottled();
+
+  const normalizedLang = normalizeLang(lang);
+
+  const items = Array.isArray(cart.items) ? cart.items : [];
+  const originalItems = [...items];
+
+  if (!items.length) {
+    cart._removedItems = undefined;
+    await finalizeActiveCartAndSave(cart, warehouseId);
+    return cart;
+  }
+
+  const productIds = buildCartProductIds(items);
+
+  const products = await fetchProductsForCart(productIds);
+  const productById = new Map(products.map((p) => [String(p._id), p]));
+
+  const promoNow = new Date();
+  const promotionByProductId = await fetchPromotionsForProducts(products, promoNow);
 
   const keptItems = [];
 
@@ -296,7 +375,7 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
     let promotionDiscountedPrice = null;
     let appliedPromotion = false;
 
-    if (product.type === "SIMPLE") {
+    if (product.type === productTypeEnum.SIMPLE) {
       const stock = findSimpleWarehouseStock(product, warehouseId);
       if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
         continue;
@@ -309,20 +388,16 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
       const discounted =
         typeof product.discountedPrice === "number" ? product.discountedPrice : null;
 
-      const pricing = computeFinalDiscountedPrice({
+      const itemPricing = computeCartItemPricing({
         price,
         discountedPrice: discounted,
         promoPercent,
       });
 
-      baseEffectivePrice =
-        typeof pricing.baseDiscountedPrice === "number"
-          ? Math.min(pricing.basePrice, pricing.baseDiscountedPrice)
-          : pricing.basePrice;
-
-      appliedPromotion = !!pricing.appliedPromotion;
-      promotionDiscountedPrice = appliedPromotion ? pricing.promoPrice : null;
-      newItemPrice = typeof pricing.finalEffective === "number" ? pricing.finalEffective : 0;
+      baseEffectivePrice = itemPricing.baseEffectivePrice;
+      appliedPromotion = itemPricing.appliedPromotion;
+      promotionDiscountedPrice = itemPricing.promotionDiscountedPrice;
+      newItemPrice = itemPricing.itemPrice;
 
       newProductImageUrl = pickMainImageUrl(product.images);
       newVariantId = undefined;
@@ -343,27 +418,18 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
       const discounted =
         typeof variant.discountedPrice === "number" ? variant.discountedPrice : null;
 
-      const pricing = computeFinalDiscountedPrice({
+      const itemPricing = computeCartItemPricing({
         price,
         discountedPrice: discounted,
         promoPercent,
       });
 
-      baseEffectivePrice =
-        typeof pricing.baseDiscountedPrice === "number"
-          ? Math.min(pricing.basePrice, pricing.baseDiscountedPrice)
-          : pricing.basePrice;
+      baseEffectivePrice = itemPricing.baseEffectivePrice;
+      appliedPromotion = itemPricing.appliedPromotion;
+      promotionDiscountedPrice = itemPricing.promotionDiscountedPrice;
+      newItemPrice = itemPricing.itemPrice;
 
-      appliedPromotion = !!pricing.appliedPromotion;
-      promotionDiscountedPrice = appliedPromotion ? pricing.promoPrice : null;
-      newItemPrice = typeof pricing.finalEffective === "number" ? pricing.finalEffective : 0;
-
-      newVariantOptionsSnapshot = Array.isArray(variant.options)
-        ? variant.options.map((o) => ({
-            name: typeof o.name === "string" ? o.name : "",
-            value: typeof o.value === "string" ? o.value : "",
-          }))
-        : [];
+      newVariantOptionsSnapshot = buildVariantOptionsSnapshot(variant);
 
       if (Array.isArray(variant.images) && variant.images.length > 0) {
         newProductImageUrl = pickMainImageUrl(variant.images) || null;
@@ -390,33 +456,15 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
     keptItems.push(item);
   }
 
-  const keptIds = new Set(keptItems.map((it) => String(it._id)));
-  const removedRaw = originalItems.filter((it) => !keptIds.has(String(it._id)));
-
-  cart._removedItems = removedRaw.map((it) => {
-    const product = productById.get(String(it.product));
-    const localizedName = product
-      ? pickLocalizedField(product, "name", normalizedLang)
-      : it.productName || null;
-
-    return {
-      id: it._id,
-      productId: it.product,
-      productType: it.productType,
-      productName: localizedName,
-      productImageUrl: it.productImageUrl || null,
-      variantId: it.variantId || null,
-      quantity: it.quantity,
-      itemPrice: it.itemPrice,
-    };
+  cart._removedItems = buildRemovedItems({
+    originalItems,
+    keptItems,
+    productById,
+    normalizedLang,
   });
 
   cart.items = keptItems;
-  cart.warehouse = warehouseId;
-  computeTotalCartPrice(cart);
-  cart.lastActivityAt = new Date();
-  cart.status = "ACTIVE";
-  await cart.save();
+  await finalizeActiveCartAndSave(cart, warehouseId);
 
   return cart;
 }

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { productTypeEnum } from "../../shared/constants/enums.js";
 
 const { Schema, model } = mongoose;
 
@@ -83,7 +84,7 @@ const productSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ["SIMPLE", "VARIANT"],
+      enum: Object.values(productTypeEnum),
       required: true,
     },
     subcategory: {
