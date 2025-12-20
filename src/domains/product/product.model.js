@@ -179,5 +179,7 @@ productSchema.index({ subcategory: 1 });
 productSchema.index({ category: 1 });
 productSchema.index({ brand: 1 });
 productSchema.index({ type: 1 });
+productSchema.index({ type: 1, "warehouseStocks.warehouse": 1 });
+productSchema.index({ type: 1, "variants.warehouseStocks.warehouse": 1 });
 
 export const ProductModel = model("Product", productSchema);

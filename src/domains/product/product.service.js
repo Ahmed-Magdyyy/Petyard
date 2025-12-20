@@ -688,26 +688,50 @@ async function getProductsService(queryParams = {}, lang = "en") {
     if (warehouseId) {
       if (filter.type === productTypeEnum.SIMPLE) {
         warehouseFilter = {
-          "warehouseStocks.warehouse": warehouseId,
-          "warehouseStocks.quantity": { $gt: 0 },
+          warehouseStocks: {
+            $elemMatch: {
+              warehouse: warehouseId,
+              quantity: { $gt: 0 },
+            },
+          },
         };
       } else if (filter.type === productTypeEnum.VARIANT) {
         warehouseFilter = {
-          "variants.warehouseStocks.warehouse": warehouseId,
-          "variants.warehouseStocks.quantity": { $gt: 0 },
+          variants: {
+            $elemMatch: {
+              warehouseStocks: {
+                $elemMatch: {
+                  warehouse: warehouseId,
+                  quantity: { $gt: 0 },
+                },
+              },
+            },
+          },
         };
       } else {
         warehouseFilter = {
           $or: [
             {
               type: productTypeEnum.SIMPLE,
-              "warehouseStocks.warehouse": warehouseId,
-              "warehouseStocks.quantity": { $gt: 0 },
+              warehouseStocks: {
+                $elemMatch: {
+                  warehouse: warehouseId,
+                  quantity: { $gt: 0 },
+                },
+              },
             },
             {
               type: productTypeEnum.VARIANT,
-              "variants.warehouseStocks.warehouse": warehouseId,
-              "variants.warehouseStocks.quantity": { $gt: 0 },
+              variants: {
+                $elemMatch: {
+                  warehouseStocks: {
+                    $elemMatch: {
+                      warehouse: warehouseId,
+                      quantity: { $gt: 0 },
+                    },
+                  },
+                },
+              },
             },
           ],
         };
@@ -737,7 +761,7 @@ async function getProductsService(queryParams = {}, lang = "en") {
 
 
   const listSelect =
-    "_id slug type name_en name_ar price discountedPrice variants images warehouseStocks ratingAverage ratingCount category subcategory brand";
+    "_id slug type name_en name_ar price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
 
   const [totalProductsCount, products] = await Promise.all([
     countProducts(mongoFilter),
