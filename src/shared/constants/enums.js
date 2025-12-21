@@ -63,3 +63,19 @@ export const cartStatusEnum = Object.freeze({
   ACTIVE: 'ACTIVE',
   ABANDONED: 'ABANDONED',
 });
+
+export const serviceTypeEnum = Object.freeze({
+  GROOMING: 'GROOMING',
+  SHOWERING: 'SHOWERING',
+  CLINIC: 'CLINIC',
+});
+
+export const serviceRoomTypeEnum = Object.freeze({
+  GROOMING_ROOM: 'GROOMING_ROOM',
+  CLINIC_ROOM: 'CLINIC_ROOM',
+});
+
+export const serviceReservationStatusEnum = Object.freeze({
+  BOOKED: 'BOOKED',
+  CANCELLED: 'CANCELLED',
+});

@@ -20,6 +20,8 @@ import favoriteRoutes from "../domains/favorite/favorite.routes.js";
 import loyaltyRoutes from "../domains/loyalty/loyalty.routes.js";
 import walletRoutes from "../domains/wallet/wallet.routes.js";
 import collectionRoutes from "../domains/collection/collection.routes.js";
+import serviceLocationRoutes from "../domains/serviceReservation/locations/serviceLocation.routes.js";
+import serviceReservationRoutes from "../domains/serviceReservation/reservations/serviceReservation.routes.js";
 
 export function mountRoutes(app) {
   app.use("/api/v1/auth", authRoutes);
@@ -43,4 +45,6 @@ export function mountRoutes(app) {
   app.use("/api/v1/favorites", favoriteRoutes);
   app.use("/api/v1/loyalty", loyaltyRoutes);
   app.use("/api/v1/wallet", walletRoutes);
+  app.use("/api/v1/service-locations", serviceLocationRoutes);
+  app.use("/api/v1/service-reservations", serviceReservationRoutes);
 }
