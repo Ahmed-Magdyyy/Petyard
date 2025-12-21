@@ -13,13 +13,13 @@ const CATALOG = Object.freeze({
       {
         key: "cat",
         name_en: "Cat",
-        name_ar: "",
+        name_ar: "قطة",
         price: 250,
       },
       {
         key: "dog",
         name_en: "Dog",
-        name_ar: "",
+        name_ar: "كلب",
         price: 300,
       },
     ],

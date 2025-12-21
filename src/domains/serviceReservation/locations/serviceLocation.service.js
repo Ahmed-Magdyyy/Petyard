@@ -29,36 +29,6 @@ function buildPublicServiceLocationDto(l, lang) {
   };
 }
 
-const DEFAULT_LOCATIONS = [
-  {
-    slug: "wabour-elmaya-alexandria",
-    name_en: "Wabour elmaya - Alexandria",
-    name_ar: "وابور المياه - الإسكندرية",
-    city: "Alexandria",
-    capacityByRoomType: { groomingRoom: 1, clinicRoom: 1 },
-    googleMapsLink: "",
-    phone: "",
-  },
-  {
-    slug: "elshatby-alexandria",
-    name_en: "Elshatby - Alexandria",
-    name_ar: "الشاطبي - الإسكندرية",
-    city: "Alexandria",
-    capacityByRoomType: { groomingRoom: 1, clinicRoom: 1 },
-    googleMapsLink: "",
-    phone: "",
-  },
-  {
-    slug: "sedi-beshr-alexandria",
-    name_en: "Sedi beshr - Alexandria",
-    name_ar: "سيدي بشر - الإسكندرية",
-    city: "Alexandria",
-    capacityByRoomType: { groomingRoom: 2, clinicRoom: 1 },
-    googleMapsLink: "",
-    phone: "",
-  },
-];
-
 function buildServiceLocationDto(l) {
   return {
     id: l._id,
@@ -74,37 +44,7 @@ function buildServiceLocationDto(l) {
   };
 }
 
-export async function ensureDefaultServiceLocations() {
-  if (process.env.NODE_ENV === "production") return;
-
-  const existingCount = await ServiceLocationModel.countDocuments();
-  if (existingCount > 0) return;
-
-  const ops = DEFAULT_LOCATIONS.map((loc) =>
-    ServiceLocationModel.updateOne(
-      { slug: loc.slug },
-      {
-        $setOnInsert: {
-          slug: loc.slug,
-          name_en: loc.name_en,
-          name_ar: loc.name_ar,
-          city: loc.city,
-          capacityByRoomType: loc.capacityByRoomType,
-          googleMapsLink: loc.googleMapsLink,
-          phone: loc.phone,
-          active: true,
-        },
-      },
-      { upsert: true }
-    )
-  );
-
-  await Promise.all(ops);
-}
-
 export async function listServiceLocationsService(lang = "en") {
-  await ensureDefaultServiceLocations();
-
   const locations = await ServiceLocationModel.find({ active: true })
     .select(
       "_id slug name_en name_ar city timezone googleMapsLink phone capacityByRoomType active"
@@ -119,8 +59,6 @@ export async function listServiceLocationsService(lang = "en") {
 }
 
 export async function getServiceLocationByIdService(id) {
-  await ensureDefaultServiceLocations();
-
   const location = await ServiceLocationModel.findById(id)
     .select(
       "_id slug name_en name_ar city timezone googleMapsLink phone capacityByRoomType active"
@@ -131,8 +69,6 @@ export async function getServiceLocationByIdService(id) {
 }
 
 export async function getServiceLocationBySlugService(slug) {
-  await ensureDefaultServiceLocations();
-
   const normalized = normalizeSlug(slug);
   if (!normalized) return null;
 

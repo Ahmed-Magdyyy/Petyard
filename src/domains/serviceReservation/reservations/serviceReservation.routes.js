@@ -35,19 +35,19 @@ router.use(protect);
 
 router.get(
   "/me",
-  allowedTo(roles.USER),
+  // allowedTo(roles.USER),
   listReservationsQueryValidator,
   listMyReservations
 );
 router.post(
   "/",
-  allowedTo(roles.USER),
+  // allowedTo(roles.USER),
   createReservationValidator,
   createReservationForUser
 );
 router.patch(
   "/:id/cancel",
-  allowedTo(roles.USER),
+  // allowedTo(roles.USER),
   reservationIdParamValidator,
   cancelReservationForUser
 );

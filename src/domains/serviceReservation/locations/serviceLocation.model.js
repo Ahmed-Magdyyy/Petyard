@@ -58,17 +58,6 @@ const serviceLocationSchema = new Schema(
   { timestamps: true }
 );
 
-serviceLocationSchema.pre("validate", function (next) {
-  const legacyName = this.get("name");
-  if (!this.name_en && legacyName) {
-    this.name_en = legacyName;
-  }
-  if (!this.name_ar && this.name_en) {
-    this.name_ar = this.name_en;
-  }
-  next();
-});
-
 serviceLocationSchema.index({ active: 1 });
 
 export const ServiceLocationModel = model(
