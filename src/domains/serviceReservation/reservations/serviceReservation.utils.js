@@ -28,6 +28,14 @@ export function parseHour12To24(hour12, ampm) {
   return n === 12 ? 12 : n + 12;
 }
 
+export function parseHour24OrThrow(hour24) {
+  const n = Number(hour24);
+  if (!Number.isInteger(n) || n < 0 || n > 23) {
+    throw new ApiError("hour24 must be an integer between 0 and 23", 400);
+  }
+  return n;
+}
+
 export function parseCairoDateOrThrow(dateISO) {
   if (!dateISO || typeof dateISO !== "string") {
     throw new ApiError("date is required", 400);
@@ -52,19 +60,23 @@ export function getWorkingHoursForCairoDate(cairoDateStart) {
   return { startHour, endHour };
 }
 
-export function cairoSlotToUtcDate({ dateISO, hour12, ampm }) {
+export function cairoSlotToUtcDate({ dateISO, hour24, hour12, ampm }) {
   const cairoDay = parseCairoDateOrThrow(dateISO);
-  const hour24 = parseHour12To24(hour12, ampm);
+
+  const hour24Value =
+    hour24 !== undefined && hour24 !== null && String(hour24).trim()
+      ? parseHour24OrThrow(hour24)
+      : parseHour12To24(hour12, ampm);
 
   const slot = cairoDay.set({
-    hour: hour24,
+    hour: hour24Value,
     minute: 0,
     second: 0,
     millisecond: 0,
   });
 
   return {
-    hour24,
+    hour24: hour24Value,
     cairo: slot,
     utcDate: slot.toUTC().toJSDate(),
   };

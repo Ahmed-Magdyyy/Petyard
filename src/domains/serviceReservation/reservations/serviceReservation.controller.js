@@ -1,9 +1,11 @@
 import asyncHandler from "express-async-handler";
 import { ApiError } from "../../../shared/ApiError.js";
 import {
+  adminUpdateReservationStatusService,
   cancelReservationService,
   createReservationService,
   getAvailabilityService,
+  adminListReservationsByDateService,
   listReservationsForGuestService,
   listReservationsForUserService,
 } from "./serviceReservation.service.js";
@@ -27,6 +29,29 @@ export const getAvailability = asyncHandler(async (req, res) => {
     locationId: req.query.locationId,
     serviceType: req.query.serviceType,
     date: req.query.date,
+    lang: req.lang,
+  });
+
+  res.status(200).json(result);
+});
+
+export const adminUpdateReservationStatus = asyncHandler(async (req, res) => {
+  const dto = await adminUpdateReservationStatusService({
+    id: req.params.id,
+    status: req.body.status,
+    lang: req.lang,
+  });
+
+  res.status(200).json({ data: dto });
+});
+
+export const adminListReservationsByDate = asyncHandler(async (req, res) => {
+  const { date, locationId, status } = req.query;
+
+  const result = await adminListReservationsByDateService({
+    date,
+    locationId: locationId || undefined,
+    status: status || undefined,
     lang: req.lang,
   });
 

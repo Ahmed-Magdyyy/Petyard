@@ -2,6 +2,8 @@ import { Router } from "express";
 import { protect, allowedTo } from "../../auth/auth.middleware.js";
 import { roles } from "../../../shared/constants/enums.js";
 import {
+  adminListReservationsByDate,
+  adminUpdateReservationStatus,
   cancelReservationForGuest,
   cancelReservationForUser,
   createReservationForGuest,
@@ -12,6 +14,8 @@ import {
   listMyReservations,
 } from "./serviceReservation.controller.js";
 import {
+  adminListReservationsByDateQueryValidator,
+  adminUpdateReservationStatusValidator,
   availabilityQueryValidator,
   createReservationValidator,
   listReservationsQueryValidator,
@@ -29,6 +33,20 @@ router.patch(
   "/guest/:id/cancel",
   reservationIdParamValidator,
   cancelReservationForGuest
+);
+
+router.use("/admin", protect, allowedTo(roles.SUPER_ADMIN, roles.ADMIN));
+
+router.get(
+  "/admin",
+  adminListReservationsByDateQueryValidator,
+  adminListReservationsByDate
+);
+
+router.patch(
+  "/admin/:id/status",
+  adminUpdateReservationStatusValidator,
+  adminUpdateReservationStatus
 );
 
 router.use(protect);

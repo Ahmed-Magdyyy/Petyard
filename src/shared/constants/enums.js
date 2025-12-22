@@ -78,4 +78,6 @@ export const serviceRoomTypeEnum = Object.freeze({
 export const serviceReservationStatusEnum = Object.freeze({
   BOOKED: 'BOOKED',
   CANCELLED: 'CANCELLED',
+  COMPLETED: 'COMPLETED',
+  NO_SHOW: 'NO_SHOW',
 });

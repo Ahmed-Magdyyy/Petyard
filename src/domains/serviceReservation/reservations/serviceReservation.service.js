@@ -13,6 +13,7 @@ import { pickLocalizedField } from "../../../shared/utils/i18n.js";
 import {
   getServiceNameFallback,
   getServiceOptionNameFallback,
+  getServiceDefinition,
   resolveServiceSelectionOrThrow,
 } from "../catalog/serviceCatalog.js";
 import {
@@ -49,16 +50,90 @@ function parseIdentityOrThrow({ userId, guestId }) {
   throw new ApiError("Either userId or guestId must be provided", 400);
 }
 
-async function findActorReservationAtSameTime({ session, userId, guestId, startsAt }) {
+async function findActorReservationAtAnyTime({
+  session,
+  userId,
+  guestId,
+  startsAtList,
+}) {
   const identityFilter = userId ? { user: userId } : { guestId };
   return ServiceReservationModel.findOne({
     ...identityFilter,
-    startsAt,
+    startsAt: { $in: startsAtList },
     status: serviceReservationStatusEnum.BOOKED,
   })
     .session(session)
-    .select("_id")
+    .select("_id startsAt")
     .lean();
+}
+
+function formatSlotLabelFromUtc(startsAtUtc) {
+  const localDate = toCairoDateISO(startsAtUtc);
+  const hour24 = toCairoHour24(startsAtUtc);
+  const label = formatHourLabel12(hour24);
+  return { localDate, hour24, label, text: `${localDate} ${label}` };
+}
+
+async function reserveInventorySlotOrThrow({
+  session,
+  locationId,
+  roomType,
+  startsAt,
+  capacity,
+  errorMessage,
+}) {
+  const slotKey = {
+    location: locationId,
+    roomType,
+    startsAt,
+  };
+
+  const updateExisting = await ServiceSlotInventoryModel.updateOne(
+    {
+      ...slotKey,
+      bookedCount: { $lt: capacity },
+    },
+    {
+      $set: { capacity },
+      $inc: { bookedCount: 1 },
+    },
+    { session }
+  );
+
+  if (updateExisting.modifiedCount > 0) return;
+
+  try {
+    await ServiceSlotInventoryModel.create(
+      [
+        {
+          ...slotKey,
+          capacity,
+          bookedCount: 1,
+        },
+      ],
+      { session }
+    );
+  } catch (err) {
+    if (err?.code !== 11000) {
+      throw err;
+    }
+
+    const retry = await ServiceSlotInventoryModel.updateOne(
+      {
+        ...slotKey,
+        bookedCount: { $lt: capacity },
+      },
+      {
+        $set: { capacity },
+        $inc: { bookedCount: 1 },
+      },
+      { session }
+    );
+
+    if (retry.modifiedCount === 0) {
+      throw new ApiError(errorMessage, 409);
+    }
+  }
 }
 
 function computeAgeYears(birthDate) {
@@ -130,14 +205,15 @@ async function resolvePetSnapshot({ userId, petId, payload }) {
   }
 
   const missing = [];
-  if (!snapshot.ownerName) missing.push("ownerName");
-  if (!snapshot.ownerPhone) missing.push("ownerPhone");
-  if (!snapshot.petType) missing.push("petType");
-  if (!snapshot.petName) missing.push("petName");
+  if (!snapshot.ownerName || snapshot.ownerName.trim() === "") missing.push("ownerName"); 
+  if (!snapshot.ownerPhone || snapshot.ownerPhone.trim() === "") missing.push("ownerPhone");
+  if (!snapshot.petType || snapshot.petType.trim() === "") missing.push("petType");
+  if (!snapshot.petName || snapshot.petName.trim() === "") missing.push("petName");
   if (snapshot.petAge == null || Number.isNaN(snapshot.petAge)) missing.push("age");
-  if (!snapshot.petGender) missing.push("gender");
+  if (!snapshot.petGender || snapshot.petGender.trim() === "") missing.push("gender");
 
   if (missing.length) {
+    console.log("Missing required reservation fields:", missing);
     throw new ApiError(
       `Missing required reservation fields: ${missing.join(", ")}`,
       400
@@ -227,6 +303,11 @@ export async function getAvailabilityService({ locationId, serviceType, date, la
 
   const normalizedLang = lang === "ar" ? "ar" : "en";
 
+  const svcDef = getServiceDefinition(serviceType);
+  if (!svcDef) {
+    throw new ApiError("Invalid serviceType", 400);
+  }
+
   const roomType = getRoomTypeForService(serviceType);
   const capacity = getCapacityForRoomType(location, roomType);
 
@@ -278,6 +359,16 @@ export async function getAvailabilityService({ locationId, serviceType, date, la
   }
 
   return {
+    service: {
+      type: svcDef.type,
+      name: pickLocalizedField(svcDef, "name", normalizedLang),
+      options: (svcDef.options || []).map((opt) => ({
+        key: opt.key,
+        name: pickLocalizedField(opt, "name", normalizedLang),
+        price: opt.price,
+        currency: "EGP",
+      })),
+    },
     location: {
       id: location._id,
       name: pickLocalizedField(location, "name", normalizedLang),
@@ -308,32 +399,38 @@ export async function createReservationService({ userId, guestId, payload, lang 
     throw new ApiError("Service location not found", 404);
   }
 
-  const serviceType = payload.serviceType;
-  const roomType = getRoomTypeForService(serviceType);
-  const capacity = getCapacityForRoomType(location, roomType);
-
-  if (capacity <= 0) {
-    throw new ApiError("Selected service is not available at this location", 400);
-  }
+  const requestedServices = Array.isArray(payload.services) && payload.services.length
+    ? payload.services
+    : [
+        {
+          serviceType: payload.serviceType,
+          serviceOptionKey: payload.serviceOptionKey,
+        },
+      ];
 
   const cairoDateStart = parseCairoDateOrThrow(payload.date);
   assertWithinBookingWindowOrThrow(cairoDateStart);
 
   const { hour24, utcDate: startsAt } = cairoSlotToUtcDate({
     dateISO: payload.date,
+    hour24: payload.hour24,
     hour12: payload.hour12,
     ampm: payload.ampm,
   });
 
-  ensureWithinWorkingHoursOrThrow({ cairoDateStart, hour24 });
+  for (let i = 0; i < requestedServices.length; i += 1) {
+    ensureWithinWorkingHoursOrThrow({ cairoDateStart, hour24: hour24 + i });
+  }
 
-  const cairoSlot = parseCairoDateOrThrow(payload.date)
-    .set({ hour: hour24, minute: 0, second: 0, millisecond: 0 });
+  const cairoSlot = parseCairoDateOrThrow(payload.date).set({
+    hour: hour24,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+  });
   if (cairoSlot < startOfCurrentHourCairo()) {
     throw new ApiError("Cannot book in the past", 400);
   }
-
-  const endsAt = addHoursUtc(startsAt, 1);
 
   const snapshot = await resolvePetSnapshot({
     userId: identity.userId,
@@ -341,111 +438,99 @@ export async function createReservationService({ userId, guestId, payload, lang 
     payload,
   });
 
-  const selection = resolveServiceSelectionOrThrow({
-    serviceType,
-    optionKey: payload.serviceOptionKey,
-  });
-
   const session = await mongoose.startSession();
   let created;
 
   try {
     await session.withTransaction(async () => {
-      const existing = await findActorReservationAtSameTime({
+      const startsAtList = requestedServices.map((_, idx) =>
+        addHoursUtc(startsAt, idx)
+      );
+
+      const existingAny = await findActorReservationAtAnyTime({
         session,
         userId: identity.userId,
         guestId: identity.guestId,
-        startsAt,
+        startsAtList,
       });
-      if (existing) {
-        throw new ApiError("You already have a reservation at this time", 409);
+
+      if (existingAny) {
+        const slotLabel = formatSlotLabelFromUtc(existingAny.startsAt);
+        throw new ApiError(
+          `You already have a reservation at ${slotLabel.text}`,
+          409
+        );
       }
 
-      const slotKey = {
-        location: location._id,
-        roomType,
-        startsAt,
-      };
-
-      // 1) Try to increment an existing slot if it still has remaining capacity.
-      const updateExisting = await ServiceSlotInventoryModel.updateOne(
-        {
-          ...slotKey,
-          bookedCount: { $lt: capacity },
-        },
-        {
-          $set: { capacity },
-          $inc: { bookedCount: 1 },
-        },
-        { session }
-      );
-
-      if (updateExisting.modifiedCount === 0) {
-        // 2) If no existing slot was updated, attempt to create a new slot with bookedCount=1.
-        // If it already exists (race), retry the update.
-        try {
-          await ServiceSlotInventoryModel.create(
-            [
-              {
-                ...slotKey,
-                capacity,
-                bookedCount: 1,
-              },
-            ],
-            { session }
+      const docs = [];
+      for (let idx = 0; idx < requestedServices.length; idx += 1) {
+        const svc = requestedServices[idx] || {};
+        const serviceType = svc.serviceType;
+        if (!serviceType || !Object.values(serviceTypeEnum).includes(serviceType)) {
+          throw new ApiError(
+            `services[${idx}].serviceType is invalid or missing`,
+            400
           );
-        } catch (err) {
-          if (err?.code !== 11000) {
-            throw err;
-          }
-
-          const retry = await ServiceSlotInventoryModel.updateOne(
-            {
-              ...slotKey,
-              bookedCount: { $lt: capacity },
-            },
-            {
-              $set: { capacity },
-              $inc: { bookedCount: 1 },
-            },
-            { session }
-          );
-
-          if (retry.modifiedCount === 0) {
-            throw new ApiError("Selected time is fully booked", 409);
-          }
         }
+        const roomType = getRoomTypeForService(serviceType);
+        const capacity = getCapacityForRoomType(location, roomType);
+
+        if (capacity <= 0) {
+          throw new ApiError(
+            "Selected service is not available at this location",
+            400
+          );
+        }
+
+        const selection = resolveServiceSelectionOrThrow({
+          serviceType,
+          optionKey: svc.serviceOptionKey,
+        });
+
+        const startsAtSlot = addHoursUtc(startsAt, idx);
+        const endsAtSlot = addHoursUtc(startsAtSlot, 1);
+
+        const slotLabel = formatSlotLabelFromUtc(startsAtSlot);
+        await reserveInventorySlotOrThrow({
+          session,
+          locationId: location._id,
+          roomType,
+          startsAt: startsAtSlot,
+          capacity,
+          errorMessage: `Selected time ${slotLabel.text} is fully booked`,
+        });
+
+        docs.push({
+          user: identity.userId || undefined,
+          guestId: identity.guestId || undefined,
+          location: location._id,
+          serviceType,
+          serviceOptionKey: selection.serviceOptionKey,
+          serviceName_en: selection.serviceName_en,
+          serviceName_ar: selection.serviceName_ar,
+          serviceOptionName_en: selection.serviceOptionName_en,
+          serviceOptionName_ar: selection.serviceOptionName_ar,
+          roomType,
+          startsAt: startsAtSlot,
+          endsAt: endsAtSlot,
+          status: serviceReservationStatusEnum.BOOKED,
+          servicePrice: selection.servicePrice,
+          currency: selection.currency,
+          pet: snapshot.pet,
+          ownerName: snapshot.ownerName,
+          ownerPhone: snapshot.ownerPhone,
+          petType: snapshot.petType,
+          petName: snapshot.petName,
+          petAge: snapshot.petAge,
+          petGender: snapshot.petGender,
+          comment: snapshot.comment,
+        });
       }
 
-      const doc = {
-        user: identity.userId || undefined,
-        guestId: identity.guestId || undefined,
-        location: location._id,
-        serviceType,
-        serviceOptionKey: selection.serviceOptionKey,
-        serviceName_en: selection.serviceName_en,
-        serviceName_ar: selection.serviceName_ar,
-        serviceOptionName_en: selection.serviceOptionName_en,
-        serviceOptionName_ar: selection.serviceOptionName_ar,
-        roomType,
-        startsAt,
-        endsAt,
-        status: serviceReservationStatusEnum.BOOKED,
-        servicePrice: selection.servicePrice,
-        currency: selection.currency,
-        pet: snapshot.pet,
-        ownerName: snapshot.ownerName,
-        ownerPhone: snapshot.ownerPhone,
-        petType: snapshot.petType,
-        petName: snapshot.petName,
-        petAge: snapshot.petAge,
-        petGender: snapshot.petGender,
-        comment: snapshot.comment,
-      };
-
-      created = await ServiceReservationModel.create([doc], { session }).then(
-        (res) => res[0]
-      );
+      created = await ServiceReservationModel.insertMany(docs, {
+        session,
+        ordered: true,
+      });
     });
   } finally {
     session.endSession();
@@ -453,6 +538,18 @@ export async function createReservationService({ userId, guestId, payload, lang 
 
   if (!created) {
     throw new ApiError("Failed to create reservation", 500);
+  }
+
+  if (Array.isArray(created)) {
+    if (created.length === 1) {
+      return buildReservationDto(created[0], location, lang);
+    }
+
+    return {
+      reservations: created
+        .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))
+        .map((r) => buildReservationDto(r, location, lang)),
+    };
   }
 
   return buildReservationDto(created, location, lang);
@@ -491,6 +588,37 @@ export async function listReservationsForUserService({
 
   return {
     results: reservations.length,
+    data: reservations.map((r) => buildReservationDto(r, r.location, lang)),
+  };
+}
+
+export async function adminListReservationsByDateService({
+  date,
+  locationId,
+  status,
+  lang,
+}) {
+  const cairoDateStart = parseCairoDateOrThrow(date).startOf("day");
+  const utcStart = cairoDateStart.toUTC().toJSDate();
+  const utcEnd = cairoDateStart.plus({ days: 1 }).toUTC().toJSDate();
+
+  const filter = {
+    startsAt: { $gte: utcStart, $lt: utcEnd },
+  };
+  if (locationId) filter.location = locationId;
+  if (status) filter.status = status;
+
+  const reservations = await ServiceReservationModel.find(filter)
+    .populate(
+      "location",
+      "_id slug name_en name_ar city timezone googleMapsLink phone"
+    )
+    .sort({ startsAt: 1 })
+    .lean();
+
+  return {
+    results: reservations.length,
+    date: cairoDateStart.toFormat("yyyy-LL-dd"),
     data: reservations.map((r) => buildReservationDto(r, r.location, lang)),
   };
 }
@@ -571,6 +699,10 @@ export async function cancelReservationService({ id, userId, guestId, lang }) {
         return;
       }
 
+      if (reservation.status !== serviceReservationStatusEnum.BOOKED) {
+        throw new ApiError("Only booked reservations can be cancelled", 400);
+      }
+
       const nowUtc = getNowCairo().toUTC().toJSDate();
       const cutoff = new Date(reservation.startsAt.getTime() - 24 * 60 * 60 * 1000);
       if (nowUtc > cutoff) {
@@ -607,4 +739,86 @@ export async function cancelReservationService({ id, userId, guestId, lang }) {
 
   const location = await getServiceLocationByIdService(cancelled.location);
   return buildReservationDto(cancelled, location, lang);
+}
+
+export async function adminUpdateReservationStatusService({ id, status, lang }) {
+  if (!id) {
+    throw new ApiError("id is required", 400);
+  }
+  if (!status) {
+    throw new ApiError("status is required", 400);
+  }
+
+  const nextStatus = String(status).toUpperCase();
+  const allowed = [
+    serviceReservationStatusEnum.CANCELLED,
+    serviceReservationStatusEnum.COMPLETED,
+    serviceReservationStatusEnum.NO_SHOW,
+  ];
+  if (!allowed.includes(nextStatus)) {
+    throw new ApiError(
+      "status must be CANCELLED, COMPLETED, or NO_SHOW",
+      400
+    );
+  }
+
+  const session = await mongoose.startSession();
+  let updated = null;
+
+  try {
+    await session.withTransaction(async () => {
+      const reservation = await ServiceReservationModel.findById(id)
+        .session(session)
+        .exec();
+
+      if (!reservation) {
+        throw new ApiError("Reservation not found", 404);
+      }
+
+      if (reservation.status === nextStatus) {
+        updated = reservation;
+        return;
+      }
+
+      if (reservation.status !== serviceReservationStatusEnum.BOOKED) {
+        throw new ApiError(
+          "Only booked reservations can be updated to this status",
+          400
+        );
+      }
+
+      if (nextStatus === serviceReservationStatusEnum.CANCELLED) {
+        const nowUtc = getNowCairo().toUTC().toJSDate();
+        reservation.status = serviceReservationStatusEnum.CANCELLED;
+        reservation.cancelledAt = nowUtc;
+        await reservation.save({ session });
+
+        await ServiceSlotInventoryModel.updateOne(
+          {
+            location: reservation.location,
+            roomType: reservation.roomType,
+            startsAt: reservation.startsAt,
+            bookedCount: { $gt: 0 },
+          },
+          { $inc: { bookedCount: -1 } },
+          { session }
+        );
+      } else {
+        // COMPLETED / NO_SHOW do not free capacity (slot time has been used).
+        reservation.status = nextStatus;
+        await reservation.save({ session });
+      }
+
+      updated = reservation;
+    });
+  } finally {
+    session.endSession();
+  }
+
+  if (!updated) {
+    throw new ApiError("Failed to update reservation status", 500);
+  }
+
+  const location = await getServiceLocationByIdService(updated.location);
+  return buildReservationDto(updated, location, lang);
 }
