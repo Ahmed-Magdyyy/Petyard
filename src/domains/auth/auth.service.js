@@ -852,6 +852,13 @@ export async function oauthSetPasswordService({ userId, newPassword }) {
     throw new ApiError("User not found", 404);
   }
 
+  if (user.password) {
+    throw new ApiError(
+      "Password is already set. Use /users/me/password to change it",
+      400
+    );
+  }
+
   if (!user.phoneVerified || !user.phone) {
     throw new ApiError("Please verify your phone first", 400);
   }
