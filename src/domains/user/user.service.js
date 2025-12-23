@@ -206,7 +206,6 @@ export async function updateLoggedUserDataService({
   userId,
   name,
   email,
-  phone,
 }) {
   const user = await UserModel.findById(userId);
   if (!user) {
@@ -215,49 +214,6 @@ export async function updateLoggedUserDataService({
 
   if (name !== undefined) user.name = name;
   if (email !== undefined) user.email = email;
-  if (phone !== undefined) {
-    const normalizedNewPhone = normalizeEgyptianMobile(phone);
-
-    if (normalizedNewPhone !== user.phone) {
-      const cooldownDays = Number(process.env.PHONE_CHANGE_COOLDOWN_DAYS) || 30;
-      const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000;
-
-      if (
-        user.phoneLastChangedAt &&
-        Date.now() - user.phoneLastChangedAt.getTime() < cooldownMs
-      ) {
-        throw new ApiError(
-          `You can only change your phone number once every ${cooldownDays} days.`,
-          400
-        );
-      }
-
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
-      const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
-
-      // Try sending SMS to the *new* phone number first; if this fails, abort without mutating the user
-      try {
-        await sendOtpSms(normalizedNewPhone, otp);
-        console.log("otp:", otp);
-      } catch (err) {
-        console.error("Failed to send OTP SMS after phone change", err);
-        throw new ApiError(
-          "Failed to send verification SMS, please try again later",
-          502
-        );
-      }
-
-      // Only reach here if SMS was sent successfully; now persist the new phone and verification state
-      user.phone = normalizedNewPhone;
-      user.phoneVerified = false;
-      user.account_status = accountStatus.PENDING;
-      user.phoneLastChangedAt = new Date();
-      user.phoneVerificationCode = hashedOtp;
-      user.phoneVerificationExpires = new Date(Date.now() + 5 * 60 * 1000);
-      user.phoneOtpLastSentAt = new Date();
-      user.phoneOtpSendCountToday = 1;
-    }
-  }
 
   const updatedUser = await user.save();
   return updatedUser;
@@ -324,7 +280,9 @@ export async function addMyAddressService({ userId, payload }) {
   user.addresses.push(newAddress);
 
   const savedUser = await user.save();
-  const addresses = Array.isArray(savedUser.addresses) ? savedUser.addresses : [];
+  const addresses = Array.isArray(savedUser.addresses)
+    ? savedUser.addresses
+    : [];
   return addresses;
 }
 
@@ -343,15 +301,7 @@ export async function updateMyAddressService({ userId, addressId, payload }) {
     throw new ApiError("Address not found for this user", 404);
   }
 
-  const {
-    label,
-    name,
-    governorate,
-    area,
-    phone,
-    location,
-    details,
-  } = payload;
+  const { label, name, governorate, area, phone, location, details } = payload;
 
   if (label !== undefined) address.label = label;
   if (name !== undefined) address.name = name;
@@ -370,9 +320,10 @@ export async function updateMyAddressService({ userId, addressId, payload }) {
     }
   }
 
-
   const savedUser = await user.save();
-  const addresses = Array.isArray(savedUser.addresses) ? savedUser.addresses : [];
+  const addresses = Array.isArray(savedUser.addresses)
+    ? savedUser.addresses
+    : [];
   return addresses;
 }
 
@@ -400,7 +351,9 @@ export async function deleteMyAddressService({ userId, addressId }) {
   }
 
   const savedUser = await user.save();
-  const addresses = Array.isArray(savedUser.addresses) ? savedUser.addresses : [];
+  const addresses = Array.isArray(savedUser.addresses)
+    ? savedUser.addresses
+    : [];
   return addresses;
 }
 
@@ -424,7 +377,9 @@ export async function setDefaultMyAddressService({ userId, addressId }) {
   });
 
   const savedUser = await user.save();
-  const addresses = Array.isArray(savedUser.addresses) ? savedUser.addresses : [];
+  const addresses = Array.isArray(savedUser.addresses)
+    ? savedUser.addresses
+    : [];
   return addresses;
 }
 

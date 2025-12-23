@@ -1,8 +1,11 @@
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
-import { roles, enabledControls as enabledControlsEnum } from "../../shared/constants/enums.js";
+import {
+  roles,
+  enabledControls as enabledControlsEnum,
+} from "../../shared/constants/enums.js";
 
-const egyptianPhoneRegex = /^(?:\+201|201|01)[0-2,5][0-9]{8}$/;
+const egyptianPhoneRegex = /^(?:\+20|20|0)(?:10|11|12|15)\d{8}$/;
 
 export const createUserValidator = [
   body("name")
@@ -45,7 +48,9 @@ export const createUserValidator = [
     .custom((arr, { req }) => {
       if (req.body.role === roles.ADMIN) {
         if (!Array.isArray(arr) || arr.length === 0) {
-          throw new Error("enabledControls is required for admin and cannot be empty");
+          throw new Error(
+            "enabledControls is required for admin and cannot be empty"
+          );
         }
       }
 
@@ -86,7 +91,9 @@ export const updateUserValidator = [
       if (value === roles.ADMIN) {
         const ec = req.body.enabledControls;
         if (!Array.isArray(ec) || ec.length === 0) {
-          throw new Error("enabledControls is required for admin and cannot be empty");
+          throw new Error(
+            "enabledControls is required for admin and cannot be empty"
+          );
         }
       }
       return true;
@@ -193,9 +200,7 @@ export const addMyAddressValidator = [
     .isString()
     .withMessage("area must be a string"),
 
-  body("details")
-    .notEmpty()
-    .withMessage("details is required"),
+  body("details").notEmpty().withMessage("details is required"),
 
   body("phone")
     .optional()

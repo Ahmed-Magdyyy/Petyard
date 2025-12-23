@@ -95,13 +95,12 @@ export const updateLoggedUserPassword = asyncHandler(async (req, res) => {
 
 // PATCH /users/me
 export const updateLoggedUserData = asyncHandler(async (req, res) => {
-  const { name, email, phone } = req.body;
+  const { name, email } = req.body;
 
   const updatedUser = await updateLoggedUserDataService({
     userId: req.user._id,
     name,
     email,
-    phone,
   });
 
   res.status(200).json({ data: updatedUser });

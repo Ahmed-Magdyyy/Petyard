@@ -3,9 +3,24 @@ import bcrypt from "bcrypt";
 import {
   roles,
   accountStatus,
+  authProviderEnum,
 } from "../../shared/constants/enums.js";
 
 const { Schema, model } = mongoose;
+
+const authProviderSchema = new Schema(
+  {
+    provider: {
+      type: String,
+      enum: Object.values(authProviderEnum),
+      required: true,
+    },
+    providerUserId: { type: String, required: true },
+    email: { type: String, lowercase: true },
+    linkedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
 const userSchema = new Schema(
   {
@@ -17,14 +32,22 @@ const userSchema = new Schema(
     },
     email: {
       type: String,
-      unique: [true, "Email must be unique"],
-      required: [true, "Email is required"],
+      trim: true,
       lowercase: true,
     },
     phone: {
       type: String,
-      unique: [true, "Phone must be unique"],
-      required: true,
+    },
+
+    signupProvider: {
+      type: String,
+      enum: Object.values(authProviderEnum),
+      default: authProviderEnum.SYSTEM,
+    },
+
+    authProviders: {
+      type: [authProviderSchema],
+      default: [],
     },
 
     phoneVerified: {
@@ -39,6 +62,12 @@ const userSchema = new Schema(
       default: 0,
     },
     phoneLastChangedAt: Date,
+
+    pendingPhone: { type: String },
+    pendingPhoneVerificationCode: { type: String },
+    pendingPhoneVerificationExpires: { type: Date },
+    pendingPhoneOtpLastSentAt: { type: Date },
+    pendingPhoneOtpSendCountToday: { type: Number, default: 0 },
 
     addresses: {
       type: [
@@ -125,9 +154,46 @@ const userSchema = new Schema(
         delete ret.passwordResetCodeVerified;
         delete ret.phoneVerificationCode;
         delete ret.phoneVerificationExpires;
+        delete ret.pendingPhone;
+        delete ret.pendingPhoneVerificationCode;
+        delete ret.pendingPhoneVerificationExpires;
+        delete ret.pendingPhoneOtpLastSentAt;
+        delete ret.pendingPhoneOtpSendCountToday;
+
+        if (Array.isArray(ret.authProviders)) {
+          ret.authProviders = ret.authProviders.map((p) => ({
+            provider: p.provider,
+            email: p.email,
+            linkedAt: p.linkedAt,
+          }));
+        }
         return ret;
       },
     },
+  }
+);
+
+userSchema.index(
+  { email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { email: { $type: "string" } },
+  }
+);
+
+userSchema.index(
+  { phone: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { phone: { $type: "string" } },
+  }
+);
+
+userSchema.index(
+  { "authProviders.provider": 1, "authProviders.providerUserId": 1 },
+  {
+    unique: true,
+    sparse: true,
   }
 );
 

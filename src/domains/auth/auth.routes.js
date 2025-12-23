@@ -12,6 +12,15 @@ import {
   resetPassword,
   sendGuestOtp,
   verifyGuestOtp,
+  oauthGoogleLogin,
+  oauthAppleLogin,
+  oauthSendOtp,
+  oauthVerifyPhone,
+  oauthLinkGoogle,
+  oauthLinkApple,
+  oauthUnlinkGoogle,
+  oauthUnlinkApple,
+  oauthSetPassword,
 } from "./auth.controller.js";
 import {
   signupValidator,
@@ -23,6 +32,13 @@ import {
   resetPasswordValidator,
   guestSendOtpValidator,
   guestVerifyOtpValidator,
+  oauthGoogleLoginValidator,
+  oauthAppleLoginValidator,
+  oauthSendOtpValidator,
+  oauthVerifyPhoneValidator,
+  oauthLinkGoogleValidator,
+  oauthLinkAppleValidator,
+  oauthSetPasswordValidator,
 } from "./auth.validators.js";
 import { authRateLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
 import { protect } from "./auth.middleware.js";
@@ -37,7 +53,7 @@ router.post("/signup", signupValidator, signup);
 router.post("/resend-otp", resendOtpValidator, resendOtp);
 router.post("/verify-phone", verifyPhoneValidator, verifyPhone);
 router.post("/guest/send-otp", guestSendOtpValidator, sendGuestOtp);
-router.post("/guest/verify-otp", guestVerifyOtpValidator, verifyGuestOtp);
+router.post("/guest/verify-phone", guestVerifyOtpValidator, verifyGuestOtp);
 router.post("/login", loginValidator, login);
 router.post("/refresh-token", refreshToken);
 router.post("/logout", protect, logout);
@@ -48,5 +64,36 @@ router.post(
   verifyPasswordResetCode
 );
 router.post("/reset-password", resetPasswordValidator, resetPassword);
+
+// OAuth routes
+router.post("/oauth/google", oauthGoogleLoginValidator, oauthGoogleLogin);
+router.post("/oauth/apple", oauthAppleLoginValidator, oauthAppleLogin);
+
+router.post("/phone/send-otp", protect, oauthSendOtpValidator, oauthSendOtp);
+router.post("/phone/verify", protect, oauthVerifyPhoneValidator, oauthVerifyPhone);
+
+// Link / unlink providers
+router.post(
+  "/oauth/link/google",
+  protect,
+  oauthLinkGoogleValidator,
+  oauthLinkGoogle
+);
+router.post(
+  "/oauth/link/apple",
+  protect,
+  oauthLinkAppleValidator,
+  oauthLinkApple
+);
+router.delete("/oauth/unlink/google", protect, oauthUnlinkGoogle);
+router.delete("/oauth/unlink/apple", protect, oauthUnlinkApple);
+
+// Set password (enable SYSTEM login)
+router.post(
+  "/oauth/set-password",
+  protect,
+  oauthSetPasswordValidator,
+  oauthSetPassword
+);
 
 export default router;

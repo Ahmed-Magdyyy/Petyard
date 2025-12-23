@@ -12,6 +12,12 @@ export const accountStatus = Object.freeze({
   PANNED: 'panned',
 });
 
+export const authProviderEnum = Object.freeze({
+  SYSTEM: "SYSTEM",
+  GOOGLE: "GOOGLE",
+  APPLE: "APPLE",
+});
+
 
 export const orderStatusEnum = Object.freeze({
   PENDING: 'pending',

@@ -3,21 +3,24 @@ import axios from "axios";
 export function normalizeEgyptianMobile(phone) {
   const trimmed = String(phone).trim();
 
-  if (trimmed.startsWith("+20")) {
-    return trimmed.replace("+20", "20");
+  const localPattern = /^0(10|11|12|15)\d{8}$/;
+  const intlPattern = /^20(10|11|12|15)\d{8}$/;
+  const plusIntlPattern = /^\+20(10|11|12|15)\d{8}$/;
+  const noLeadingPattern = /^(10|11|12|15)\d{8}$/;
+
+  if (plusIntlPattern.test(trimmed)) {
+    return trimmed.replace("+", "");
   }
 
-  if (trimmed.startsWith("20")) {
+  if (intlPattern.test(trimmed)) {
     return trimmed;
   }
 
-  if (trimmed.startsWith("0")) {
+  if (localPattern.test(trimmed)) {
     return `20${trimmed.slice(1)}`;
   }
 
-  // As a fallback, assume caller passed a national number without 0
-  // e.g. 10XXXXXXXX -> 2010XXXXXXXX
-  if (/^1[0-9]{9}$/.test(trimmed)) {
+  if (noLeadingPattern.test(trimmed)) {
     return `20${trimmed}`;
   }
 
