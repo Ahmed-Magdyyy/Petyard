@@ -1,5 +1,8 @@
 import { Router } from "express";
-import { protect } from "../auth/auth.middleware.js";
+import {
+  protect,
+  requireSystemPhoneVerifiedForSensitiveActions,
+} from "../auth/auth.middleware.js";
 import {
   getCheckoutSummaryForGuest,
   getCheckoutSummaryForUser,
@@ -9,6 +12,11 @@ const router = Router();
 
 router.get("/guest/summary", getCheckoutSummaryForGuest);
 
-router.get("/me/summary", protect, getCheckoutSummaryForUser);
+router.get(
+  "/me/summary",
+  protect,
+  requireSystemPhoneVerifiedForSensitiveActions,
+  getCheckoutSummaryForUser
+);
 
 export default router;

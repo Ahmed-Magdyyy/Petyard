@@ -41,7 +41,7 @@ import {
   oauthSetPasswordValidator,
 } from "./auth.validators.js";
 import { authRateLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
-import { protect } from "./auth.middleware.js";
+import { onlySocialProfileCompletionPhone, protect } from "./auth.middleware.js";
 
 const router = Router();
 
@@ -69,8 +69,20 @@ router.post("/reset-password", resetPasswordValidator, resetPassword);
 router.post("/oauth/google", oauthGoogleLoginValidator, oauthGoogleLogin);
 router.post("/oauth/apple", oauthAppleLoginValidator, oauthAppleLogin);
 
-router.post("/phone/send-otp", protect, oauthSendOtpValidator, oauthSendOtp);
-router.post("/phone/verify", protect, oauthVerifyPhoneValidator, oauthVerifyPhone);
+router.post(
+  "/phone/send-otp",
+  protect,
+  onlySocialProfileCompletionPhone,
+  oauthSendOtpValidator,
+  oauthSendOtp
+);
+router.post(
+  "/phone/verify",
+  protect,
+  onlySocialProfileCompletionPhone,
+  oauthVerifyPhoneValidator,
+  oauthVerifyPhone
+);
 
 // Link / unlink providers
 router.post(

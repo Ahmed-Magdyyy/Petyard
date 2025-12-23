@@ -19,7 +19,6 @@ import {
 export async function getUsersService(queryParams) {
   const { page, limit, ...query } = queryParams;
 
-  // Generic filters for all keys except 'role' and 'phone'
   const filter = buildRegexFilter(query, ["role", "phone"]);
 
   if (query.role) {

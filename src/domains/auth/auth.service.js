@@ -5,7 +5,11 @@ import jwt from "jsonwebtoken";
 import { UserModel } from "../user/user.model.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { sendOtpSms, normalizeEgyptianMobile } from "../../shared/utils/sms.js";
-import { generateOtp, hashOtp, computeNextOtpSendCountToday } from "./otp.utils.js";
+import {
+  generateOtp,
+  hashOtp,
+  computeNextOtpSendCountToday,
+} from "./otp.utils.js";
 import {
   verifyGoogleIdTokenOrThrow,
   verifyAppleIdentityTokenOrThrow,
@@ -14,7 +18,11 @@ import {
   createAccessToken,
   createRefreshToken,
 } from "../../shared/createToken.js";
-import { roles, accountStatus, authProviderEnum } from "../../shared/constants/enums.js";
+import {
+  roles,
+  accountStatus,
+  authProviderEnum,
+} from "../../shared/constants/enums.js";
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { forgetPasswordEmailHTML } from "../../shared/Email/emailHtml.js";
 import { getRedisClient } from "../../shared/redisClient.js";
@@ -496,7 +504,10 @@ async function ensureProviderIdentityNotLinkedToAnotherUserOrThrow({
   }).select("_id");
 
   if (existing) {
-    throw new ApiError("This social account is already linked to another user", 409);
+    throw new ApiError(
+      "This social account is already linked to another user",
+      409
+    );
   }
 }
 
@@ -536,7 +547,13 @@ function deriveNameFallback({ name, email }) {
   return "user";
 }
 
-async function socialLoginOrCreateUser({ provider, providerUserId, email, emailVerified, name }) {
+async function socialLoginOrCreateUser({
+  provider,
+  providerUserId,
+  email,
+  emailVerified,
+  name,
+}) {
   let user = await findUserByProvider({ provider, providerUserId });
 
   if (!user && email && emailVerified) {
@@ -564,10 +581,6 @@ async function socialLoginOrCreateUser({ provider, providerUserId, email, emailV
       account_status: accountStatus.CONFIRMED,
       active: true,
     });
-  }
-
-  if (user.signupProvider === authProviderEnum.SYSTEM && !user.phoneVerified) {
-    throw new ApiError("Please verify your phone first", 401);
   }
 
   return user;
@@ -714,7 +727,10 @@ export async function oauthVerifyPhoneService({ userId, phone, otp }) {
     throw new ApiError("No active OTP, please request a new code", 400);
   }
 
-  if (!user.pendingPhoneVerificationCode || !user.pendingPhoneVerificationExpires) {
+  if (
+    !user.pendingPhoneVerificationCode ||
+    !user.pendingPhoneVerificationExpires
+  ) {
     throw new ApiError("No active OTP, please request a new code", 400);
   }
 
@@ -819,7 +835,9 @@ export async function oauthUnlinkProviderService({ userId, provider }) {
     throw new ApiError("Cannot unlink the last login method", 400);
   }
 
-  user.authProviders = (user.authProviders || []).filter((p) => p.provider !== provider);
+  user.authProviders = (user.authProviders || []).filter(
+    (p) => p.provider !== provider
+  );
   await user.save();
   return user;
 }

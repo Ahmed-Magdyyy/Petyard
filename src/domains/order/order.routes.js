@@ -13,6 +13,7 @@ import {
   protect,
   allowedTo,
   enabledControls as enabledControlsMiddleware,
+  requireSystemPhoneVerifiedForSensitiveActions,
 } from "../auth/auth.middleware.js";
 import {
   roles,
@@ -33,7 +34,12 @@ router.post("/guest", createOrderForGuestValidator, createOrderForGuest);
 // Logged-in user orders
 router.use("/me", protect);
 
-router.post("/me", createOrderForUserValidator, createOrderForUser);
+router.post(
+  "/me",
+  requireSystemPhoneVerifiedForSensitiveActions,
+  createOrderForUserValidator,
+  createOrderForUser
+);
 router.get("/me", getMyOrders);
 router.get("/me/:id", orderIdParamValidator, getMyOrder);
 

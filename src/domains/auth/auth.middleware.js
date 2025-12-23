@@ -2,7 +2,7 @@ import asyncHandler from "express-async-handler";
 import jwt from "jsonwebtoken";
 import { ApiError } from "../../shared/ApiError.js";
 import { UserModel } from "../user/user.model.js";
-import { roles } from "../../shared/constants/enums.js";
+import { authProviderEnum, roles } from "../../shared/constants/enums.js";
 
 export const protect = asyncHandler(async (req, res, next) => {
   let accessToken;
@@ -32,14 +32,14 @@ export const protect = asyncHandler(async (req, res, next) => {
     currentUser.passwordChangedAT &&
     currentUser.passwordChangedAT.getTime() > decoded.iat * 1000
   ) {
-    throw new ApiError("Password was changed recently, please login again", 401);
+    throw new ApiError(
+      "Password was changed recently, please login again",
+      401
+    );
   }
 
   if (!currentUser.active) {
-    throw new ApiError(
-      "Account is not active. Contact customer support",
-      401
-    );
+    throw new ApiError("Account is not active. Contact customer support", 401);
   }
 
   req.user = currentUser;
@@ -70,3 +70,42 @@ export const enabledControls = (...scope) =>
     }
     next();
   });
+
+export const onlySocialProfileCompletionPhone = asyncHandler(
+  async (req, res, next) => {
+    if (!req.user) {
+      throw new ApiError("Please login first", 401);
+    }
+
+    if (req.user.signupProvider === authProviderEnum.SYSTEM) {
+      throw new ApiError(
+        "Only users who signed up via Google/Apple allowed for this route",
+        403
+      );
+    }
+
+    if (req.user.phone) {
+      throw new ApiError("Phone is already set.", 403);
+    }
+
+    next();
+  }
+);
+
+export const requireSystemPhoneVerifiedForSensitiveActions = asyncHandler(
+  async (req, res, next) => {
+    if (!req.user) {
+      throw new ApiError("Please login first", 401);
+    }
+
+    if (!req.user.phone) {
+      throw new ApiError("Please add your phone first", 403);
+    }
+
+    if (!req.user.phoneVerified) {
+      throw new ApiError("Please verify your phone first", 403);
+    }
+
+    next();
+  }
+);
