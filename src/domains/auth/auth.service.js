@@ -3,7 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { UserModel } from "../user/user.model.js";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { sendOtpSms, normalizeEgyptianMobile } from "../../shared/utils/sms.js";
 import {
   generateOtp,
@@ -17,7 +17,7 @@ import {
 import {
   createAccessToken,
   createRefreshToken,
-} from "../../shared/createToken.js";
+} from "../../shared/utils/createToken.js";
 import {
   roles,
   accountStatus,
@@ -25,7 +25,7 @@ import {
 } from "../../shared/constants/enums.js";
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { forgetPasswordEmailHTML } from "../../shared/Email/emailHtml.js";
-import { getRedisClient } from "../../shared/redisClient.js";
+import { getRedisClient } from "../../config/redis.js";
 
 async function issueSessionTokensForUser(user) {
   const now = Date.now();

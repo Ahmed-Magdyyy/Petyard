@@ -1,4 +1,4 @@
-import { getRedisClient } from "./redisClient.js";
+import { getRedisClient } from "../../config/redis.js";
 
 /**
  * Get a cached value from Redis if available, otherwise run `fetchFn`,

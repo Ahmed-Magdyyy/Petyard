@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 
 const googleClient = new OAuth2Client();
 

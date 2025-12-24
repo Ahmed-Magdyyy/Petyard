@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { ApiError } from "../../../shared/ApiError.js";
+import { ApiError } from "../../../shared/utils/ApiError.js";
 
 export const CAIRO_TIMEZONE = "Africa/Cairo";
 

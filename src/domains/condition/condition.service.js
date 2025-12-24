@@ -1,6 +1,6 @@
 import { ConditionModel } from "./condition.model.js";
 import { PetModel } from "../pet/pet.model.js";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 

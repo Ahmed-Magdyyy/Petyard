@@ -1,7 +1,7 @@
 // src/domains/pet/pet.service.js
 import { PetModel } from "./pet.model.js";
 import { ConditionModel } from "../condition/condition.model.js";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { buildPagination, buildSort } from "../../shared/utils/apiFeatures.js";
 import {
   validateImageFile,

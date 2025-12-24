@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { OrderModel } from "./order.model.js";
 import { CartModel } from "../cart/cart.model.js";
 import { ProductModel } from "../product/product.model.js";
@@ -12,7 +12,7 @@ import {
   paymentMethodEnum,
   paymentStatusEnum,
 } from "../../shared/constants/enums.js";
-import { deleteCacheKey } from "../../shared/cache.js";
+import { deleteCacheKey } from "../../shared/utils/cache.js";
 import {
   findActiveCouponByCodeService,
   computeCouponEffect,

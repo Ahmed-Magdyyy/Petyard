@@ -1,4 +1,4 @@
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { ProductModel } from "../product/product.model.js";
 import { CollectionModel } from "./collection.model.js";
 

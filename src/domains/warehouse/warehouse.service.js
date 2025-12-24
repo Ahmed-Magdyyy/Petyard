@@ -1,5 +1,5 @@
 // src/domains/warehouse/warehouse.service.js
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { buildPagination, buildSort, buildRegexFilter } from "../../shared/utils/apiFeatures.js";
 import { roles } from "../../shared/constants/enums.js";
 import { UserModel } from "../user/user.model.js";

@@ -1,4 +1,4 @@
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { WalletTransactionModel } from "./walletTransaction.model.js";
 import { UserModel } from "../user/user.model.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";

@@ -1,4 +1,4 @@
-import { ApiError } from "../../../shared/ApiError.js";
+import { ApiError } from "../../../shared/utils/ApiError.js";
 import { serviceTypeEnum } from "../../../shared/constants/enums.js";
 import { pickLocalizedField } from "../../../shared/utils/i18n.js";
 

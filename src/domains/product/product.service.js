@@ -8,7 +8,7 @@ import {
   deleteProductById,
 } from "./product.repository.js";
 import { findCollectionById } from "../collection/collection.repository.js";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
@@ -23,7 +23,7 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
-import { getOrSetCache, deleteCacheKey } from "../../shared/cache.js";
+import { getOrSetCache, deleteCacheKey } from "../../shared/utils/cache.js";
 import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
   autoHideExpiredCollections,

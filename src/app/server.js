@@ -9,18 +9,18 @@ import helmet from "helmet";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import https from "https";
-import {ApiError} from "../shared/ApiError.js";
+import {ApiError} from "../shared/utils/ApiError.js";
 import {globalError} from "../shared/middlewares/errorMiddleware.js";
-import {dbConnection} from "../shared/database.js";
+import {dbConnection} from "../config/database.js";
 import { mountRoutes } from "./routes.js";
 import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
 import { startAbandonedCartsJob } from "../shared/jobs/abandonedCarts.job.js";
-import { getRedisClient } from "../shared/redisClient.js";
-import { getFirebaseAdmin } from "../shared/firebaseAdmin.js";
+import { getRedisClient } from "../config/redis.js";
+import { getFirebaseAdmin } from "../config/firebase.js";
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-config({ path: path.resolve(__dirname, '../shared/.env') });
+config({ path: path.resolve(__dirname, '../../.env') });
 
 // middlewares
 app.set("trust proxy", 1);

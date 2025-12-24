@@ -1,5 +1,5 @@
 import { BannerModel } from "./banner.model.js";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import {
   validateImageFile,
   uploadImageToCloudinary,

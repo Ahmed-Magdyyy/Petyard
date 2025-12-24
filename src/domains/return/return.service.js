@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { ReturnRequestModel } from "./return.model.js";
 import { OrderModel } from "../order/order.model.js";
 import { UserModel } from "../user/user.model.js";

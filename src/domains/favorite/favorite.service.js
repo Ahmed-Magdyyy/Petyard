@@ -1,4 +1,4 @@
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { FavoriteModel } from "./favorite.model.js";
 import { findProductById, findProductsByIds } from "../product/product.repository.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";

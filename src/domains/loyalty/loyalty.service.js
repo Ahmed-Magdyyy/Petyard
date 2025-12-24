@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { LoyaltySettingsModel } from "./loyaltySettings.model.js";
 import { LoyaltyTransactionModel } from "./loyaltyTransaction.model.js";
 import { UserModel } from "../user/user.model.js";

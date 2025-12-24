@@ -1,4 +1,4 @@
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { findCart } from "../cart/cart.repository.js";
 import { getCartService } from "../cart/cart.service.js";
 import { getWarehouseByIdService } from "../warehouse/warehouse.service.js";

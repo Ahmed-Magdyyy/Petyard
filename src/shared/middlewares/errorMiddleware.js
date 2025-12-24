@@ -1,4 +1,4 @@
-import { ApiError } from "../ApiError.js";
+import { ApiError } from "../utils/ApiError.js";
 // const { deleteImageCloud } = require("../utils/Cloudinary/cloud");
 
 const handelJwtInvalidSignature = () =>

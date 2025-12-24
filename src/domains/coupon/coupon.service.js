@@ -1,5 +1,5 @@
 import { CouponModel } from "./coupon.model.js";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import {
   buildPagination,
   buildSort,

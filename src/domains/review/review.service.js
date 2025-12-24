@@ -1,6 +1,6 @@
 import { ReviewModel } from "./review.model.js";
 import { findProductById } from "../product/product.repository.js";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
 import {roles} from "../../shared/constants/enums.js"
 

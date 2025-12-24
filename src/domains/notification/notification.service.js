@@ -1,5 +1,5 @@
-import { ApiError } from "../../shared/ApiError.js";
-import { getFirebaseAdmin } from "../../shared/firebaseAdmin.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
+import { getFirebaseAdmin } from "../../config/firebase.js";
 import { NotificationDeviceModel } from "./notification.model.js";
 
 function normalizePlatform(value) {

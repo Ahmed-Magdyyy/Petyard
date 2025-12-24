@@ -1,5 +1,5 @@
-import { ApiError } from "../ApiError.js";
-import cloudinary from "../cloudinary.js";
+import { ApiError } from "./ApiError.js";
+import cloudinary from "./cloudinary.js";
 
 const DEFAULT_ALLOWED_MIME_TYPES = [
   "image/jpeg",

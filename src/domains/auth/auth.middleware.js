@@ -1,6 +1,6 @@
 import asyncHandler from "express-async-handler";
 import jwt from "jsonwebtoken";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { UserModel } from "../user/user.model.js";
 import { authProviderEnum, roles } from "../../shared/constants/enums.js";
 

@@ -5,7 +5,7 @@ import {
 } from "../product/product.repository.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { UserModel } from "../user/user.model.js";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
 import { cartStatusEnum, productTypeEnum } from "../../shared/constants/enums.js";

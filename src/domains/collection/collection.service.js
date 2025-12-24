@@ -1,5 +1,5 @@
 import slugify from "slugify";
-import { ApiError } from "../../shared/ApiError.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import {
   validateImageFile,

@@ -1,5 +1,5 @@
 import { ServiceLocationModel } from "./serviceLocation.model.js";
-import { ApiError } from "../../../shared/ApiError.js";
+import { ApiError } from "../../../shared/utils/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../../shared/utils/i18n.js";
 

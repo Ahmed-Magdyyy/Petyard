@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { ApiError } from "../../../shared/ApiError.js";
+import { ApiError } from "../../../shared/utils/ApiError.js";
 import {
   serviceReservationStatusEnum,
   serviceRoomTypeEnum,
