@@ -4,7 +4,7 @@ export async function countProducts(filter = {}) {
   return ProductModel.countDocuments(filter);
 }
 
-export async function findProducts(
+export function findProducts(
   filter = {},
   { skip, limit, sort, select, lean } = {}
 ) {
@@ -36,18 +36,18 @@ export async function findProducts(
   return query;
 }
 
-export async function findProductById(id) {
+export function findProductById(id) {
   return ProductModel.findById(id);
 }
 
-export async function findProductByIdWithRefs(id) {
+export function findProductByIdWithRefs(id) {
   return ProductModel.findById(id)
     .populate("category", "_id slug name_en name_ar")
     .populate("subcategory", "_id slug name_en name_ar")
     .populate("brand", "_id slug name_en name_ar");
 }
 
-export async function findProductBySlug(slug) {
+export function findProductBySlug(slug) {
   return ProductModel.findOne({ slug });
 }
 
@@ -59,12 +59,12 @@ export async function deleteProductById(id) {
   return ProductModel.deleteOne({ _id: id });
 }
 
-export async function findProductsByIds(ids = []) {
+export function findProductsByIds(ids = []) {
   if (!Array.isArray(ids) || ids.length === 0) return [];
   return ProductModel.find({ _id: { $in: ids } });
 }
 
-export async function findProductsByIdsWithOptions(
+export function findProductsByIdsWithOptions(
   ids = [],
   { select, lean } = {}
 ) {

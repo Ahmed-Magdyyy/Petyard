@@ -1,7 +1,7 @@
 import { ConditionModel } from "./condition.model.js";
 import { PetModel } from "../pet/pet.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
-import slugify from "slugify";
+import { normalizeTag } from "../../shared/utils/tagging.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 
 export async function getConditionsService(query = {}, lang = "en") {
@@ -38,11 +38,7 @@ export async function getConditionsService(query = {}, lang = "en") {
 export async function createConditionService(payload) {
   const { type, name_en, name_ar, visible } = payload;
 
-  const normalizedSlug = slugify(String(name_en), {
-    lower: true,
-    strict: true, // remove invalid chars
-    trim: true,
-  });
+  const normalizedSlug = normalizeTag(name_en);
 
   if (!normalizedSlug) {
     throw new ApiError("Unable to generate slug from name_en", 400);

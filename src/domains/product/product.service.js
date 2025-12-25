@@ -9,7 +9,7 @@ import {
 } from "./product.repository.js";
 import { findCollectionById } from "../collection/collection.repository.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
-import slugify from "slugify";
+import { normalizeTag, normalizeTagsInput } from "../../shared/utils/tagging.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
 import { productTypeEnum } from "../../shared/constants/enums.js";
@@ -40,6 +40,7 @@ export {
   createProductService,
   updateProductService,
   deleteProductService,
+  mapProductToCardDto,
 };
 
 function normalizeLang(lang) {
@@ -47,19 +48,7 @@ function normalizeLang(lang) {
 }
 
 function normalizeTags(tags) {
-  if (!tags) return [];
-  if (Array.isArray(tags)) {
-    return tags
-      .map((t) => (typeof t === "string" ? t.trim() : ""))
-      .filter(Boolean);
-  }
-  if (typeof tags === "string") {
-    return tags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-  }
-  return [];
+  return normalizeTagsInput(tags);
 }
 
 function normalizeProductOptions(options) {
@@ -1018,11 +1007,7 @@ async function createProductService(payload, files = []) {
     throw new ApiError("Invalid product type. Must be SIMPLE or VARIANT", 400);
   }
 
-  const normalizedSlug = slugify(String(name_en), {
-    lower: true,
-    strict: true,
-    trim: true,
-  });
+  const normalizedSlug = normalizeTag(name_en);
 
   if (!normalizedSlug) {
     throw new ApiError("Unable to generate slug from name_en", 400);

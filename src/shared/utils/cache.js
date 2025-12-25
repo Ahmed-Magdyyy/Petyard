@@ -39,6 +39,39 @@ export async function getOrSetCache(key, ttlSeconds, fetchFn) {
   return fresh;
 }
 
+export function isRedisEnabled() {
+  return !!getRedisClient();
+}
+
+export async function getCacheString(key) {
+  const redisClient = getRedisClient();
+  if (!redisClient) {
+    return null;
+  }
+
+  try {
+    const cached = await redisClient.get(key);
+    return cached || null;
+  } catch (err) {
+    console.error("[Redis] GET error for key", key, err.message);
+    return null;
+  }
+}
+
+export async function incrCacheKey(key) {
+  const redisClient = getRedisClient();
+  if (!redisClient) {
+    return null;
+  }
+
+  try {
+    return await redisClient.incr(key);
+  } catch (err) {
+    console.error("[Redis] INCR error for key", key, err.message);
+    return null;
+  }
+}
+
 export async function deleteCacheKey(key) {
   const redisClient = getRedisClient();
   if (!redisClient) {

@@ -1,13 +1,18 @@
-// src/domains/pet/pet.service.js
 import { PetModel } from "./pet.model.js";
 import { ConditionModel } from "../condition/condition.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { buildPagination, buildSort } from "../../shared/utils/apiFeatures.js";
+import { incrCacheKey } from "../../shared/utils/cache.js";
 import {
   validateImageFile,
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+
+async function bumpPetCacheVersion(ownerId) {
+  if (!ownerId) return;
+  await incrCacheKey(`recs:petver:${String(ownerId)}`);
+}
 
 function applyIsDefaultFilter(filter, isDefault) {
   if (typeof isDefault === "string") {
@@ -79,6 +84,8 @@ export async function setDefaultPetForOwnerService(ownerId, petId) {
 
   pet.isDefault = true;
   await pet.save();
+
+  await bumpPetCacheVersion(ownerId);
 
   return pet;
 }
@@ -157,6 +164,8 @@ export async function createPetService(ownerId, payload, file) {
       isDefault: shouldBeDefault,
       ...(image && { image }),
     });
+
+    await bumpPetCacheVersion(ownerId);
 
     return pet;
   } catch (err) {
@@ -259,6 +268,8 @@ export async function updatePetForOwnerService(ownerId, petId, payload, file) {
       await deleteImageFromCloudinary(oldPublicId);
     }
 
+    await bumpPetCacheVersion(ownerId);
+
     return updatedPet;
   } catch (err) {
     if (newImage?.public_id) {
@@ -277,6 +288,8 @@ export async function deletePetByIdService(petId) {
   if (pet.image?.public_id) {
     await deleteImageFromCloudinary(pet.image.public_id);
   }
+
+  await bumpPetCacheVersion(pet.petOwner);
   return pet;
 }
 
@@ -292,5 +305,7 @@ export async function deletePetForOwnerService(ownerId, petId) {
   if (pet.image?.public_id) {
     await deleteImageFromCloudinary(pet.image.public_id);
   }
+
+  await bumpPetCacheVersion(ownerId);
   return pet;
 }

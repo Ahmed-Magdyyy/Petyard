@@ -58,7 +58,9 @@ router.delete(
 
 router
   .route("/")
-  .get(allowedTo(roles.USER), getPets)
+  .get(
+    // allowedTo(roles.USER),
+   getPets)
   .post(
     allowedTo(roles.USER),
     uploadSingleImage("image"),

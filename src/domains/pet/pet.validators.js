@@ -1,8 +1,8 @@
-// src/domains/pet/pet.validators.js
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
+import { petTypeTags } from "../../shared/constants/petTags.js";
 
-const petTypes = ["dog", "cat", "bird", "small-animal"];
+const petTypes = Object.values(petTypeTags);
 const genders = ["male", "female", "unknown"];
 
 function conditionArrayValidators(fieldName) {
