@@ -155,7 +155,53 @@ export async function deleteUserService(id) {
     throw new ApiError("Super admin can't be deleted", 400);
   }
 
-  const deletedUser = await UserModel.findByIdAndDelete(id);
+  if (user.deletedAt) {
+    user.active = false;
+    user.refreshTokens = [];
+    const alreadyDeletedUser = await user.save();
+    return alreadyDeletedUser;
+  }
+
+  const oldAvatarPublicId = user.image?.public_id || null;
+
+  user.deletedAt = new Date();
+  user.active = false;
+  user.refreshTokens = [];
+
+  user.name = `deleted_user_${String(user._id)}`;
+  user.email = null;
+  user.phone = null;
+
+  user.signupProvider = undefined;
+  user.authProviders = [];
+
+  user.phoneVerified = false;
+  user.phoneVerificationCode = undefined;
+  user.phoneVerificationExpires = undefined;
+  user.phoneOtpLastSentAt = undefined;
+  user.phoneOtpSendCountToday = 0;
+  user.phoneLastChangedAt = undefined;
+  user.pendingPhone = undefined;
+  user.pendingPhoneVerificationCode = undefined;
+  user.pendingPhoneVerificationExpires = undefined;
+  user.pendingPhoneOtpLastSentAt = undefined;
+  user.pendingPhoneOtpSendCountToday = 0;
+
+  user.addresses = [];
+
+  user.image = {
+    public_id: null,
+    url: DEFAULT_USER_AVATAR_URL,
+  };
+
+  const deletedUser = await user.save();
+
+  if (oldAvatarPublicId) {
+    await deleteImageFromCloudinary(oldAvatarPublicId);
+  }
+
+  await PetModel.deleteMany({ petOwner: id });
+
   return deletedUser;
 }
 
