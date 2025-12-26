@@ -23,6 +23,7 @@ import { oauthSendOtp, oauthVerifyPhone } from "../auth/auth.controller.js";
 import { protect, allowedTo, enabledControls as enabledControlsMiddleware } from "../auth/auth.middleware.js";
 import { roles, enabledControls as enabledControlsEnum } from "../../shared/constants/enums.js";
 import { oauthSendOtpValidator, oauthVerifyPhoneValidator } from "../auth/auth.validators.js";
+import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
 import {
   createUserValidator,
   updateUserValidator,
@@ -42,7 +43,13 @@ const router = Router();
 
 router.get("/me", protect, getLoggedUser);
 router.patch("/me/password", protect, updateLoggedUserPasswordValidator, updateLoggedUserPassword);
-router.patch("/me", protect, updateLoggedUserDataValidator, updateLoggedUserData);
+router.patch(
+  "/me",
+  protect,
+  uploadSingleImage("image"),
+  updateLoggedUserDataValidator,
+  updateLoggedUserData
+);
 router.post("/me/phone/send-otp", protect, oauthSendOtpValidator, oauthSendOtp);
 router.post("/me/phone/verify", protect, oauthVerifyPhoneValidator, oauthVerifyPhone);
 router.delete("/me", protect, deactivateLoggedUser);

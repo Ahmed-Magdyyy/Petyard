@@ -101,6 +101,7 @@ export const updateLoggedUserData = asyncHandler(async (req, res) => {
     userId: req.user._id,
     name,
     email,
+    file: req.file || null,
   });
 
   res.status(200).json({ data: updatedUser });

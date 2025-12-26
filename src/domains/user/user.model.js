@@ -8,6 +8,9 @@ import {
 
 const { Schema, model } = mongoose;
 
+const DEFAULT_USER_AVATAR_URL =
+  "https://res.cloudinary.com/dx5n4ekk2/image/upload/v1766769679/petyard/users/user_default_avatar.png";
+
 const authProviderSchema = new Schema(
   {
     provider: {
@@ -37,6 +40,11 @@ const userSchema = new Schema(
     },
     phone: {
       type: String,
+    },
+
+    image: {
+      public_id: { type: String, default: null },
+      url: { type: String, default: DEFAULT_USER_AVATAR_URL },
     },
 
     signupProvider: {

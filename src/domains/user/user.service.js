@@ -13,6 +13,11 @@ import {
   buildSort,
   buildRegexFilter,
 } from "../../shared/utils/apiFeatures.js";
+import {
+  validateImageFile,
+  uploadImageToCloudinary,
+  deleteImageFromCloudinary,
+} from "../../shared/utils/imageUpload.js";
 
 // Admin services
 
@@ -205,6 +210,7 @@ export async function updateLoggedUserDataService({
   userId,
   name,
   email,
+  file,
 }) {
   const user = await UserModel.findById(userId);
   if (!user) {
@@ -213,6 +219,23 @@ export async function updateLoggedUserDataService({
 
   if (name !== undefined) user.name = name;
   if (email !== undefined) user.email = email;
+
+  if (file) {
+    validateImageFile(file);
+
+    const oldPublicId = user.image?.public_id || null;
+
+    const uploaded = await uploadImageToCloudinary(file, {
+      folder: "petyard/users",
+      publicId: `user_${String(user._id)}_${Date.now()}`,
+    });
+
+    user.image = uploaded;
+
+    if (oldPublicId) {
+      await deleteImageFromCloudinary(oldPublicId);
+    }
+  }
 
   const updatedUser = await user.save();
   return updatedUser;
