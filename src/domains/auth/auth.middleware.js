@@ -28,6 +28,10 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw new ApiError("User no longer exists", 401);
   }
 
+  if (currentUser.deletedAt) {
+    throw new ApiError("User no longer exists", 401);
+  }
+
   if (
     currentUser.passwordChangedAT &&
     currentUser.passwordChangedAT.getTime() > decoded.iat * 1000
@@ -67,6 +71,10 @@ export const optionalProtect = asyncHandler(async (req, res, next) => {
   const currentUser = await UserModel.findById(decoded.userId);
 
   if (!currentUser) {
+    throw new ApiError("User no longer exists", 401);
+  }
+
+  if (currentUser.deletedAt) {
     throw new ApiError("User no longer exists", 401);
   }
 

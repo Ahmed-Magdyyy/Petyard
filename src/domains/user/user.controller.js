@@ -11,7 +11,7 @@ import {
   getLoggedUserService,
   updateLoggedUserPasswordService,
   updateLoggedUserDataService,
-  deactivateLoggedUserService,
+  deleteLoggedUserService,
   getMyAddressesService,
   addMyAddressService,
   updateMyAddressService,
@@ -108,8 +108,8 @@ export const updateLoggedUserData = asyncHandler(async (req, res) => {
 });
 
 // DELETE /users/me
-export const deactivateLoggedUser = asyncHandler(async (req, res) => {
-  const deletedUser = await deactivateLoggedUserService({ userId: req.user._id });
+export const deleteLoggedUser = asyncHandler(async (req, res) => {
+  const deletedUser = await deleteLoggedUserService({ userId: req.user._id });
 
   res.status(204).json({ message: "Success", userDeleted: deletedUser });
 });

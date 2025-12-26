@@ -47,6 +47,11 @@ const userSchema = new Schema(
       url: { type: String, default: DEFAULT_USER_AVATAR_URL },
     },
 
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+
     signupProvider: {
       type: String,
       enum: Object.values(authProviderEnum),

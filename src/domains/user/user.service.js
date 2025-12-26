@@ -18,6 +18,10 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+import { PetModel } from "../pet/pet.model.js";
+
+const DEFAULT_USER_AVATAR_URL =
+  "https://res.cloudinary.com/dx5n4ekk2/image/upload/w_1000,c_fill,ar_1:1,g_auto,r_max,bo_5px_solid_red,b_rgb:262c35/v1766769679/petyard/categories/user_default_avatar.png";
 
 // Admin services
 
@@ -405,15 +409,58 @@ export async function setDefaultMyAddressService({ userId, addressId }) {
   return addresses;
 }
 
-export async function deactivateLoggedUserService({ userId }) {
+export async function deleteLoggedUserService({ userId }) {
   const user = await UserModel.findById(userId);
   if (!user) {
     throw new ApiError("User not found", 404);
   }
 
+  if (user.deletedAt) {
+    user.active = false;
+    user.refreshTokens = [];
+    const alreadyDeletedUser = await user.save();
+    return alreadyDeletedUser;
+  }
+
+  const oldAvatarPublicId = user.image?.public_id || null;
+
+  user.deletedAt = new Date();
   user.active = false;
   user.refreshTokens = [];
 
+  user.name = `deleted_user_${String(user._id)}`;
+  user.email = null;
+  user.phone = null;
+
+  user.signupProvider = undefined;
+  user.authProviders = [];
+
+  user.phoneVerified = false;
+  user.phoneVerificationCode = undefined;
+  user.phoneVerificationExpires = undefined;
+  user.phoneOtpLastSentAt = undefined;
+  user.phoneOtpSendCountToday = 0;
+  user.phoneLastChangedAt = undefined;
+  user.pendingPhone = undefined;
+  user.pendingPhoneVerificationCode = undefined;
+  user.pendingPhoneVerificationExpires = undefined;
+  user.pendingPhoneOtpLastSentAt = undefined;
+  user.pendingPhoneOtpSendCountToday = 0;
+
+  user.addresses = [];
+
+  user.image = {
+    public_id: null,
+    url: DEFAULT_USER_AVATAR_URL,
+  };
+
   const deletedUser = await user.save();
+
+  if (oldAvatarPublicId) {
+    await deleteImageFromCloudinary(oldAvatarPublicId);
+  }
+
+  await PetModel.deleteMany({ petOwner: userId });
+
   return deletedUser;
 }

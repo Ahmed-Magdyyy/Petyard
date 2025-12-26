@@ -11,7 +11,7 @@ import {
   getLoggedUser,
   updateLoggedUserPassword,
   updateLoggedUserData,
-  deactivateLoggedUser,
+  deleteLoggedUser,
   getMyAddresses,
   addMyAddress,
   updateMyAddress,
@@ -52,7 +52,7 @@ router.patch(
 );
 router.post("/me/phone/send-otp", protect, oauthSendOtpValidator, oauthSendOtp);
 router.post("/me/phone/verify", protect, oauthVerifyPhoneValidator, oauthVerifyPhone);
-router.delete("/me", protect, deactivateLoggedUser);
+router.delete("/me", protect, deleteLoggedUser);
 
 router.get("/me/addresses", protect, getMyAddresses);
 router.post("/me/addresses", protect, addMyAddressValidator, addMyAddress);
