@@ -16,7 +16,6 @@ const warehouseSchema = new Schema(
       trim: true,
       uppercase: true,
     },
-    // Optional human-readable location info
     country: {
       type: String,
       trim: true,
@@ -28,6 +27,15 @@ const warehouseSchema = new Schema(
       lowercase: true,
     },
     address: {
+      type: String,
+      trim: true,
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
+    phone: {
       type: String,
       trim: true,
     },

@@ -107,6 +107,8 @@ export async function updateWarehouseService(id, payload) {
     country,
     governorate,
     address,
+    email,
+    phone,
     location,
     boundaryGeometry,
     active,
@@ -119,6 +121,8 @@ export async function updateWarehouseService(id, payload) {
   if (country !== undefined) warehouse.country = country;
   if (governorate !== undefined) warehouse.governorate = governorate;
   if (address !== undefined) warehouse.address = address;
+  if (email !== undefined) warehouse.email = email;
+  if (phone !== undefined) warehouse.phone = phone;
   if (location !== undefined) warehouse.location = location;
   if (boundaryGeometry !== undefined) warehouse.boundaryGeometry = boundaryGeometry;
   if (typeof isDefault === "boolean") {

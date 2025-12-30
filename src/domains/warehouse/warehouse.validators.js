@@ -6,7 +6,11 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const governoratesConfig = require("../../shared/constants/governorates.json");
 
-const GOVERNORATE_CODES = (governoratesConfig.governorates || []).map((g) => g.code);
+const egyptianPhoneRegex = /^(?:\+20|20|0)(?:10|11|12|15)\d{8}$/;
+
+const GOVERNORATE_CODES = (governoratesConfig.governorates || []).map(
+  (g) => g.code
+);
 
 export const createWarehouseValidator = [
   body("name").notEmpty().withMessage("name is required"),
@@ -17,10 +21,7 @@ export const createWarehouseValidator = [
     .isString()
     .withMessage("code must be a string"),
 
-  body("country")
-    .optional()
-    .isString()
-    .withMessage("country must be a string"),
+  body("country").optional().isString().withMessage("country must be a string"),
 
   body("governorate")
     .optional()
@@ -29,10 +30,18 @@ export const createWarehouseValidator = [
     .isIn(GOVERNORATE_CODES)
     .withMessage("governorate is invalid"),
 
-  body("address")
+  body("address").optional().isString().withMessage("address must be a string"),
+
+  body("email")
     .optional()
-    .isString()
-    .withMessage("address must be a string"),
+    .trim()
+    .isEmail()
+    .withMessage("Invalid email address"),
+
+  body("phone")
+    .optional()
+    .matches(egyptianPhoneRegex)
+    .withMessage("Phone must be a valid Egyptian mobile number"),
 
   body("location")
     .optional()
@@ -68,7 +77,7 @@ export const createWarehouseValidator = [
     .optional()
     .isBoolean()
     .withMessage("isDefault must be a boolean"),
-  
+
   body("defaultShippingPrice")
     .optional()
     .isFloat({ min: 0 })
@@ -90,30 +99,29 @@ export const createWarehouseValidator = [
 export const updateWarehouseValidator = [
   param("id").isMongoId().withMessage("Invalid warehouse id"),
 
-  body("name")
-    .optional()
-    .isString()
-    .withMessage("name must be a string"),
+  body("name").optional().isString().withMessage("name must be a string"),
 
-  body("code")
-    .optional()
-    .isString()
-    .withMessage("code must be a string"),
+  body("code").optional().isString().withMessage("code must be a string"),
 
-  body("country")
-    .optional()
-    .isString()
-    .withMessage("country must be a string"),
+  body("country").optional().isString().withMessage("country must be a string"),
 
   body("governorate")
     .optional()
     .isIn(GOVERNORATE_CODES)
     .withMessage("governorate is invalid"),
 
-  body("address")
+  body("address").optional().isString().withMessage("address must be a string"),
+
+  body("email")
     .optional()
-    .isString()
-    .withMessage("address must be a string"),
+    .trim()
+    .isEmail()
+    .withMessage("Invalid email address"),
+
+  body("phone")
+    .optional()
+    .matches(egyptianPhoneRegex)
+    .withMessage("Phone must be a valid Egyptian mobile number"),
 
   body("location")
     .optional()
@@ -140,10 +148,7 @@ export const updateWarehouseValidator = [
     .isBoolean()
     .withMessage("isDefault must be a boolean"),
 
-  body("active")
-    .optional()
-    .isBoolean()
-    .withMessage("active must be a boolean"),
+  body("active").optional().isBoolean().withMessage("active must be a boolean"),
 
   body("moderators")
     .optional()

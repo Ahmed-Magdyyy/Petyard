@@ -104,16 +104,7 @@ export const login = asyncHandler(async (req, res) => {
   // });
 
   res.status(200).json({
-    data: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      ...(user.role === roles.ADMIN || user.role === roles.SUPER_ADMIN
-        ? { enabledControls: user.enabledControls }
-        : {}),
-    },
+    data: buildAuthUserResponse(user),
     accessToken,
     refreshToken,
     accessTokenExpires,

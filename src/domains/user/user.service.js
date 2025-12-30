@@ -21,7 +21,7 @@ import {
 import { PetModel } from "../pet/pet.model.js";
 
 const DEFAULT_USER_AVATAR_URL =
-  "https://res.cloudinary.com/dx5n4ekk2/image/upload/w_1000,c_fill,ar_1:1,g_auto,r_max,bo_5px_solid_red,b_rgb:262c35/v1766769679/petyard/categories/user_default_avatar.png";
+  "https://res.cloudinary.com/dx5n4ekk2/image/upload/v1767069108/petyard/users/user_default_avatar_2.svg";
 
 // Admin services
 
