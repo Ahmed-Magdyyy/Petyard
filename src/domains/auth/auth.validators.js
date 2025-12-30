@@ -91,6 +91,10 @@ export const oauthAppleLoginValidator = [
   body("identityToken").notEmpty().withMessage("identityToken is required"),
   body("nonce").optional().isString().withMessage("nonce must be a string"),
   body("name").optional().isString().withMessage("name must be a string"),
+  body("pictureUrl")
+    .optional()
+    .isString()
+    .withMessage("pictureUrl must be a string"),
   validatorMiddleware,
 ];
 
@@ -127,6 +131,10 @@ export const oauthLinkGoogleValidator = [
 export const oauthLinkAppleValidator = [
   body("identityToken").notEmpty().withMessage("identityToken is required"),
   body("nonce").optional().isString().withMessage("nonce must be a string"),
+  body("pictureUrl")
+    .optional()
+    .isString()
+    .withMessage("pictureUrl must be a string"),
   validatorMiddleware,
 ];
 

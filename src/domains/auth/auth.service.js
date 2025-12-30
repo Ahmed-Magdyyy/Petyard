@@ -27,6 +27,9 @@ import sendEmail from "../../shared/Email/sendEmails.js";
 import { forgetPasswordEmailHTML } from "../../shared/Email/emailHtml.js";
 import { getRedisClient } from "../../config/redis.js";
 
+const DEFAULT_USER_AVATAR_URL =
+  "https://res.cloudinary.com/dx5n4ekk2/image/upload/v1766769679/petyard/users/user_default_avatar.png";
+
 async function issueSessionTokensForUser(user) {
   const now = Date.now();
 
@@ -61,6 +64,7 @@ function buildAuthUserResponse(user) {
     name: user.name,
     email: user.email,
     phone: user.phone,
+    imageUrl: user?.image?.url || null,
     role: user.role,
     ...(user.role === roles.ADMIN || user.role === roles.SUPER_ADMIN
       ? { enabledControls: user.enabledControls }
@@ -547,19 +551,46 @@ function deriveNameFallback({ name, email }) {
   return "user";
 }
 
+function shouldUpdateUserImageUrl({ user, pictureUrl }) {
+  if (!pictureUrl || typeof pictureUrl !== "string") return false;
+  const trimmed = pictureUrl.trim();
+  if (!trimmed) return false;
+  const currentUrl = user?.image?.url;
+  if (!currentUrl || typeof currentUrl !== "string") return true;
+  if (currentUrl === DEFAULT_USER_AVATAR_URL) return true;
+  return false;
+}
+
+function setUserImageUrlIfNeeded({ user, pictureUrl }) {
+  if (!user) return;
+  if (!shouldUpdateUserImageUrl({ user, pictureUrl })) return;
+  if (!user.image) {
+    user.image = { public_id: null, url: DEFAULT_USER_AVATAR_URL };
+  }
+  user.image.url = String(pictureUrl).trim();
+  user.image.public_id = null;
+}
+
 async function socialLoginOrCreateUser({
   provider,
   providerUserId,
   email,
   emailVerified,
   name,
+  pictureUrl,
 }) {
   let user = await findUserByProvider({ provider, providerUserId });
+
+  if (user && shouldUpdateUserImageUrl({ user, pictureUrl })) {
+    setUserImageUrlIfNeeded({ user, pictureUrl });
+    await user.save();
+  }
 
   if (!user && email && emailVerified) {
     user = await UserModel.findOne({ email: String(email).toLowerCase() });
     if (user) {
       await linkProviderToUser({ user, provider, providerUserId, email });
+      setUserImageUrlIfNeeded({ user, pictureUrl });
       await user.save();
     }
   }
@@ -581,6 +612,23 @@ async function socialLoginOrCreateUser({
       account_status: accountStatus.CONFIRMED,
       active: true,
     });
+
+    if (shouldUpdateUserImageUrl({ user, pictureUrl })) {
+      await UserModel.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            "image.url": String(pictureUrl).trim(),
+            "image.public_id": null,
+          },
+        }
+      );
+      user.image = {
+        ...(user.image || {}),
+        url: String(pictureUrl).trim(),
+        public_id: null,
+      };
+    }
   }
 
   return user;
@@ -591,7 +639,7 @@ export async function oauthGoogleLoginService({ idToken }) {
     throw new ApiError("idToken is required", 400);
   }
 
-  const { providerUserId, email, emailVerified, name } =
+  const { providerUserId, email, emailVerified, name, picture } =
     await verifyGoogleIdTokenOrThrow(idToken);
 
   const user = await socialLoginOrCreateUser({
@@ -600,6 +648,7 @@ export async function oauthGoogleLoginService({ idToken }) {
     email,
     emailVerified,
     name,
+    pictureUrl: picture,
   });
 
   const { accessToken, refreshToken, accessTokenExpires } =
@@ -613,7 +662,12 @@ export async function oauthGoogleLoginService({ idToken }) {
   };
 }
 
-export async function oauthAppleLoginService({ identityToken, nonce, name }) {
+export async function oauthAppleLoginService({
+  identityToken,
+  nonce,
+  name,
+  pictureUrl,
+}) {
   if (!identityToken) {
     throw new ApiError("identityToken is required", 400);
   }
@@ -627,6 +681,7 @@ export async function oauthAppleLoginService({ identityToken, nonce, name }) {
     email,
     emailVerified,
     name,
+    pictureUrl,
   });
 
   const { accessToken, refreshToken, accessTokenExpires } =
@@ -774,7 +829,7 @@ export async function oauthLinkGoogleService({ userId, idToken }) {
     throw new ApiError("idToken is required", 400);
   }
 
-  const { providerUserId, email } = await verifyGoogleIdTokenOrThrow(idToken);
+  const { providerUserId, email, picture } = await verifyGoogleIdTokenOrThrow(idToken);
   const user = await UserModel.findById(userId);
   if (!user) {
     throw new ApiError("User not found", 404);
@@ -787,11 +842,18 @@ export async function oauthLinkGoogleService({ userId, idToken }) {
     email,
   });
 
+  setUserImageUrlIfNeeded({ user, pictureUrl: picture });
+
   await user.save();
   return user;
 }
 
-export async function oauthLinkAppleService({ userId, identityToken, nonce }) {
+export async function oauthLinkAppleService({
+  userId,
+  identityToken,
+  nonce,
+  pictureUrl,
+}) {
   if (!identityToken) {
     throw new ApiError("identityToken is required", 400);
   }
@@ -812,6 +874,8 @@ export async function oauthLinkAppleService({ userId, identityToken, nonce }) {
     providerUserId,
     email,
   });
+
+  setUserImageUrlIfNeeded({ user, pictureUrl });
 
   await user.save();
   return user;

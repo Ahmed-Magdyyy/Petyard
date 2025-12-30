@@ -42,6 +42,7 @@ export async function verifyGoogleIdTokenOrThrow(idToken) {
     email: payload.email ? String(payload.email).toLowerCase() : undefined,
     emailVerified: Boolean(payload.email_verified),
     name: payload.name ? String(payload.name) : undefined,
+    picture: payload.picture ? String(payload.picture) : undefined
   };
 }
 

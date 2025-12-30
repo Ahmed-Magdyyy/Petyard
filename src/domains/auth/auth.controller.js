@@ -29,6 +29,7 @@ function buildAuthUserResponse(user) {
     name: user.name,
     email: user.email,
     phone: user.phone,
+    image: user?.image?.url || null,
     role: user.role,
     ...(user.role === roles.ADMIN || user.role === roles.SUPER_ADMIN
       ? { enabledControls: user.enabledControls }

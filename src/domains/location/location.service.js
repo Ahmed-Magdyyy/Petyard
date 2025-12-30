@@ -72,10 +72,13 @@ async function reverseGeocodeGovernorate({ latNum, lngNum }) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
+    throw new ApiError("no apiii", 500)
     return { raw: null, normalized: null };
   }
 
   try {
+    console.log("fdjfsiodfdofis");
+    
     const url = "https://maps.googleapis.com/maps/api/geocode/json";
     const params = {
       latlng: `${latNum},${lngNum}`,
