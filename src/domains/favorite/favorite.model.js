@@ -9,6 +9,11 @@ const favoriteItemSchema = new Schema(
       ref: "Product",
       required: true,
     },
+    productType: {
+      type: String,
+      enum: ["SIMPLE", "VARIANT"],
+      default: "SIMPLE",
+    },
     productName: {
       type: String,
       required: true,

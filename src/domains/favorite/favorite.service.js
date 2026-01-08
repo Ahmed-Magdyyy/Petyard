@@ -1,7 +1,14 @@
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { FavoriteModel } from "./favorite.model.js";
-import { findProductById, findProductsByIds } from "../product/product.repository.js";
+import {
+  findProductById,
+  findProductsByIds,
+  findProductsByIdsWithOptions,
+} from "../product/product.repository.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
+import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
+import { findActivePromotionsForProducts } from "../collection/collection.promotion.js";
+import { productTypeEnum } from "../../shared/constants/enums.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -30,6 +37,55 @@ function pickRepresentativeVariant(product) {
   return def || variants[0];
 }
 
+function computeLowestVariantPricing(product, promoPercent) {
+  if (!product || !Array.isArray(product.variants) || !product.variants.length) {
+    return { price: null, discountedPrice: null };
+  }
+
+  let minBasePrice = Infinity;
+  let minFinalEffective = Infinity;
+
+  for (const v of product.variants) {
+    const basePrice = typeof v.price === "number" ? v.price : null;
+    if (basePrice == null) continue;
+
+    const baseDiscounted =
+      typeof v.discountedPrice === "number" ? v.discountedPrice : null;
+
+    if (basePrice < minBasePrice) {
+      minBasePrice = basePrice;
+    }
+
+    const pricing = computeFinalDiscountedPrice({
+      price: basePrice,
+      discountedPrice: baseDiscounted,
+      promoPercent,
+    });
+
+    if (typeof pricing.finalEffective === "number") {
+      if (pricing.finalEffective < minFinalEffective) {
+        minFinalEffective = pricing.finalEffective;
+      }
+    }
+  }
+
+  const price = minBasePrice !== Infinity ? minBasePrice : null;
+  const discountedPrice =
+    price != null && minFinalEffective !== Infinity && minFinalEffective < price
+      ? minFinalEffective
+      : null;
+
+  return { price, discountedPrice };
+}
+
+function pickRepresentativeVariantImage(product) {
+  const variant = pickRepresentativeVariant(product);
+  if (variant) {
+    return pickMainImageUrl(variant.images) || pickMainImageUrl(product.images);
+  }
+  return pickMainImageUrl(product.images);
+}
+
 async function rebindFavoriteLocalization(favorite, lang = "en") {
   if (!favorite) return null;
 
@@ -48,8 +104,18 @@ async function rebindFavoriteLocalization(favorite, lang = "en") {
 
   if (!productIds.length) return favorite;
 
-  const products = await findProductsByIds(productIds);
+  const products = await findProductsByIdsWithOptions(productIds, {
+    select:
+      "_id type price discountedPrice subcategory brand name_en name_ar images variants",
+    lean: false,
+  });
   const productById = new Map(products.map((p) => [String(p._id), p]));
+
+  const promoNow = new Date();
+  const promotionByProductId = await findActivePromotionsForProducts(
+    products,
+    promoNow
+  );
 
   for (const item of items) {
     const product = productById.get(String(item.product));
@@ -57,39 +123,41 @@ async function rebindFavoriteLocalization(favorite, lang = "en") {
 
     const localizedName = pickLocalizedField(product, "name", normalizedLang);
     item.productName = localizedName;
+    item.productType = product.type || productTypeEnum.SIMPLE;
 
-    const isSimple = product.type === "SIMPLE";
+    const promotion = promotionByProductId.get(String(product._id)) || null;
+    const promoPercent =
+      promotion && typeof promotion.discountPercent === "number"
+        ? promotion.discountPercent
+        : null;
+
+    const isSimple = product.type === productTypeEnum.SIMPLE;
 
     if (isSimple) {
       item.productImageUrl = pickMainImageUrl(product.images);
-      item.price =
-        typeof product.price === "number" ? product.price : item.price;
-      item.discountedPrice =
-        typeof product.discountedPrice === "number"
-          ? product.discountedPrice
-          : undefined;
-    } else {
-      const variant = pickRepresentativeVariant(product);
 
-      if (variant) {
-        item.productImageUrl =
-          pickMainImageUrl(variant.images) || pickMainImageUrl(product.images);
-        item.price =
-          typeof variant.price === "number" ? variant.price : item.price;
-        item.discountedPrice =
-          typeof variant.discountedPrice === "number"
-            ? variant.discountedPrice
-            : undefined;
-      } else {
-        // Fallback to product-level price/image if no variants found
-        item.productImageUrl = pickMainImageUrl(product.images);
-        item.price =
-          typeof product.price === "number" ? product.price : item.price;
-        item.discountedPrice =
-          typeof product.discountedPrice === "number"
-            ? product.discountedPrice
-            : undefined;
-      }
+      const pricing = computeFinalDiscountedPrice({
+        price: product.price,
+        discountedPrice: product.discountedPrice,
+        promoPercent,
+      });
+
+      item.price =
+        typeof pricing.basePrice === "number" ? pricing.basePrice : item.price;
+      item.discountedPrice =
+        typeof pricing.final === "number" ? pricing.final : undefined;
+    } else {
+      item.productImageUrl = pickRepresentativeVariantImage(product);
+
+      const variantPricing = computeLowestVariantPricing(product, promoPercent);
+      item.price =
+        typeof variantPricing.price === "number"
+          ? variantPricing.price
+          : item.price;
+      item.discountedPrice =
+        typeof variantPricing.discountedPrice === "number"
+          ? variantPricing.discountedPrice
+          : undefined;
     }
   }
 
@@ -116,6 +184,7 @@ function mapFavoriteToResponse(favorite, lang = "en") {
       ? favorite.items.map((item) => ({
           id: item._id,
           productId: item.product,
+          productType: item.productType || "SIMPLE",
           productName: item.productName || null,
           productImageUrl: item.productImageUrl || null,
           price: item.price,
@@ -129,6 +198,7 @@ function mapFavoriteToResponse(favorite, lang = "en") {
 export async function getFavoriteService({ userId, guestId, lang = "en" }) {
   const filter = buildIdentityFilter({ userId, guestId });
   let favorite = await FavoriteModel.findOne(filter);
+console.log("favorites", favorite);
 
   if (!favorite) {
     favorite = await FavoriteModel.create({
@@ -160,15 +230,16 @@ export async function addToFavoriteService({
     throw new ApiError("Product not found", 404);
   }
 
-  let productName;
+  const productType = product.type || productTypeEnum.SIMPLE;
+  const productName = pickLocalizedField(product, "name", normalizedLang);
+
   let productImageUrl;
   let price;
   let discountedPrice;
 
-  const isSimple = product.type === "SIMPLE";
+  const isSimple = productType === productTypeEnum.SIMPLE;
 
   if (isSimple) {
-    productName = pickLocalizedField(product, "name", normalizedLang);
     productImageUrl = pickMainImageUrl(product.images);
     price = typeof product.price === "number" ? product.price : 0;
     discountedPrice =
@@ -176,24 +247,14 @@ export async function addToFavoriteService({
         ? product.discountedPrice
         : undefined;
   } else {
-    const variant = pickRepresentativeVariant(product);
-
-    if (variant) {
-      productImageUrl = pickMainImageUrl(variant.images) || pickMainImageUrl(product.images);
-      price = typeof variant.price === "number" ? variant.price : 0;
-      discountedPrice =
-        typeof variant.discountedPrice === "number"
-          ? variant.discountedPrice
-          : undefined;
-    } else {
-      // Fallback to product-level price/image if no variants found
-      productImageUrl = pickMainImageUrl(product.images);
-      price = typeof product.price === "number" ? product.price : 0;
-      discountedPrice =
-        typeof product.discountedPrice === "number"
-          ? product.discountedPrice
-          : undefined;
-    }
+    productImageUrl = pickRepresentativeVariantImage(product);
+    const variantPricing = computeLowestVariantPricing(product, null);
+    price =
+      typeof variantPricing.price === "number" ? variantPricing.price : 0;
+    discountedPrice =
+      typeof variantPricing.discountedPrice === "number"
+        ? variantPricing.discountedPrice
+        : undefined;
   }
 
   let favorite = await FavoriteModel.findOne(filter);
@@ -218,6 +279,7 @@ export async function addToFavoriteService({
 
   const newItem = {
     product: productId,
+    productType,
     productName,
     productImageUrl,
     price,
