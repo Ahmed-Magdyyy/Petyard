@@ -1,6 +1,7 @@
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { getFirebaseAdmin } from "../../config/firebase.js";
 import { NotificationDeviceModel } from "./notification.model.js";
+import { dispatchNotification } from "./notificationDispatcher.js";
 
 function normalizePlatform(value) {
   const v = typeof value === "string" ? value.toLowerCase().trim() : "";
@@ -222,31 +223,48 @@ export async function sendOrderStatusChangedNotification(order) {
     return { skipped: true };
   }
 
-  const title = `Order ${order.orderNumber || ""}`.trim();
-  const body = `Your order is now ${order.status}`;
+  const orderNumber = order.orderNumber || "";
+  const status = order.status || "";
 
-  const data = {
-    type: "order_status",
-    orderId: String(order._id),
-    orderNumber: order.orderNumber || "",
-    status: order.status || "",
-  };
+  // i18n messages
+  const title_en = `Order ${orderNumber}`.trim();
+  const title_ar = `طلب ${orderNumber}`.trim();
+  const body_en = `Your order is now ${status}`;
+  const body_ar = `طلبك الآن ${status}`;
 
   try {
+    // For registered users: dispatch both push and in-app
     if (order.user) {
-      const result = await sendPushToUser({
+      const result = await dispatchNotification({
         userId: order.user,
-        notification: { title, body },
-        data,
+        notification: { title_en, title_ar, body_en, body_ar },
+        icon: "order",
+        action: {
+          type: "order_detail",
+          screen: "OrderDetailScreen",
+          params: { orderId: String(order._id) },
+        },
+        source: {
+          domain: "order",
+          event: "status_changed",
+          referenceId: String(order._id),
+        },
+        channels: { push: true, inApp: true },
       });
       return result;
     }
 
+    // For guests: push only (no in-app since no user account)
     if (order.guestId) {
       const result = await sendPushToGuest({
         guestId: order.guestId,
-        notification: { title, body },
-        data,
+        notification: { title: title_en, body: body_en },
+        data: {
+          type: "order_status",
+          orderId: String(order._id),
+          orderNumber,
+          status,
+        },
       });
       return result;
     }
@@ -268,34 +286,46 @@ export async function sendReturnStatusChangedNotification(returnRequest) {
 
   const status = returnRequest.status || "";
   const statusText = status.toLowerCase();
-  
-  let body;
+
+  // i18n messages based on status
+  let body_en;
+  let body_ar;
   if (statusText === "approved") {
-    body = "Your return request has been approved. Refund will be credited to your wallet.";
+    body_en = "Your return request has been approved. Refund will be credited to your wallet.";
+    body_ar = "تم الموافقة على طلب الإرجاع. سيتم إضافة المبلغ إلى محفظتك.";
   } else if (statusText === "rejected") {
-    body = "Your return request has been rejected.";
+    body_en = "Your return request has been rejected.";
+    body_ar = "تم رفض طلب الإرجاع.";
   } else {
-    body = `Your return request status: ${statusText}`;
+    body_en = `Your return request status: ${statusText}`;
+    body_ar = `حالة طلب الإرجاع: ${statusText}`;
   }
 
-  const title = "Return Request Update";
-
-  const data = {
-    type: "return_status",
-    returnId: String(returnRequest._id),
-    status: status,
-  };
+  const title_en = "Return Request Update";
+  const title_ar = "تحديث طلب الإرجاع";
 
   try {
     if (returnRequest.user) {
-      const userId = typeof returnRequest.user === "object" 
-        ? returnRequest.user._id 
-        : returnRequest.user;
-      
-      const result = await sendPushToUser({
+      const userId =
+        typeof returnRequest.user === "object"
+          ? returnRequest.user._id
+          : returnRequest.user;
+
+      const result = await dispatchNotification({
         userId,
-        notification: { title, body },
-        data,
+        notification: { title_en, title_ar, body_en, body_ar },
+        icon: "order",
+        action: {
+          type: "return_detail",
+          screen: "ReturnDetailScreen",
+          params: { returnId: String(returnRequest._id) },
+        },
+        source: {
+          domain: "return",
+          event: "status_changed",
+          referenceId: String(returnRequest._id),
+        },
+        channels: { push: true, inApp: true },
       });
       return result;
     }

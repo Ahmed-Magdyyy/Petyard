@@ -16,6 +16,8 @@ import {
   serviceLocationIdParamValidator,
   updateServiceLocationValidator,
 } from "./serviceLocation.validators.js";
+import { listLocationReviews } from "../reviews/serviceReview.controller.js";
+import { locationIdParamValidator, listReviewsQueryValidator } from "../reviews/serviceReview.validators.js";
 
 const router = Router();
 
@@ -38,6 +40,14 @@ router.patch(
   "/admin/:id/toggle-active",
   serviceLocationIdParamValidator,
   adminToggleServiceLocationActive
+);
+
+// Public review routes for locations (includes averageRating and totalReviews)
+router.get(
+  "/:locationId/reviews",
+  locationIdParamValidator,
+  listReviewsQueryValidator,
+  listLocationReviews
 );
 
 export default router;

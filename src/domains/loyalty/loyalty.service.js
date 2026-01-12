@@ -5,6 +5,7 @@ import { LoyaltyTransactionModel } from "./loyaltyTransaction.model.js";
 import { UserModel } from "../user/user.model.js";
 import { WalletTransactionModel } from "../wallet/walletTransaction.model.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
+import { dispatchNotification } from "../notification/notificationDispatcher.js";
 
 export async function getLoyaltySettingsService() {
   let settings = await LoyaltySettingsModel.findOne();
@@ -271,6 +272,31 @@ export async function redeemLoyaltyPointsService({ userId }) {
   } finally {
     session.endSession();
   }
+
+  // Notify user about the redemption
+  dispatchNotification({
+    userId,
+    notification: {
+      title_en: "Points Redeemed",
+      title_ar: "تم استبدال النقاط",
+      body_en: `You redeemed ${pointsToDeduct} points. ${walletCredit} EGP has been added to your wallet.`,
+      body_ar: `تم استبدال ${pointsToDeduct} نقطة. تمت إضافة ${walletCredit} جنيه إلى محفظتك.`,
+    },
+    icon: "loyalty",
+    action: {
+      type: "screen",
+      screen: "WalletScreen",
+      params: {},
+    },
+    source: {
+      domain: "loyalty",
+      event: "points_redeemed",
+      referenceId: String(userId),
+    },
+    channels: { push: true, inApp: true },
+  }).catch((err) => {
+    console.error("[Loyalty] Failed to dispatch redemption notification:", err.message);
+  });
 
   return {
     pointsRedeemed: pointsToDeduct,

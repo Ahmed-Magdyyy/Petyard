@@ -90,7 +90,7 @@ export const listMyReservations = asyncHandler(async (req, res) => {
 
   const result = await listReservationsForUserService({
     userId: req.user._id,
-    scope: scope || "upcoming",
+    scope,
     status,
     lang: req.lang,
   });

@@ -1,5 +1,4 @@
 import cron from "node-cron";
-import { dbConnection } from "../../config/database.js";
 import { markAbandonedCartsService } from "../../domains/cart/cart.service.js";
 
 // Runs every hour; adjusts threshold (e.g. 12h) as needed

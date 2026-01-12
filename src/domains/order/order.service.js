@@ -18,6 +18,7 @@ import {
   computeCouponEffect,
 } from "../coupon/coupon.service.js";
 import { sendOrderStatusChangedNotification } from "../notification/notification.service.js";
+import { dispatchNotification } from "../notification/notificationDispatcher.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { calculateLoyaltyPointsForOrder, deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
 import { LoyaltyTransactionModel } from "../loyalty/loyaltyTransaction.model.js";
@@ -1186,6 +1187,31 @@ export async function updateOrderStatusService({
             ],
             { session }
           );
+
+          // Notify user about points earned
+          dispatchNotification({
+            userId: order.user,
+            notification: {
+              title_en: "Points Earned!",
+              title_ar: "لقد ربحت نقاط!",
+              body_en: `You earned ${pointsToAward} loyalty points from your order.`,
+              body_ar: `لقد ربحت ${pointsToAward} نقطة ولاء من طلبك.`,
+            },
+            icon: "loyalty",
+            action: {
+              type: "screen",
+              screen: "LoyaltyScreen",
+              params: {},
+            },
+            source: {
+              domain: "loyalty",
+              event: "points_earned",
+              referenceId: String(order._id),
+            },
+            channels: { push: true, inApp: true },
+          }).catch((err) => {
+            console.error("[Order] Failed to dispatch loyalty points notification:", err.message);
+          });
         }
       }
 

@@ -21,6 +21,7 @@ import {
   listReservationsQueryValidator,
   reservationIdParamValidator,
 } from "./serviceReservation.validators.js";
+import serviceReviewRoutes from "../reviews/serviceReview.routes.js";
 
 const router = Router();
 
@@ -49,6 +50,8 @@ router.patch(
   adminUpdateReservationStatus
 );
 
+// Mount review routes on /:reservationId
+router.use("/:reservationId", serviceReviewRoutes);
 router.use(protect);
 
 router.get(
@@ -69,5 +72,6 @@ router.patch(
   reservationIdParamValidator,
   cancelReservationForUser
 );
+
 
 export default router;

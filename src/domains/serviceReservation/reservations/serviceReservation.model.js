@@ -124,6 +124,11 @@ const serviceReservationSchema = new Schema(
       type: String,
       trim: true,
     },
+    // Tracks whether 24h reminder notification was sent
+    reminderSent: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

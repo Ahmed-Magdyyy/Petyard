@@ -198,7 +198,6 @@ function mapFavoriteToResponse(favorite, lang = "en") {
 export async function getFavoriteService({ userId, guestId, lang = "en" }) {
   const filter = buildIdentityFilter({ userId, guestId });
   let favorite = await FavoriteModel.findOne(filter);
-console.log("favorites", favorite);
 
   if (!favorite) {
     favorite = await FavoriteModel.create({

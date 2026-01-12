@@ -29,6 +29,7 @@ import {
   toCairoHour24,
 } from "./serviceReservation.utils.js";
 import { getServiceLocationByIdService } from "../locations/serviceLocation.service.js";
+import { dispatchNotification } from "../../notification/notificationDispatcher.js";
 
 function getRoomTypeForService(serviceType) {
   if (serviceType === serviceTypeEnum.CLINIC) return serviceRoomTypeEnum.CLINIC_ROOM;
@@ -198,8 +199,9 @@ async function resolvePetSnapshot({ userId, petId, payload }) {
     snapshot.petType = snapshot.petType || pet.type || null;
     snapshot.petGender = snapshot.petGender || pet.gender || null;
 
+    // Calculate age from birthDate if not provided or is 0
     const derivedAge = computeAgeYears(pet.birthDate);
-    if (snapshot.petAge == null && derivedAge != null) {
+    if ((snapshot.petAge == null || snapshot.petAge === 0) && derivedAge != null) {
       snapshot.petAge = derivedAge;
     }
   }
@@ -438,6 +440,30 @@ export async function createReservationService({ userId, guestId, payload, lang 
     payload,
   });
 
+  // Pre-check: Fail fast if any slot is at capacity (before expensive transaction)
+  const startsAtListForPreCheck = requestedServices.map((_, idx) =>
+    addHoursUtc(startsAt, idx)
+  );
+  
+  for (let idx = 0; idx < requestedServices.length; idx++) {
+    const svc = requestedServices[idx] || {};
+    const serviceType = svc.serviceType;
+    const roomType = getRoomTypeForService(serviceType);
+    const capacity = getCapacityForRoomType(location, roomType);
+    const slotStartsAt = startsAtListForPreCheck[idx];
+
+    const existingSlot = await ServiceSlotInventoryModel.findOne({
+      location: location._id,
+      roomType,
+      startsAt: slotStartsAt,
+    }).lean();
+
+    if (existingSlot && existingSlot.bookedCount >= capacity) {
+      const slotLabel = formatSlotLabelFromUtc(slotStartsAt);
+      throw new ApiError(`Selected time ${slotLabel.text} is fully booked`, 409);
+    }
+  }
+
   const session = await mongoose.startSession();
   let created;
 
@@ -557,7 +583,7 @@ export async function createReservationService({ userId, guestId, payload, lang 
 
 export async function listReservationsForUserService({
   userId,
-  scope = "upcoming",
+  scope,
   status,
   lang,
 }) {
@@ -572,10 +598,18 @@ export async function listReservationsForUserService({
     filter.status = status;
   }
 
+  // Determine sort order based on scope
+  let sortOrder = { startsAt: 1 }; // default: ascending (upcoming first)
+
   if (scope === "upcoming") {
     filter.startsAt = { $gte: nowUtc };
+    sortOrder = { startsAt: 1 }; // earliest upcoming first
   } else if (scope === "past") {
     filter.startsAt = { $lt: nowUtc };
+    sortOrder = { startsAt: -1 }; // most recent past first
+  } else {
+    // No scope: show all, sorted by nearest to now (upcoming first, then past in reverse)
+    sortOrder = { startsAt: 1 };
   }
 
   const reservations = await ServiceReservationModel.find(filter)
@@ -583,7 +617,7 @@ export async function listReservationsForUserService({
       "location",
       "_id slug name_en name_ar city timezone googleMapsLink phone"
     )
-    .sort({ startsAt: 1 })
+    .sort(sortOrder)
     .lean();
 
   return {
@@ -625,7 +659,7 @@ export async function adminListReservationsByDateService({
 
 export async function listReservationsForGuestService({
   guestId,
-  scope = "upcoming",
+  scope,
   status,
   lang,
 }) {
@@ -640,10 +674,18 @@ export async function listReservationsForGuestService({
     filter.status = status;
   }
 
+  // Determine sort order based on scope
+  let sortOrder = { startsAt: 1 }; // default: ascending
+
   if (scope === "upcoming") {
     filter.startsAt = { $gte: nowUtc };
+    sortOrder = { startsAt: 1 }; // earliest upcoming first
   } else if (scope === "past") {
     filter.startsAt = { $lt: nowUtc };
+    sortOrder = { startsAt: -1 }; // most recent past first
+  } else {
+    // No scope: show all, sorted by nearest to now
+    sortOrder = { startsAt: 1 };
   }
 
   const reservations = await ServiceReservationModel.find(filter)
@@ -651,7 +693,7 @@ export async function listReservationsForGuestService({
       "location",
       "_id slug name_en name_ar city timezone googleMapsLink phone"
     )
-    .sort({ startsAt: 1 })
+    .sort(sortOrder)
     .lean();
 
   return {
@@ -817,6 +859,41 @@ export async function adminUpdateReservationStatusService({ id, status, lang }) 
 
   if (!updated) {
     throw new ApiError("Failed to update reservation status", 500);
+  }
+
+  // Send notification to user about status change (only for registered users)
+  if (updated.user) {
+    const serviceName = updated.serviceName_en || updated.serviceType;
+    const statusLabels = {
+      CANCELLED: { en: "cancelled", ar: "ملغي" },
+      COMPLETED: { en: "completed", ar: "مكتمل" },
+      NO_SHOW: { en: "marked as no-show", ar: "تم تسجيله كعدم حضور" },
+    };
+    const label = statusLabels[nextStatus] || { en: nextStatus.toLowerCase(), ar: nextStatus };
+
+    dispatchNotification({
+      userId: updated.user,
+      notification: {
+        title_en: "Reservation Update",
+        title_ar: "تحديث الحجز",
+        body_en: `Your ${serviceName} reservation has been ${label.en}.`,
+        body_ar: `تم تحديث حجزك لـ ${serviceName} إلى ${label.ar}.`,
+      },
+      icon: "appointment",
+      action: {
+        type: "reservation_detail",
+        screen: "ReservationDetailScreen",
+        params: { reservationId: String(updated._id) },
+      },
+      source: {
+        domain: "reservation",
+        event: "status_changed",
+        referenceId: String(updated._id),
+      },
+      channels: { push: true, inApp: true },
+    }).catch((err) => {
+      console.error("[Reservation] Failed to dispatch status notification:", err.message);
+    });
   }
 
   const location = await getServiceLocationByIdService(updated.location);
