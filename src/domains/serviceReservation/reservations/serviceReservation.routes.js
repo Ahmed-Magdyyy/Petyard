@@ -52,6 +52,7 @@ router.patch(
 
 // Mount review routes on /:reservationId
 router.use("/:reservationId", serviceReviewRoutes);
+
 router.use(protect);
 
 router.get(

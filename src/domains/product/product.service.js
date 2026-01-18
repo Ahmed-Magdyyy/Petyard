@@ -594,7 +594,7 @@ async function resolveCollectionFilter(collectionId) {
   return { $or: orConditions };
 }
 
-async function getProductsService(queryParams = {}, lang = "en") {
+async function getProductsService(queryParams = {}, lang = "en", options = {}) {
   const {
     page,
     limit,
@@ -612,6 +612,7 @@ async function getProductsService(queryParams = {}, lang = "en") {
   } = queryParams;
 
   const normalizedLang = normalizeLang(lang);
+  const { includeZeroStockInWarehouse = false } = options || {};
 
   const filter = {};
 
@@ -680,7 +681,7 @@ async function getProductsService(queryParams = {}, lang = "en") {
           warehouseStocks: {
             $elemMatch: {
               warehouse: warehouseId,
-              quantity: { $gt: 0 },
+              ...(includeZeroStockInWarehouse ? {} : { quantity: { $gt: 0 } }),
             },
           },
         };
@@ -691,7 +692,7 @@ async function getProductsService(queryParams = {}, lang = "en") {
               warehouseStocks: {
                 $elemMatch: {
                   warehouse: warehouseId,
-                  quantity: { $gt: 0 },
+                  ...(includeZeroStockInWarehouse ? {} : { quantity: { $gt: 0 } }),
                 },
               },
             },
@@ -705,7 +706,7 @@ async function getProductsService(queryParams = {}, lang = "en") {
               warehouseStocks: {
                 $elemMatch: {
                   warehouse: warehouseId,
-                  quantity: { $gt: 0 },
+                  ...(includeZeroStockInWarehouse ? {} : { quantity: { $gt: 0 } }),
                 },
               },
             },
@@ -716,7 +717,7 @@ async function getProductsService(queryParams = {}, lang = "en") {
                   warehouseStocks: {
                     $elemMatch: {
                       warehouse: warehouseId,
-                      quantity: { $gt: 0 },
+                      ...(includeZeroStockInWarehouse ? {} : { quantity: { $gt: 0 } }),
                     },
                   },
                 },

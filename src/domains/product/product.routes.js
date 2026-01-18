@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getProducts,
+  getProductsForAdmin,
   getProduct,
   createProduct,
   updateProduct,
@@ -27,6 +28,15 @@ import reviewRoutes from "../review/review.routes.js";
 const router = Router();
 
 router.get("/", listProductsQueryValidator, getProducts);
+
+router.get(
+  "/admin",
+  protect,
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+  enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
+  listProductsQueryValidator,
+  getProductsForAdmin
+);
 router.get("/:id", productIdParamValidator, getProduct);
 
 router.use("/:id/reviews", reviewRoutes);

@@ -12,6 +12,13 @@ export const getProducts = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
+export const getProductsForAdmin = asyncHandler(async (req, res) => {
+  const result = await getProductsService(req.query, req.lang, {
+    includeZeroStockInWarehouse: true,
+  });
+  res.status(200).json(result);
+});
+
 export const getProduct = asyncHandler(async (req, res) => {
   const data = await getProductByIdService(req.params.id, req.lang);
   res.status(200).json({ data });
