@@ -88,6 +88,7 @@ function mapNotificationToResponse(notification, lang) {
     body: pickLocalizedField(notification, "body", normalizedLang),
     icon: notification.icon || "system",
     action: notification.action || null,
+    source: notification.source || null,
     isRead: notification.isRead || false,
     createdAt: notification.createdAt,
   };
