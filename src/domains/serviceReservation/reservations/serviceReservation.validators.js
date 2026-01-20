@@ -43,8 +43,7 @@ export const adminUpdateReservationStatusValidator = [
 
 export const adminListReservationsByDateQueryValidator = [
   query("date")
-    .notEmpty()
-    .withMessage("date is required")
+    .optional({ nullable: true })
     .isISO8601({ strict: true })
     .withMessage("date must be a valid ISO date"),
 
@@ -58,6 +57,16 @@ export const adminListReservationsByDateQueryValidator = [
     .toUpperCase()
     .isIn(Object.values(serviceReservationStatusEnum))
     .withMessage("Invalid status"),
+
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer"),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100"),
 
   validatorMiddleware,
 ];

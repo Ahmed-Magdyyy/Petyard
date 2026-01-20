@@ -30,6 +30,7 @@ import {
 } from "./serviceReservation.utils.js";
 import { getServiceLocationByIdService } from "../locations/serviceLocation.service.js";
 import { dispatchNotification } from "../../notification/notificationDispatcher.js";
+import { buildPagination } from "../../../shared/utils/apiFeatures.js";
 
 function getRoomTypeForService(serviceType) {
   if (serviceType === serviceTypeEnum.CLINIC) return serviceRoomTypeEnum.CLINIC_ROOM;
@@ -630,31 +631,54 @@ export async function adminListReservationsByDateService({
   date,
   locationId,
   status,
+  page = 1,
+  limit = 20,
   lang,
 }) {
-  const cairoDateStart = parseCairoDateOrThrow(date).startOf("day");
-  const utcStart = cairoDateStart.toUTC().toJSDate();
-  const utcEnd = cairoDateStart.plus({ days: 1 }).toUTC().toJSDate();
+  let cairoDateStart = null;
+  let utcStart = null;
+  let utcEnd = null;
 
-  const filter = {
-    startsAt: { $gte: utcStart, $lt: utcEnd },
-  };
+  if (date) {
+    cairoDateStart = parseCairoDateOrThrow(date).startOf("day");
+    utcStart = cairoDateStart.toUTC().toJSDate();
+    utcEnd = cairoDateStart.plus({ days: 1 }).toUTC().toJSDate();
+  }
+
+  const filter = {};
+  if (utcStart && utcEnd) {
+    filter.startsAt = { $gte: utcStart, $lt: utcEnd };
+  }
   if (locationId) filter.location = locationId;
   if (status) filter.status = status;
 
-  const reservations = await ServiceReservationModel.find(filter)
-    .populate(
-      "location",
-      "_id slug name_en name_ar city timezone googleMapsLink phone"
-    )
-    .sort({ startsAt: 1 })
-    .lean();
+  const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 20);
 
-  return {
+  const [reservations, totalCount] = await Promise.all([
+    ServiceReservationModel.find(filter)
+      .populate(
+        "location",
+        "_id slug name_en name_ar city timezone googleMapsLink phone"
+      )
+      .sort({ startsAt: 1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    ServiceReservationModel.countDocuments(filter),
+  ]);
+
+  const result = {
+    totalPages: Math.ceil(totalCount / limitNum) || 1,
+    page: pageNum,
     results: reservations.length,
-    date: cairoDateStart.toFormat("yyyy-LL-dd"),
     data: reservations.map((r) => buildReservationDto(r, r.location, lang)),
   };
+
+  if (cairoDateStart) {
+    result.date = cairoDateStart.toFormat("yyyy-LL-dd");
+  }
+
+  return result;
 }
 
 export async function listReservationsForGuestService({
