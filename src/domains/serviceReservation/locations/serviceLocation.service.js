@@ -2,6 +2,8 @@ import { ServiceLocationModel } from "./serviceLocation.model.js";
 import { ApiError } from "../../../shared/utils/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../../shared/utils/i18n.js";
+import { DateTime } from "luxon";
+import { CAIRO_TIMEZONE } from "../reservations/serviceReservation.utils.js";
 
 function normalizeSlug(value) {
   return String(value || "")
@@ -11,6 +13,72 @@ function normalizeSlug(value) {
     .replace(/[^a-z0-9\-]/g, "")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function toArabicIndicDigits(value) {
+  const map = {
+    0: "٠",
+    1: "١",
+    2: "٢",
+    3: "٣",
+    4: "٤",
+    5: "٥",
+    6: "٦",
+    7: "٧",
+    8: "٨",
+    9: "٩",
+  };
+  return String(value).replace(/[0-9]/g, (d) => map[d] || d);
+}
+
+function hour24To12(hour24) {
+  const h = Number(hour24);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const hour12 = ((h + 11) % 12) + 1;
+  return { hour12, ampm };
+}
+
+function formatHourLabelEn(hour24) {
+  return DateTime.fromObject({ hour: hour24, minute: 0 }, { zone: CAIRO_TIMEZONE })
+    .setLocale("en")
+    .toFormat("h a");
+}
+
+function formatHourLabelAr(hour24) {
+  const { hour12, ampm } = hour24To12(hour24);
+  const ampmAr = ampm === "AM" ? "ص" : "م";
+  return `${toArabicIndicDigits(hour12)} ${ampmAr}`;
+}
+
+function buildWorkingHoursByDay(lang = "en") {
+  const normalizedLang = lang === "ar" ? "ar" : "en";
+
+  const dayDefs = [
+    { en: "saturday", ar: "السبت" },
+    { en: "sunday", ar: "الأحد" },
+    { en: "monday", ar: "الاثنين" },
+    { en: "tuesday", ar: "الثلاثاء" },
+    { en: "wednesday", ar: "الأربعاء" },
+    { en: "thursday", ar: "الخميس" },
+    { en: "friday", ar: "الجمعة" },
+  ];
+
+  const result = {};
+
+  for (const day of dayDefs) {
+    const startHour = day.en === "thursday" || day.en === "friday" ? 14 : 10;
+    const endHour = 22;
+
+    const key = normalizedLang === "ar" ? day.ar : day.en;
+
+    if (normalizedLang === "ar") {
+      result[key] = `${formatHourLabelAr(startHour)} - ${formatHourLabelAr(endHour)}`;
+    } else {
+      result[key] = `${formatHourLabelEn(startHour)} - ${formatHourLabelEn(endHour)}`;
+    }
+  }
+
+  return result;
 }
 
 function buildPublicServiceLocationDto(l, lang) {
@@ -26,10 +94,11 @@ function buildPublicServiceLocationDto(l, lang) {
     phone: l.phone || null,
     capacityByRoomType: l.capacityByRoomType,
     active: !!l.active,
+    workingHours: buildWorkingHoursByDay(normalizedLang),
   };
 }
 
-function buildServiceLocationDto(l) {
+function buildServiceLocationDto(l, lang = "en") {
   return {
     id: l._id,
     slug: l.slug,
@@ -41,6 +110,7 @@ function buildServiceLocationDto(l) {
     phone: l.phone || null,
     capacityByRoomType: l.capacityByRoomType,
     active: !!l.active,
+    workingHours: buildWorkingHoursByDay(lang),
   };
 }
 
@@ -92,7 +162,7 @@ export async function adminListServiceLocationsService({ includeInactive }) {
 
   return {
     results: locations.length,
-    data: locations.map(buildServiceLocationDto),
+    data: locations.map((l) => buildServiceLocationDto(l, "en")),
   };
 }
 
@@ -107,7 +177,7 @@ export async function getServiceLocationAdminByIdService(id) {
     throw new ApiError("Service location not found", 404);
   }
 
-  return buildServiceLocationDto(location);
+  return buildServiceLocationDto(location, "en");
 }
 
 export async function createServiceLocationService(payload) {
@@ -134,7 +204,7 @@ export async function createServiceLocationService(payload) {
     active: payload.active !== undefined ? payload.active : true,
   });
 
-  return buildServiceLocationDto(doc.toObject());
+  return buildServiceLocationDto(doc.toObject(), "en");
 }
 
 export async function updateServiceLocationService(id, payload) {

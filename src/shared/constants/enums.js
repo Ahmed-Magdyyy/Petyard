@@ -55,9 +55,17 @@ export const enabledControls = Object.freeze({
   BRANDS: 'brands',
   PRODUCTS: 'products',
   ORDERS: 'orders',
-  COUPONES: 'coupons',
+  COUPONS: 'coupons',
   BANNERS: 'banners',
-  COLLECTIONS: 'collections'
+  COLLECTIONS: 'collections',
+  CARTS: 'carts',
+  LOYALTY_POINTS: 'loyalty_points',
+  NOTIFICATIONS: 'notifications',
+  RETURNS: 'return',
+  SERVICE_LOCATIONS: 'service_locations',
+  SERVICE_RESERVATIONS: 'service_reservations',
+  WALLET: 'wallet',
+  WAREHOUSES: 'warehouses'
 });
 
 export const productTypeEnum = Object.freeze({
