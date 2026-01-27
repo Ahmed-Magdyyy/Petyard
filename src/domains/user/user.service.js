@@ -169,8 +169,8 @@ export async function deleteUserService(id) {
   user.refreshTokens = [];
 
   user.name = `deleted_user_${String(user._id)}`;
-  user.email = null;
-  user.phone = null;
+  user.email = `deleted_${String(user._id)}@petyard.com`;
+  user.phone = `deleted_${String(user._id)}`;
 
   user.signupProvider = undefined;
   user.authProviders = [];
