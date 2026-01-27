@@ -60,8 +60,8 @@ export const updateUserPassword = asyncHandler(async (req, res) => {
 export const deleteUser = asyncHandler(async (req, res) => {
   const deletedUser = await deleteUserService(req.params.id);
   res
-    .status(204)
-    .json({ message: "user deleted successfully", deletedUser });
+    .status(200)
+    .json({ message: "user deleted successfully" });
 });
 
 // PATCH /users/:id/toggle-active

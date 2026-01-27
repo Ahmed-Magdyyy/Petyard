@@ -10,6 +10,7 @@ export const accountStatus = Object.freeze({
   PENDING: 'pending',
   CONFIRMED: 'confirmed',
   PANNED: 'panned',
+  DELETED: 'deleted'
 });
 
 export const authProviderEnum = Object.freeze({

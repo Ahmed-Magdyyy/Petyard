@@ -1,5 +1,4 @@
 import bcrypt from "bcrypt";
-import crypto from "crypto";
 import { UserModel } from "./user.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import {
@@ -157,6 +156,7 @@ export async function deleteUserService(id) {
 
   if (user.deletedAt) {
     user.active = false;
+  user.account_status = accountStatus.DELETED;
     user.refreshTokens = [];
     const alreadyDeletedUser = await user.save();
     return alreadyDeletedUser;
@@ -167,12 +167,11 @@ export async function deleteUserService(id) {
   user.deletedAt = new Date();
   user.active = false;
   user.refreshTokens = [];
-
+  user.account_status = accountStatus.DELETED;
   user.name = `deleted_user_${String(user._id)}`;
   user.email = `deleted_${String(user._id)}@petyard.com`;
   user.phone = `deleted_${String(user._id)}`;
 
-  user.signupProvider = undefined;
   user.authProviders = [];
 
   user.phoneVerified = false;

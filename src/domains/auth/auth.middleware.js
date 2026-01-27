@@ -2,7 +2,7 @@ import asyncHandler from "express-async-handler";
 import jwt from "jsonwebtoken";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { UserModel } from "../user/user.model.js";
-import { authProviderEnum, roles } from "../../shared/constants/enums.js";
+import { authProviderEnum, roles, accountStatus } from "../../shared/constants/enums.js";
 
 export const protect = asyncHandler(async (req, res, next) => {
   let accessToken;
@@ -30,6 +30,10 @@ export const protect = asyncHandler(async (req, res, next) => {
 
   if (currentUser.deletedAt) {
     throw new ApiError("User no longer exists", 401);
+  }
+
+  if (currentUser.account_status === accountStatus.PANNED) {
+    throw new ApiError("Your account have been panned. please contact support", 403)
   }
 
   if (
