@@ -25,7 +25,9 @@ export const getProduct = asyncHandler(async (req, res) => {
 });
 
 export const createProduct = asyncHandler(async (req, res) => {
-  const product = await createProductService(req.body, req.files || []);
+console.log('req.files:', req.files)
+console.log('req.body:', req.body)
+  const product = await createPoductService(req.body, req.files || []);
   res.status(201).json({ data: product });
 });
 
