@@ -24,6 +24,18 @@ const handleCastErrorDB = (err) => {
   return new ApiError(message, 400);
 };
 
+const handleMulterError = (err) => {
+  if (err.code === "LIMIT_UNEXPECTED_FILE") {
+    return new ApiError(`Unexpected file field: ${err.field}`, 400);
+  }
+
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return new ApiError("Uploaded file is too large", 400);
+  }
+
+  return new ApiError(err.message || "Invalid file upload", 400);
+};
+
 const sendErrorForDev = (err, res) => {
   console.log(err);
   return res.status(err.statusCode).json({
@@ -61,6 +73,7 @@ export const globalError = async (err, req, res, next) => {
   if (error.code === 11000) error = handleDuplicateFieldsDB(error);
   if (error.name === "ValidationError") error = handleValidationErrorDB(error);
   if (error.name === "CastError") error = handleCastErrorDB(error);
+  if (error.name === "MulterError") error = handleMulterError(error);
   if (error.name === "JsonWebTokenError") error = handelJwtInvalidSignature();
   if (error.name === "TokenExpiredError") error = handelJwtExpire();
 
