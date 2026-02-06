@@ -9,13 +9,13 @@ import {
 
 // GET /brands
 export const getBrands = asyncHandler(async (req, res) => {
-  const data = await getBrandsService(req.lang);
+  const data = await getBrandsService(req.lang, req.user || null);
   res.status(200).json({ data });
 });
 
 // GET /brands/:id
 export const getBrand = asyncHandler(async (req, res) => {
-  const data = await getBrandByIdService(req.params.id, req.lang);
+  const data = await getBrandByIdService(req.params.id, req.lang, req.user || null);
   res.status(200).json({ data });
 });
 

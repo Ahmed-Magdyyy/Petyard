@@ -2,28 +2,48 @@ import { CategoryModel } from "./category.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
+import { enabledControls, roles } from "../../shared/constants/enums.js";
 import {
   validateImageFile,
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 
-export async function getCategoriesService(lang = "en") {
+export async function getCategoriesService(lang = "en", user = null) {
   const normalizedLang = lang === "ar" ? "ar" : "en";
+  const includeAllLanguages =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.CATEGORIES)));
 
   const categories = await CategoryModel.find({}).sort({ slug: 1 });
 
   return categories.map((c) => ({
     id: c._id,
     slug: c.slug,
-    name: pickLocalizedField(c, "name", normalizedLang),
-    desc: pickLocalizedField(c, "desc", normalizedLang),
+    ...(includeAllLanguages
+      ? {
+          name_en: c.name_en,
+          name_ar: c.name_ar,
+          desc_en: c.desc_en,
+          desc_ar: c.desc_ar,
+        }
+      : {
+          name: pickLocalizedField(c, "name", normalizedLang),
+          desc: pickLocalizedField(c, "desc", normalizedLang),
+        }),
     image: c.image || null,
   }));
 }
 
-export async function getCategoryByIdService(id, lang = "en") {
+export async function getCategoryByIdService(id, lang = "en", user = null) {
   const normalizedLang = lang === "ar" ? "ar" : "en";
+  const includeAllLanguages =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.CATEGORIES)));
 
   const category = await CategoryModel.findById(id);
   if (!category) {
@@ -33,8 +53,17 @@ export async function getCategoryByIdService(id, lang = "en") {
   return {
     id: category._id,
     slug: category.slug,
-    name: pickLocalizedField(category, "name", normalizedLang),
-    desc: pickLocalizedField(category, "desc", normalizedLang),
+    ...(includeAllLanguages
+      ? {
+          name_en: category.name_en,
+          name_ar: category.name_ar,
+          desc_en: category.desc_en,
+          desc_ar: category.desc_ar,
+        }
+      : {
+          name: pickLocalizedField(category, "name", normalizedLang),
+          desc: pickLocalizedField(category, "desc", normalizedLang),
+        }),
     image: category.image.url || null,
   };
 }

@@ -8,6 +8,7 @@ import {
 } from "./brand.controller.js";
 import {
   protect,
+  optionalProtect,
   allowedTo,
   enabledControls as enabledControlsMiddleware,
 } from "../auth/auth.middleware.js";
@@ -24,8 +25,8 @@ import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js"
 
 const router = Router();
 
-router.get("/", getBrands);
-router.get("/:id", brandIdParamValidator, getBrand);
+router.get("/", optionalProtect, getBrands);
+router.get("/:id", optionalProtect, brandIdParamValidator, getBrand);
 
 // Admin-only routes
 router.use(

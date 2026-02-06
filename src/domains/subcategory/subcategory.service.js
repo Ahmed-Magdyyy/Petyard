@@ -3,15 +3,21 @@ import { CategoryModel } from "../category/category.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
+import { enabledControls, roles } from "../../shared/constants/enums.js";
 import {
   validateImageFile,
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 
-export async function getSubcategoriesService(query = {}, lang = "en") {
+export async function getSubcategoriesService(query = {}, lang = "en", user = null) {
   const { category } = query;
   const normalizedLang = lang === "ar" ? "ar" : "en";
+  const includeAllLanguages =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.SUBCATEGORIES)));
 
   const filter = {};
   if (category) {
@@ -26,14 +32,28 @@ export async function getSubcategoriesService(query = {}, lang = "en") {
     id: s._id,
     category: s.category?._id || s.category,
     slug: s.slug,
-    name: pickLocalizedField(s, "name", normalizedLang),
-    desc: pickLocalizedField(s, "desc", normalizedLang),
+    ...(includeAllLanguages
+      ? {
+          name_en: s.name_en,
+          name_ar: s.name_ar,
+          desc_en: s.desc_en,
+          desc_ar: s.desc_ar,
+        }
+      : {
+          name: pickLocalizedField(s, "name", normalizedLang),
+          desc: pickLocalizedField(s, "desc", normalizedLang),
+        }),
     image: s.image?.url || null,
   }));
 }
 
-export async function getSubcategoryByIdService(id, lang = "en") {
+export async function getSubcategoryByIdService(id, lang = "en", user = null) {
   const normalizedLang = lang === "ar" ? "ar" : "en";
+  const includeAllLanguages =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.SUBCATEGORIES)));
 
   const subcategory = await SubcategoryModel.findById(id).populate(
     "category",
@@ -47,8 +67,17 @@ export async function getSubcategoryByIdService(id, lang = "en") {
     id: subcategory._id,
     category: subcategory.category?._id || subcategory.category,
     slug: subcategory.slug,
-    name: pickLocalizedField(subcategory, "name", normalizedLang),
-    desc: pickLocalizedField(subcategory, "desc", normalizedLang),
+    ...(includeAllLanguages
+      ? {
+          name_en: subcategory.name_en,
+          name_ar: subcategory.name_ar,
+          desc_en: subcategory.desc_en,
+          desc_ar: subcategory.desc_ar,
+        }
+      : {
+          name: pickLocalizedField(subcategory, "name", normalizedLang),
+          desc: pickLocalizedField(subcategory, "desc", normalizedLang),
+        }),
     image: subcategory.image?.url || null,
   };
 }

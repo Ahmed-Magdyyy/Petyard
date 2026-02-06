@@ -9,13 +9,13 @@ import {
 
 // GET /categories
 export const getCategories = asyncHandler(async (req, res) => {
-  const data = await getCategoriesService(req.lang);
+  const data = await getCategoriesService(req.lang, req.user || null);
   res.status(200).json({ data });
 });
 
 // GET /categories/:id
 export const getCategory = asyncHandler(async (req, res) => {
-  const data = await getCategoryByIdService(req.params.id, req.lang);
+  const data = await getCategoryByIdService(req.params.id, req.lang, req.user || null);
   res.status(200).json({ data });
 });
 

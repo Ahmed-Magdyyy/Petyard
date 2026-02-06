@@ -2,28 +2,48 @@ import { BrandModel } from "./brand.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
+import { enabledControls, roles } from "../../shared/constants/enums.js";
 import {
   validateImageFile,
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 
-export async function getBrandsService(lang = "en") {
+export async function getBrandsService(lang = "en", user = null) {
   const normalizedLang = lang === "ar" ? "ar" : "en";
+  const includeAllLanguages =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.BRANDS)));
 
   const brands = await BrandModel.find({}).sort({ slug: 1 });
 
   return brands.map((b) => ({
     id: b._id,
     slug: b.slug,
-    name: pickLocalizedField(b, "name", normalizedLang),
-    desc: pickLocalizedField(b, "desc", normalizedLang),
+    ...(includeAllLanguages
+      ? {
+          name_en: b.name_en,
+          name_ar: b.name_ar,
+          desc_en: b.desc_en,
+          desc_ar: b.desc_ar,
+        }
+      : {
+          name: pickLocalizedField(b, "name", normalizedLang),
+          desc: pickLocalizedField(b, "desc", normalizedLang),
+        }),
     image: b.image?.url || null,
   }));
 }
 
-export async function getBrandByIdService(id, lang = "en") {
+export async function getBrandByIdService(id, lang = "en", user = null) {
   const normalizedLang = lang === "ar" ? "ar" : "en";
+  const includeAllLanguages =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.BRANDS)));
 
   const brand = await BrandModel.findById(id);
   if (!brand) {
@@ -33,8 +53,17 @@ export async function getBrandByIdService(id, lang = "en") {
   return {
     id: brand._id,
     slug: brand.slug,
-    name: pickLocalizedField(brand, "name", normalizedLang),
-    desc: pickLocalizedField(brand, "desc", normalizedLang),
+    ...(includeAllLanguages
+      ? {
+          name_en: brand.name_en,
+          name_ar: brand.name_ar,
+          desc_en: brand.desc_en,
+          desc_ar: brand.desc_ar,
+        }
+      : {
+          name: pickLocalizedField(brand, "name", normalizedLang),
+          desc: pickLocalizedField(brand, "desc", normalizedLang),
+        }),
     image: brand.image?.url || null,
   };
 }

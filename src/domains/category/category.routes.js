@@ -8,6 +8,7 @@ import {
 } from "./category.controller.js";
 import {
   protect,
+  optionalProtect,
   allowedTo,
   enabledControls as enabledControlsMiddleware,
 } from "../auth/auth.middleware.js";
@@ -24,8 +25,8 @@ import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js"
 
 const router = Router();
 
-router.get("/", getCategories);
-router.get("/:id", categoryIdParamValidator, getCategory);
+router.get("/", optionalProtect, getCategories);
+router.get("/:id", optionalProtect, categoryIdParamValidator, getCategory);
 
 // Admin-only routes
 router.use(
