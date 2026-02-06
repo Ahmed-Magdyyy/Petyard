@@ -74,5 +74,5 @@ export const deleteReview = asyncHandler(async (req, res) => {
     currentUser: req.user,
   });
 
-  res.status(204).json({});
+  res.status(200).json({});
 });

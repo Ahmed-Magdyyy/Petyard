@@ -43,5 +43,5 @@ export const updateCollection = asyncHandler(async (req, res) => {
 
 export const deleteCollection = asyncHandler(async (req, res) => {
   await deleteCollectionService(req.params.id);
-  res.status(204).json({ message: "Collection deleted successfully" });
+  res.status(200).json({ message: "Collection deleted successfully" });
 });

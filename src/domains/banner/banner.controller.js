@@ -33,5 +33,5 @@ export const updateBanner = asyncHandler(async (req, res) => {
 
 export const deleteBanner = asyncHandler(async (req, res) => {
   await deleteBannerService(req.params.id);
-  res.status(204).json({ message: "Banner deleted successfully" });
+  res.status(200).json({ message: "Banner deleted successfully" });
 });

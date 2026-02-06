@@ -29,5 +29,5 @@ export const updateCoupon = asyncHandler(async (req, res) => {
 
 export const deleteCoupon = asyncHandler(async (req, res) => {
   await deleteCouponService(req.params.id);
-  res.status(204).json({ message: "Coupon deleted successfully" });
+  res.status(200).json({ message: "Coupon deleted successfully" });
 });

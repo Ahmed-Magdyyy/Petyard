@@ -50,5 +50,5 @@ export const updateProduct = asyncHandler(async (req, res) => {
 export const deleteProduct = asyncHandler(async (req, res) => {
   await deleteProductService(req.params.id);
 
-  res.status(204).json({ message: "Product deleted successfully" });
+  res.status(200).json({ message: "Product deleted successfully" });
 });

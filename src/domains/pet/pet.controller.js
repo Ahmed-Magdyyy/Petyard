@@ -33,7 +33,7 @@ export const createUserPet = asyncHandler(async (req, res) => {
 // DELETE /pets/admin/:id
 export const deletePetAdmin = asyncHandler(async (req, res) => {
   await deletePetByIdService(req.params.id);
-  res.status(204).json({ message: "Pet deleted successfully" });
+  res.status(200).json({ message: "Pet deleted successfully" });
 });
 
 // ----- Logged-in User Controllers -----
@@ -70,7 +70,7 @@ export const updatePet = asyncHandler(async (req, res) => {
 // DELETE /pets/:id
 export const deletePet = asyncHandler(async (req, res) => {
   await deletePetForOwnerService(req.user._id, req.params.id);
-  res.status(204).json({ message: "Pet deleted successfully" });
+  res.status(200).json({ message: "Pet deleted successfully" });
 });
 
 // PATCH /pets/:id/default

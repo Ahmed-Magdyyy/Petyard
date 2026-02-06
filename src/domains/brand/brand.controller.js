@@ -34,5 +34,5 @@ export const updateBrand = asyncHandler(async (req, res) => {
 // DELETE /brands/:id
 export const deleteBrand = asyncHandler(async (req, res) => {
   await deleteBrandService(req.params.id);
-  res.status(204).json({ message: "Brand deleted successfully" });
+  res.status(200).json({ message: "Brand deleted successfully" });
 });

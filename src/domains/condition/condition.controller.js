@@ -34,5 +34,5 @@ export const toggleConditionActive = asyncHandler(async (req, res) => {
 // DELETE /conditions/:id
 export const deleteCondition = asyncHandler(async (req, res) => {
   await deleteConditionService(req.params.id);
-  res.status(204).json({ message: "Condition deleted successfully" });
+  res.status(200).json({ message: "Condition deleted successfully" });
 });

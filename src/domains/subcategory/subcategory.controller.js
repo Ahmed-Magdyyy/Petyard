@@ -38,5 +38,5 @@ export const updateSubcategory = asyncHandler(async (req, res) => {
 // DELETE /subcategories/:id
 export const deleteSubcategory = asyncHandler(async (req, res) => {
   await deleteSubcategoryService(req.params.id);
-  res.status(204).json({ message: "Subcategory deleted successfully" });
+  res.status(200).json({ message: "Subcategory deleted successfully" });
 });

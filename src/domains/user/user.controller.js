@@ -111,7 +111,7 @@ export const updateLoggedUserData = asyncHandler(async (req, res) => {
 export const deleteLoggedUser = asyncHandler(async (req, res) => {
   const deletedUser = await deleteLoggedUserService({ userId: req.user._id });
 
-  res.status(204).json({ message: "Success", userDeleted: deletedUser });
+  res.status(200).json({ message: "Success", userDeleted: deletedUser });
 });
 
 // ----- Logged-in User Addresses -----

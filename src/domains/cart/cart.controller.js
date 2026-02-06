@@ -117,7 +117,7 @@ export const clearGuestCart = asyncHandler(async (req, res) => {
     warehouseId,
   });
 
-  res.status(204).json({});
+  res.status(200).json({});
 });
 
 export const setGuestCartAddress = asyncHandler(async (req, res) => {
@@ -238,7 +238,7 @@ export const clearMyCart = asyncHandler(async (req, res) => {
     warehouseId,
   });
 
-  res.status(204).json({});
+  res.status(200).json({});
 });
 
 export const setMyCartAddress = asyncHandler(async (req, res) => {

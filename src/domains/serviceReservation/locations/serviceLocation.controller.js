@@ -44,5 +44,5 @@ export const adminToggleServiceLocationActive = asyncHandler(async (req, res) =>
 
 export const adminDeleteServiceLocation = asyncHandler(async (req, res) => {
   await deleteServiceLocationService(req.params.id);
-  res.status(204).json({ message: "Service location deleted successfully" });
+  res.status(200).json({ message: "Service location deleted successfully" });
 });
