@@ -12,7 +12,7 @@ import { ApiError } from "../../shared/utils/ApiError.js";
 import { normalizeTag, normalizeTagsInput } from "../../shared/utils/tagging.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
-import { productTypeEnum } from "../../shared/constants/enums.js";
+import { productTypeEnum, roles, enabledControls } from "../../shared/constants/enums.js";
 import {
   buildPagination,
   buildSort,
@@ -472,7 +472,7 @@ function computeDetailPricingForProduct(product, promoPercent) {
   };
 }
 
-function mapProductToDetailDto(product, { lang, promotion } = {}) {
+function mapProductToDetailDto(product, { lang, promotion, includeAllLanguages } = {}) {
   const normalizedLang = normalizeLang(lang);
 
   const mainImage = pickMainImage(product.images);
@@ -518,8 +518,17 @@ function mapProductToDetailDto(product, { lang, promotion } = {}) {
     category,
     subcategory,
     brand,
-    name: pickLocalizedField(product, "name", normalizedLang),
-    desc: pickLocalizedField(product, "desc", normalizedLang),
+    ...(includeAllLanguages
+      ? {
+          name_en: product.name_en,
+          name_ar: product.name_ar,
+          desc_en: product.desc_en,
+          desc_ar: product.desc_ar,
+        }
+      : {
+          name: pickLocalizedField(product, "name", normalizedLang),
+          desc: pickLocalizedField(product, "desc", normalizedLang),
+        }),
     sku: product.sku || null,
     tags: product.tags || [],
     price:
@@ -785,9 +794,15 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
   };
 }
 
-async function getProductByIdService(id, lang = "en") {
+async function getProductByIdService(id, lang = "en", user = null) {
   const normalizedLang = normalizeLang(lang);
-  const cacheKey = `product:${id}:${normalizedLang}`;
+  const includeAllLanguages =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.PRODUCTS)));
+
+  const cacheKey = `product:${id}:${normalizedLang}:${includeAllLanguages ? "all" : "localized"}`;
 
   return getOrSetCache(cacheKey, 60, async () => {
     await autoHideExpiredCollections();
@@ -810,6 +825,7 @@ async function getProductByIdService(id, lang = "en") {
     return mapProductToDetailDto(product, {
       lang: normalizedLang,
       promotion,
+      includeAllLanguages,
     });
   });
 }

@@ -11,6 +11,7 @@ import {
 
 import {
   protect,
+  optionalProtect,
   allowedTo,
   enabledControls as enabledControlsMiddleware,
 } from "../auth/auth.middleware.js";
@@ -35,6 +36,8 @@ const router = Router();
 
 router.get("/", listProductsQueryValidator, getProducts);
 
+router.get("/:id", optionalProtect, productIdParamValidator, getProduct);
+
 router.get(
   "/admin",
 
@@ -48,8 +51,6 @@ router.get(
 
   getProductsForAdmin,
 );
-
-router.get("/:id", productIdParamValidator, getProduct);
 
 router.use("/:id/reviews", reviewRoutes);
 

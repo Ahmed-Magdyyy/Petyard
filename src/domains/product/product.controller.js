@@ -23,7 +23,7 @@ export const getProductsForAdmin = asyncHandler(async (req, res) => {
 });
 
 export const getProduct = asyncHandler(async (req, res) => {
-  const data = await getProductByIdService(req.params.id, req.lang);
+  const data = await getProductByIdService(req.params.id, req.lang, req.user || null);
 
   res.status(200).json({ data });
 });
