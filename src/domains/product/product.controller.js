@@ -17,6 +17,7 @@ export const getProducts = asyncHandler(async (req, res) => {
 export const getProductsForAdmin = asyncHandler(async (req, res) => {
   const result = await getProductsService(req.query, req.lang, {
     includeZeroStockInWarehouse: true,
+    user: req.user || null,
   });
 
   res.status(200).json(result);

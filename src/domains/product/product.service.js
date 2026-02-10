@@ -259,6 +259,16 @@ function mapLocalizedRef(ref, normalizedLang) {
   return { id: ref };
 }
 
+function canUserSeeWarehouseStockDetailsForProducts(user) {
+  if (!user) return false;
+
+  if (user.role === roles.SUPER_ADMIN) return true;
+  if (user.role !== roles.ADMIN) return false;
+
+  const controls = Array.isArray(user.enabledControls) ? user.enabledControls : [];
+  return controls.includes(enabledControls.PRODUCTS);
+}
+
 function computeProductStock(product) {
   if (!product) return 0;
 
@@ -339,7 +349,10 @@ function computeCardPricingForProduct(product, promoPercent) {
   return { cardPrice, cardDiscountedPrice, appliedPromotionForCard };
 }
 
-function mapProductToCardDto(p, { lang, promotion } = {}) {
+function mapProductToCardDto(
+  p,
+  { lang, promotion, includeWarehouseStockDetails = false } = {}
+) {
   const normalizedLang = normalizeLang(lang);
   const mainImage = pickMainImage(p.images);
 
@@ -357,7 +370,7 @@ function mapProductToCardDto(p, { lang, promotion } = {}) {
   const subcategory = mapLocalizedRef(p.subcategory, normalizedLang);
   const brand = mapLocalizedRef(p.brand, normalizedLang);
 
-  return {
+  const dto = {
     id: p._id,
     slug: p.slug,
     name: pickLocalizedField(p, "name", normalizedLang),
@@ -381,6 +394,33 @@ function mapProductToCardDto(p, { lang, promotion } = {}) {
     ratingAverage: typeof p.ratingAverage === "number" ? p.ratingAverage : 0,
     ratingCount: typeof p.ratingCount === "number" ? p.ratingCount : 0,
   };
+
+  if (includeWarehouseStockDetails) {
+    if (p.type === productTypeEnum.SIMPLE) {
+      dto.warehouseStocks = Array.isArray(p.warehouseStocks)
+        ? p.warehouseStocks.map((ws) => ({
+            warehouse: ws.warehouse,
+            quantity: ws.quantity,
+          }))
+        : [];
+    }
+
+    if (p.type === productTypeEnum.VARIANT) {
+      dto.variants = Array.isArray(p.variants)
+        ? p.variants.map((v) => ({
+            id: v._id || null,
+            warehouseStocks: Array.isArray(v.warehouseStocks)
+              ? v.warehouseStocks.map((ws) => ({
+                  warehouse: ws.warehouse,
+                  quantity: ws.quantity,
+                }))
+              : [],
+          }))
+        : [];
+    }
+  }
+
+  return dto;
 }
 
 function computeDetailPricingForProduct(product, promoPercent) {
@@ -621,7 +661,8 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
   } = queryParams;
 
   const normalizedLang = normalizeLang(lang);
-  const { includeZeroStockInWarehouse = false } = options || {};
+  const { includeZeroStockInWarehouse = false, user = null } = options || {};
+  const includeWarehouseStockDetails = canUserSeeWarehouseStockDetailsForProducts(user);
 
   const filter = {};
 
@@ -781,6 +822,7 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
     return mapProductToCardDto(p, {
       lang: normalizedLang,
       promotion,
+      includeWarehouseStockDetails,
     });
   });
 

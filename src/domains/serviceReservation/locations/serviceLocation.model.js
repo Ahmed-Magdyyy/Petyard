@@ -30,6 +30,10 @@ const serviceLocationSchema = new Schema(
       type: String,
       trim: true,
     },
+    email: {
+      type: String,
+      trim: true,
+    },
     phone: {
       type: String,
       trim: true,

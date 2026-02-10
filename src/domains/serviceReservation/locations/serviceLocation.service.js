@@ -91,6 +91,7 @@ function buildPublicServiceLocationDto(l, lang) {
     city: l.city,
     timezone: l.timezone,
     googleMapsLink: l.googleMapsLink || null,
+    email: l.email || null,
     phone: l.phone || null,
     capacityByRoomType: l.capacityByRoomType,
     active: !!l.active,
@@ -107,6 +108,7 @@ function buildServiceLocationDto(l, lang = "en") {
     city: l.city,
     timezone: l.timezone,
     googleMapsLink: l.googleMapsLink || null,
+    email: l.email || null,
     phone: l.phone || null,
     capacityByRoomType: l.capacityByRoomType,
     active: !!l.active,
@@ -117,7 +119,7 @@ function buildServiceLocationDto(l, lang = "en") {
 export async function listServiceLocationsService(lang = "en") {
   const locations = await ServiceLocationModel.find({ active: true })
     .select(
-      "_id slug name_en name_ar city timezone googleMapsLink phone capacityByRoomType active"
+      "_id slug name_en name_ar city timezone googleMapsLink phone email capacityByRoomType active"
     )
     .sort({ name_en: 1 })
     .lean();
@@ -155,7 +157,7 @@ export async function adminListServiceLocationsService({ includeInactive }) {
   const filter = includeInactive ? {} : { active: true };
   const locations = await ServiceLocationModel.find(filter)
     .select(
-      "_id slug name_en name_ar city timezone googleMapsLink phone capacityByRoomType active"
+      "_id slug name_en name_ar city timezone googleMapsLink email phone capacityByRoomType active"
     )
     .sort({ name_en: 1 })
     .lean();
@@ -169,7 +171,7 @@ export async function adminListServiceLocationsService({ includeInactive }) {
 export async function getServiceLocationAdminByIdService(id) {
   const location = await ServiceLocationModel.findById(id)
     .select(
-      "_id slug name_en name_ar city timezone googleMapsLink phone capacityByRoomType active"
+      "_id slug name_en name_ar city timezone googleMapsLink email phone capacityByRoomType active"
     )
     .lean();
 
@@ -199,6 +201,7 @@ export async function createServiceLocationService(payload) {
     city,
     timezone: payload.timezone,
     googleMapsLink: payload.googleMapsLink,
+    email: payload.email,
     phone: payload.phone,
     capacityByRoomType: payload.capacityByRoomType,
     active: payload.active !== undefined ? payload.active : true,
@@ -227,6 +230,7 @@ export async function updateServiceLocationService(id, payload) {
   if (payload.timezone !== undefined) location.timezone = payload.timezone;
   if (payload.googleMapsLink !== undefined)
     location.googleMapsLink = payload.googleMapsLink;
+  if (payload.email !== undefined) location.email = payload.email;
   if (payload.phone !== undefined) location.phone = payload.phone;
   if (payload.active !== undefined) location.active = payload.active;
 

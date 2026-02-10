@@ -31,6 +31,8 @@ export const createServiceLocationValidator = [
     .isString()
     .withMessage("googleMapsLink must be a string"),
 
+  body("email").optional().isEmail().withMessage("email must be a valid email"),
+
   body("phone").optional().isString().withMessage("phone must be a string"),
 
   body("active").optional().isBoolean().withMessage("active must be a boolean"),
@@ -70,6 +72,8 @@ export const updateServiceLocationValidator = [
     .optional()
     .isString()
     .withMessage("googleMapsLink must be a string"),
+
+  body("email").optional().isEmail().withMessage("email must be a valid email"),
 
   body("phone").optional().isString().withMessage("phone must be a string"),
 
