@@ -259,16 +259,6 @@ function mapLocalizedRef(ref, normalizedLang) {
   return { id: ref };
 }
 
-function canUserSeeWarehouseStockDetailsForProducts(user) {
-  if (!user) return false;
-
-  if (user.role === roles.SUPER_ADMIN) return true;
-  if (user.role !== roles.ADMIN) return false;
-
-  const controls = Array.isArray(user.enabledControls) ? user.enabledControls : [];
-  return controls.includes(enabledControls.PRODUCTS);
-}
-
 function computeProductStock(product) {
   if (!product) return 0;
 
@@ -277,6 +267,33 @@ function computeProductStock(product) {
   }
   if (product.type === productTypeEnum.VARIANT) {
     return computeTotalStockForVariants(product);
+  }
+
+  return 0;
+}
+
+function computeProductStockForWarehouse(product, warehouseId) {
+  if (!product || !warehouseId) return computeProductStock(product);
+
+  const wid = String(warehouseId);
+
+  if (product.type === productTypeEnum.SIMPLE) {
+    const stocks = Array.isArray(product.warehouseStocks)
+      ? product.warehouseStocks
+      : [];
+    const entry = stocks.find((s) => String(s?.warehouse) === wid);
+    return typeof entry?.quantity === "number" ? entry.quantity : 0;
+  }
+
+  if (product.type === productTypeEnum.VARIANT) {
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+
+    return variants.reduce((sum, v) => {
+      const stocks = Array.isArray(v?.warehouseStocks) ? v.warehouseStocks : [];
+      const entry = stocks.find((s) => String(s?.warehouse) === wid);
+      const qty = typeof entry?.quantity === "number" ? entry.quantity : 0;
+      return sum + qty;
+    }, 0);
   }
 
   return 0;
@@ -349,14 +366,13 @@ function computeCardPricingForProduct(product, promoPercent) {
   return { cardPrice, cardDiscountedPrice, appliedPromotionForCard };
 }
 
-function mapProductToCardDto(
-  p,
-  { lang, promotion, includeWarehouseStockDetails = false } = {}
-) {
+function mapProductToCardDto(p, { lang, promotion, warehouseId } = {}) {
   const normalizedLang = normalizeLang(lang);
   const mainImage = pickMainImage(p.images);
 
-  const stock = computeProductStock(p);
+  const stock = warehouseId
+    ? computeProductStockForWarehouse(p, warehouseId)
+    : computeProductStock(p);
 
   const promoPercent =
     promotion && typeof promotion.discountPercent === "number"
@@ -370,7 +386,7 @@ function mapProductToCardDto(
   const subcategory = mapLocalizedRef(p.subcategory, normalizedLang);
   const brand = mapLocalizedRef(p.brand, normalizedLang);
 
-  const dto = {
+  return {
     id: p._id,
     slug: p.slug,
     name: pickLocalizedField(p, "name", normalizedLang),
@@ -394,33 +410,6 @@ function mapProductToCardDto(
     ratingAverage: typeof p.ratingAverage === "number" ? p.ratingAverage : 0,
     ratingCount: typeof p.ratingCount === "number" ? p.ratingCount : 0,
   };
-
-  if (includeWarehouseStockDetails) {
-    if (p.type === productTypeEnum.SIMPLE) {
-      dto.warehouseStocks = Array.isArray(p.warehouseStocks)
-        ? p.warehouseStocks.map((ws) => ({
-            warehouse: ws.warehouse,
-            quantity: ws.quantity,
-          }))
-        : [];
-    }
-
-    if (p.type === productTypeEnum.VARIANT) {
-      dto.variants = Array.isArray(p.variants)
-        ? p.variants.map((v) => ({
-            id: v._id || null,
-            warehouseStocks: Array.isArray(v.warehouseStocks)
-              ? v.warehouseStocks.map((ws) => ({
-                  warehouse: ws.warehouse,
-                  quantity: ws.quantity,
-                }))
-              : [],
-          }))
-        : [];
-    }
-  }
-
-  return dto;
 }
 
 function computeDetailPricingForProduct(product, promoPercent) {
@@ -661,8 +650,7 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
   } = queryParams;
 
   const normalizedLang = normalizeLang(lang);
-  const { includeZeroStockInWarehouse = false, user = null } = options || {};
-  const includeWarehouseStockDetails = canUserSeeWarehouseStockDetailsForProducts(user);
+  const { includeZeroStockInWarehouse = false } = options || {};
 
   const filter = {};
 
@@ -720,12 +708,14 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
   // warehouse filter: only include products that have stock > 0
   // in the given warehouse. This applies to both SIMPLE and VARIANT products.
   let warehouseFilter = null;
+  let selectedWarehouseId = null;
   if (warehouse) {
     const warehouseId = Array.isArray(warehouse)
       ? String(warehouse[0])
       : String(warehouse);
 
     if (warehouseId) {
+      selectedWarehouseId = warehouseId;
       if (filter.type === productTypeEnum.SIMPLE) {
         warehouseFilter = {
           warehouseStocks: {
@@ -822,7 +812,7 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
     return mapProductToCardDto(p, {
       lang: normalizedLang,
       promotion,
-      includeWarehouseStockDetails,
+      warehouseId: selectedWarehouseId,
     });
   });
 
