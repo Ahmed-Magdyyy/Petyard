@@ -28,7 +28,7 @@ export const signupValidator = [
     .withMessage("Password is required")
     .isLength({ min: 6 })
     .withMessage("Password must be at least 6 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{6,}$/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{6,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   body("cPassword")
@@ -144,7 +144,7 @@ export const oauthSetPasswordValidator = [
     .withMessage("New password is required")
     .isLength({ min: 6 })
     .withMessage("Password must be at least 6 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{6,}$/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{6,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   body("cNewPassword")
@@ -199,7 +199,7 @@ export const loginValidator = [
     .withMessage("Password is required")
     .isLength({ min: 6 })
     .withMessage("Password must be at least 6 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{6,}$/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{6,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   validatorMiddleware,
@@ -239,7 +239,7 @@ export const resetPasswordValidator = [
     .withMessage("New password is required")
     .isLength({ min: 6 })
     .withMessage("Password must be at least 6 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{6,}$/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{6,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   body("cNewPassword")
