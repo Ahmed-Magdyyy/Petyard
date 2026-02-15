@@ -62,12 +62,22 @@ function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
 }
 
-function mapCollectionToPublicDto(c, lang) {
+function mapCollectionToPublicDto(c, lang, { includeAllLanguages = false } = {}) {
   return {
     id: c._id,
     slug: c.slug,
-    name: pickLocalizedField(c, "name", lang),
-    desc: pickLocalizedField(c, "desc", lang),
+    ...(includeAllLanguages
+      ? {
+          name_en: c.name_en,
+          name_ar: c.name_ar,
+          desc_en: c.desc_en,
+          desc_ar: c.desc_ar,
+          isVisible: c.isVisible,
+        }
+      : {
+          name: pickLocalizedField(c, "name", lang),
+          desc: pickLocalizedField(c, "desc", lang),
+        }),
     image: c.image?.url || null,
     position: c.position,
     promotion: c.promotion || null,
@@ -75,7 +85,11 @@ function mapCollectionToPublicDto(c, lang) {
   };
 }
 
-export async function getCollectionsService(lang = "en", user = null) {
+export async function getCollectionsService(
+  queryParams = {},
+  lang = "en",
+  user = null
+) {
   const normalizedLang = normalizeLang(lang);
 
   const includeAllCollections =
@@ -88,14 +102,26 @@ export async function getCollectionsService(lang = "en", user = null) {
     await autoHideExpiredCollections();
   }
 
-  const collections = await CollectionModel.find(
-    includeAllCollections ? {} : { isVisible: true }
-  ).sort({
+  const isVisibleFilter = parseBooleanField(queryParams?.isVisible);
+  const filter = includeAllCollections ? {} : { isVisible: true };
+
+  if (
+    includeAllCollections &&
+    (isVisibleFilter === true || isVisibleFilter === false)
+  ) {
+    filter.isVisible = isVisibleFilter;
+  }
+
+  const collections = await CollectionModel.find(filter).sort({
     position: 1,
     slug: 1,
   });
 
-  return collections.map((c) => mapCollectionToPublicDto(c, normalizedLang));
+  return collections.map((c) =>
+    mapCollectionToPublicDto(c, normalizedLang, {
+      includeAllLanguages: includeAllCollections,
+    })
+  );
 }
 
 export async function getCollectionByIdService(id, lang = "en", user = null) {
@@ -118,7 +144,9 @@ export async function getCollectionByIdService(id, lang = "en", user = null) {
     throw new ApiError(`No collection found for this id: ${id}`, 404);
   }
 
-  return mapCollectionToPublicDto(collection, normalizedLang);
+  return mapCollectionToPublicDto(collection, normalizedLang, {
+    includeAllLanguages: includeAllCollections,
+  });
 }
 
 export async function getCollectionWithProductsService(

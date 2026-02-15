@@ -9,7 +9,7 @@ import {
 } from "./collection.service.js";
 
 export const getCollections = asyncHandler(async (req, res) => {
-  const data = await getCollectionsService(req.lang, req.user || null);
+  const data = await getCollectionsService(req.query, req.lang, req.user || null);
   res.status(200).json({ data });
 });
 
