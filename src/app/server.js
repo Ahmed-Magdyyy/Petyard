@@ -72,18 +72,36 @@ pingServer();
 
 // Ping the server every 14 minutes (14 * 60 * 1000 milliseconds)
 const pingInterval = 14 * 60 * 1000;
-setInterval(pingServer, pingInterval);
+if (!globalThis.__petyardPingIntervalId) {
+  globalThis.__petyardPingIntervalId = setInterval(pingServer, pingInterval);
+}
 
 // Function to ping the server by hitting the specified API route
 function pingServer() {
-  const pingEndpoint = 'https://petyard.onrender.com/api/v1/locations/options';
+  const pingEndpoint =
+    "https://petyard.onrender.com/api/v1/locations/options?__internal_ping=1";
 
   // Send a GET request to the ping endpoint
-  https.get(pingEndpoint, (res) => {
-    console.log(`Ping sent to server: ${res.statusCode}`);
-  }).on('error', (err) => {
-    console.error('Error while sending ping:', err);
-  });
+  const req = https
+    .request(
+      pingEndpoint,
+      {
+        method: "GET",
+        headers: {
+          "User-Agent": "petyard-internal-ping",
+          "X-Internal-Ping": "1",
+        },
+      },
+      (res) => {
+        console.log(`Ping sent to server: ${res.statusCode}`);
+        res.resume();
+      }
+    )
+    .on("error", (err) => {
+      console.error("Error while sending ping:", err);
+    });
+
+  req.end();
 }
 
 // UnhandledRejections event handler (rejection outside express)
