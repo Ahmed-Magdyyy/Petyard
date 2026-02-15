@@ -12,6 +12,7 @@ import {
   ensurePromotionalCollectionUniqueness,
 } from "./collection.promotion.js";
 import { getProductsService } from "../product/product.service.js";
+import { enabledControls, roles } from "../../shared/constants/enums.js";
 
 function parseJsonField(value, fieldName) {
   if (typeof value !== "string") return value;
@@ -70,15 +71,26 @@ function mapCollectionToPublicDto(c, lang) {
     image: c.image?.url || null,
     position: c.position,
     promotion: c.promotion || null,
+    updatedAt: c.updatedAt,
   };
 }
 
-export async function getCollectionsService(lang = "en") {
+export async function getCollectionsService(lang = "en", user = null) {
   const normalizedLang = normalizeLang(lang);
 
-  await autoHideExpiredCollections();
+  const includeAllCollections =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.COLLECTIONS)));
 
-  const collections = await CollectionModel.find({ isVisible: true }).sort({
+  if (!includeAllCollections) {
+    await autoHideExpiredCollections();
+  }
+
+  const collections = await CollectionModel.find(
+    includeAllCollections ? {} : { isVisible: true }
+  ).sort({
     position: 1,
     slug: 1,
   });
@@ -86,12 +98,22 @@ export async function getCollectionsService(lang = "en") {
   return collections.map((c) => mapCollectionToPublicDto(c, normalizedLang));
 }
 
-export async function getCollectionByIdService(id, lang = "en") {
+export async function getCollectionByIdService(id, lang = "en", user = null) {
   const normalizedLang = normalizeLang(lang);
 
-  await autoHideExpiredCollections();
+  const includeAllCollections =
+    user &&
+    (user.role === roles.SUPER_ADMIN ||
+      (user.role === roles.ADMIN &&
+        user.enabledControls?.includes(enabledControls.COLLECTIONS)));
 
-  const collection = await CollectionModel.findOne({ _id: id, isVisible: true });
+  if (!includeAllCollections) {
+    await autoHideExpiredCollections();
+  }
+
+  const collection = await CollectionModel.findOne(
+    includeAllCollections ? { _id: id } : { _id: id, isVisible: true }
+  );
   if (!collection) {
     throw new ApiError(`No collection found for this id: ${id}`, 404);
   }
@@ -102,9 +124,10 @@ export async function getCollectionByIdService(id, lang = "en") {
 export async function getCollectionWithProductsService(
   id,
   queryParams = {},
-  lang = "en"
+  lang = "en",
+  user = null
 ) {
-  const collection = await getCollectionByIdService(id, lang);
+  const collection = await getCollectionByIdService(id, lang, user);
   const products = await getProductsService({ ...queryParams, collection: id }, lang);
   return { collection, products };
 }

@@ -22,6 +22,7 @@ export async function getCategoriesService(lang = "en", user = null) {
   return categories.map((c) => ({
     id: c._id,
     slug: c.slug,
+    updatedAt: c.updatedAt,
     ...(includeAllLanguages
       ? {
           name_en: c.name_en,
@@ -53,6 +54,7 @@ export async function getCategoryByIdService(id, lang = "en", user = null) {
   return {
     id: category._id,
     slug: category.slug,
+    updatedAt: category.updatedAt,
     ...(includeAllLanguages
       ? {
           name_en: category.name_en,

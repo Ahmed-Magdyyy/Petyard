@@ -11,6 +11,7 @@ import {
   protect,
   allowedTo,
   enabledControls as enabledControlsMiddleware,
+  optionalProtect,
 } from "../auth/auth.middleware.js";
 import {
   roles,
@@ -26,10 +27,11 @@ import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js"
 
 const router = Router();
 
-router.get("/", getCollections);
-router.get("/:id", collectionIdParamValidator, getCollection);
+router.get("/", optionalProtect, getCollections);
+router.get("/:id", optionalProtect, collectionIdParamValidator, getCollection);
 router.get(
   "/:id/products",
+  optionalProtect,
   collectionIdParamValidator,
   listProductsQueryValidator,
   getCollectionWithProducts

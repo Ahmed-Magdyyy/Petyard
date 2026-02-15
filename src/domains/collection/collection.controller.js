@@ -9,12 +9,16 @@ import {
 } from "./collection.service.js";
 
 export const getCollections = asyncHandler(async (req, res) => {
-  const data = await getCollectionsService(req.lang);
+  const data = await getCollectionsService(req.lang, req.user || null);
   res.status(200).json({ data });
 });
 
 export const getCollection = asyncHandler(async (req, res) => {
-  const data = await getCollectionByIdService(req.params.id, req.lang);
+  const data = await getCollectionByIdService(
+    req.params.id,
+    req.lang,
+    req.user || null
+  );
   res.status(200).json({ data });
 });
 
@@ -22,7 +26,8 @@ export const getCollectionWithProducts = asyncHandler(async (req, res) => {
   const data = await getCollectionWithProductsService(
     req.params.id,
     req.query,
-    req.lang
+    req.lang,
+    req.user || null
   );
   res.status(200).json({ data });
 });

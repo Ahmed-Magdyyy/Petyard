@@ -32,6 +32,7 @@ export async function getSubcategoriesService(query = {}, lang = "en", user = nu
     id: s._id,
     category: s.category?._id || s.category,
     slug: s.slug,
+    updatedAt: s.updatedAt,
     ...(includeAllLanguages
       ? {
           name_en: s.name_en,
@@ -67,6 +68,7 @@ export async function getSubcategoryByIdService(id, lang = "en", user = null) {
     id: subcategory._id,
     category: subcategory.category?._id || subcategory.category,
     slug: subcategory.slug,
+    updatedAt: subcategory.updatedAt,
     ...(includeAllLanguages
       ? {
           name_en: subcategory.name_en,

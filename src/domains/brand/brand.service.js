@@ -22,6 +22,7 @@ export async function getBrandsService(lang = "en", user = null) {
   return brands.map((b) => ({
     id: b._id,
     slug: b.slug,
+    updatedAt: b.updatedAt,
     ...(includeAllLanguages
       ? {
           name_en: b.name_en,
@@ -53,6 +54,7 @@ export async function getBrandByIdService(id, lang = "en", user = null) {
   return {
     id: brand._id,
     slug: brand.slug,
+    updatedAt: brand.updatedAt,
     ...(includeAllLanguages
       ? {
           name_en: brand.name_en,
