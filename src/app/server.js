@@ -76,7 +76,7 @@ setInterval(pingServer, pingInterval);
 
 // Function to ping the server by hitting the specified API route
 function pingServer() {
-  const pingEndpoint = 'https://petyard.onrender.com/api/v1/banners';
+  const pingEndpoint = 'https://petyard.onrender.com/api/v1/locations/options';
 
   // Send a GET request to the ping endpoint
   https.get(pingEndpoint, (res) => {
