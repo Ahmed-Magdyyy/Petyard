@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { UserModel } from "../user/user.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { sendOtpSms, normalizeEgyptianMobile } from "../../shared/utils/sms.js";
+import { detachDevicesForUserService } from "../notification/notification.service.js";
 import {
   generateOtp,
   hashOtp,
@@ -1002,7 +1003,7 @@ export async function refreshTokenService({ refreshToken }) {
   };
 }
 
-export async function logoutService({ userId, refreshToken }) {
+export async function logoutService({ userId, refreshToken, deviceToken }) {
   if (!refreshToken) {
     throw new ApiError("No active session to logout", 400);
   }
@@ -1012,6 +1013,8 @@ export async function logoutService({ userId, refreshToken }) {
   if (!user) {
     throw new ApiError("User not found", 404);
   }
+
+  await detachDevicesForUserService({ userId, token: deviceToken });
 
   // Remove provided refresh token from stored list (single session logout)
   const hashedProvidedToken = crypto

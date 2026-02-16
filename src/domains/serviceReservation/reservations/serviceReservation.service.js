@@ -819,11 +819,12 @@ export async function adminUpdateReservationStatusService({ id, status, lang }) 
   const allowed = [
     serviceReservationStatusEnum.CANCELLED,
     serviceReservationStatusEnum.COMPLETED,
+    serviceReservationStatusEnum.IN_PROGRESS,
     serviceReservationStatusEnum.NO_SHOW,
   ];
   if (!allowed.includes(nextStatus)) {
     throw new ApiError(
-      "status must be CANCELLED, COMPLETED, or NO_SHOW",
+      "status must be CANCELLED, COMPLETED, IN_PROGRESS, or NO_SHOW",
       400
     );
   }
@@ -891,6 +892,7 @@ export async function adminUpdateReservationStatusService({ id, status, lang }) 
     const statusLabels = {
       CANCELLED: { en: "cancelled", ar: "ملغي" },
       COMPLETED: { en: "completed", ar: "مكتمل" },
+      IN_PROGRESS: { en: "in progress", ar: "قيد التنفيذ" },
       NO_SHOW: { en: "marked as no-show", ar: "تم تسجيله كعدم حضور" },
     };
     const label = statusLabels[nextStatus] || { en: nextStatus.toLowerCase(), ar: nextStatus };

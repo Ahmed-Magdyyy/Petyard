@@ -141,9 +141,9 @@ export const refreshToken = asyncHandler(async (req, res) => {
 
 // POST /auth/logout
 export const logout = asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
+  const { refreshToken, deviceToken } = req.body;
 
-  await logoutService({ userId: req.user._id, refreshToken });
+  await logoutService({ userId: req.user._id, refreshToken, deviceToken });
 
   // res.clearCookie("refreshToken", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "Strict" });
 

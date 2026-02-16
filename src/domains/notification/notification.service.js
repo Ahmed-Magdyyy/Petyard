@@ -130,6 +130,39 @@ export async function registerDeviceForGuestService({
   };
 }
 
+export async function detachDevicesForUserService({ userId, token } = {}) {
+  if (!userId) {
+    throw new ApiError("userId is required", 400);
+  }
+
+  const hasToken = typeof token === "string" && token.trim();
+  const normalizedToken = hasToken ? token.trim() : null;
+
+  if (normalizedToken) {
+    const result = await NotificationDeviceModel.updateOne(
+      { user: userId, token: normalizedToken },
+      { $unset: { user: 1 } }
+    );
+
+    return {
+      detachedOne: true,
+      matchedCount: result.matchedCount || 0,
+      modifiedCount: result.modifiedCount || 0,
+    };
+  }
+
+  const result = await NotificationDeviceModel.updateMany(
+    { user: userId },
+    { $unset: { user: 1 } }
+  );
+
+  return {
+    detachedOne: false,
+    matchedCount: result.matchedCount || 0,
+    modifiedCount: result.modifiedCount || 0,
+  };
+}
+
 function buildDataPayload(data) {
   if (!data || typeof data !== "object") return {};
   const out = {};
