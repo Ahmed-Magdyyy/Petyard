@@ -57,8 +57,9 @@ router.post("/resend-otp", resendOtpValidator, resendOtp);
 router.post(
   "/verify-phone",
   (req, res, next) => {
-    console.log("phone", req.phone);
-    console.log("otp", req.otp);
+    console.log("phone", req.body.phone);
+    console.log("otp", req.body.otp);
+    next()
   },
   verifyPhoneValidator,
   verifyPhone,
