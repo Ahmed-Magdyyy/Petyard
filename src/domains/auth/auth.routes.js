@@ -41,7 +41,10 @@ import {
   oauthSetPasswordValidator,
 } from "./auth.validators.js";
 import { authRateLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
-import { onlySocialProfileCompletionPhone, protect } from "./auth.middleware.js";
+import {
+  onlySocialProfileCompletionPhone,
+  protect,
+} from "./auth.middleware.js";
 
 const router = Router();
 
@@ -51,7 +54,15 @@ router.use(authRateLimiter);
 // Auth routes
 router.post("/signup", signupValidator, signup);
 router.post("/resend-otp", resendOtpValidator, resendOtp);
-router.post("/verify-phone", verifyPhoneValidator, verifyPhone);
+router.post(
+  "/verify-phone",
+  (req, res, next) => {
+    console.log("phone", req.phone);
+    console.log("otp", req.otp);
+  },
+  verifyPhoneValidator,
+  verifyPhone,
+);
 router.post("/guest/send-otp", guestSendOtpValidator, sendGuestOtp);
 router.post("/guest/verify-phone", guestVerifyOtpValidator, verifyGuestOtp);
 router.post("/login", loginValidator, login);
@@ -61,7 +72,7 @@ router.post("/forget-password", forgetPasswordValidator, forgetPassword);
 router.post(
   "/verify-reset-code",
   verifyResetCodeValidator,
-  verifyPasswordResetCode
+  verifyPasswordResetCode,
 );
 router.post("/reset-password", resetPasswordValidator, resetPassword);
 
@@ -74,14 +85,14 @@ router.post(
   protect,
   onlySocialProfileCompletionPhone,
   oauthSendOtpValidator,
-  oauthSendOtp
+  oauthSendOtp,
 );
 router.post(
   "/phone/verify",
   protect,
   onlySocialProfileCompletionPhone,
   oauthVerifyPhoneValidator,
-  oauthVerifyPhone
+  oauthVerifyPhone,
 );
 
 // Link / unlink providers
@@ -89,13 +100,13 @@ router.post(
   "/oauth/link/google",
   protect,
   oauthLinkGoogleValidator,
-  oauthLinkGoogle
+  oauthLinkGoogle,
 );
 router.post(
   "/oauth/link/apple",
   protect,
   oauthLinkAppleValidator,
-  oauthLinkApple
+  oauthLinkApple,
 );
 router.delete("/oauth/unlink/google", protect, oauthUnlinkGoogle);
 router.delete("/oauth/unlink/apple", protect, oauthUnlinkApple);
@@ -105,7 +116,7 @@ router.post(
   "/oauth/set-password",
   protect,
   oauthSetPasswordValidator,
-  oauthSetPassword
+  oauthSetPassword,
 );
 
 export default router;
