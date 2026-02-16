@@ -1,5 +1,5 @@
 import { body } from "express-validator";
-import {validatorMiddleware} from "../../shared/middlewares/validatorMiddleware.js"
+import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 
 const egyptianPhoneRegex = /^(?:\+20|20|0)(?:10|11|12|15)\d{8}$/;
 
@@ -41,25 +41,45 @@ export const signupValidator = [
       return true;
     }),
 
-validatorMiddleware
+  validatorMiddleware,
 ];
 
 export const resendOtpValidator = [
-  body("phone")
+  body("identifier")
     .notEmpty()
-    .withMessage("Phone is required")
-    .matches(egyptianPhoneRegex)
-    .withMessage("Phone must be a valid Egyptian mobile number"),
+    .withMessage("Identifier is required (email or phone)")
+    .custom((value) => {
+      const trimmed = String(value).trim();
+      const isEmail = /.+@.+\..+/.test(trimmed);
+      const isEgyptianPhone = egyptianPhoneRegex.test(trimmed);
 
-validatorMiddleware
+      if (!isEmail && !isEgyptianPhone) {
+        throw new Error(
+          "Identifier must be a valid email or Egyptian phone number",
+        );
+      }
+      return true;
+    }),
+
+  validatorMiddleware,
 ];
 
 export const verifyPhoneValidator = [
-  body("phone")
+  body("identifier")
     .notEmpty()
-    .withMessage("Phone is required")
-    .matches(egyptianPhoneRegex)
-    .withMessage("Phone must be a valid Egyptian mobile number"),
+    .withMessage("Identifier is required (email or phone)")
+    .custom((value) => {
+      const trimmed = String(value).trim();
+      const isEmail = /.+@.+\..+/.test(trimmed);
+      const isEgyptianPhone = egyptianPhoneRegex.test(trimmed);
+
+      if (!isEmail && !isEgyptianPhone) {
+        throw new Error(
+          "Identifier must be a valid email or Egyptian phone number",
+        );
+      }
+      return true;
+    }),
 
   body("otp")
     .notEmpty()
@@ -69,7 +89,7 @@ export const verifyPhoneValidator = [
     .matches(/^[0-9]+$/)
     .withMessage("OTP must be numeric"),
 
-  validatorMiddleware
+  validatorMiddleware,
 ];
 
 export const guestSendOtpValidator = [
@@ -189,7 +209,9 @@ export const loginValidator = [
       const isEgyptianPhone = egyptianPhoneRegex.test(trimmed);
 
       if (!isEmail && !isEgyptianPhone) {
-        throw new Error("Identifier must be a valid email or Egyptian phone number");
+        throw new Error(
+          "Identifier must be a valid email or Egyptian phone number",
+        );
       }
       return true;
     }),

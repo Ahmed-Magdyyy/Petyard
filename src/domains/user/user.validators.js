@@ -49,7 +49,7 @@ export const createUserValidator = [
       if (req.body.role === roles.ADMIN) {
         if (!Array.isArray(arr) || arr.length === 0) {
           throw new Error(
-            "enabledControls is required for admin and cannot be empty"
+            "enabledControls is required for admin and cannot be empty",
           );
         }
       }
@@ -92,7 +92,7 @@ export const updateUserValidator = [
         const ec = req.body.enabledControls;
         if (!Array.isArray(ec) || ec.length === 0) {
           throw new Error(
-            "enabledControls is required for admin and cannot be empty"
+            "enabledControls is required for admin and cannot be empty",
           );
         }
       }

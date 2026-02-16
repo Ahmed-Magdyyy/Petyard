@@ -40,7 +40,6 @@ function buildAuthUserResponse(user) {
 // POST /auth/signup
 // Body: { name, email, phone, password }
 export const signup = asyncHandler(async (req, res) => {
-  
   const data = await signupService(req.body);
   res.status(201).json({
     message: "User created. OTP sent to phone.",
@@ -71,7 +70,7 @@ export const verifyGuestOtp = asyncHandler(async (req, res) => {
 });
 
 // POST /auth/resend-otp
-// Body: { phone }
+// Body: { identifier }
 export const resendOtp = asyncHandler(async (req, res) => {
   const data = await resendOtpService(req.body);
   res.status(200).json({
@@ -81,7 +80,7 @@ export const resendOtp = asyncHandler(async (req, res) => {
 });
 
 // POST /auth/verify-phone
-// Body: { phone, otp }
+// Body: { identifier, otp }
 export const verifyPhone = asyncHandler(async (req, res) => {
   const data = await verifyPhoneService(req.body);
   res.status(200).json({
@@ -155,12 +154,12 @@ export const logout = asyncHandler(async (req, res) => {
 
 // POST /auth/forget-password
 export const forgetPassword = asyncHandler(async (req, res) => {
- const {resetCode}= await forgetPasswordService(req.body);
+  const { resetCode } = await forgetPasswordService(req.body);
 
   res.status(200).json({
     status: "success",
     message: "Reset code sent to email",
-    resetCode
+    resetCode,
   });
 });
 
@@ -239,7 +238,10 @@ export const oauthVerifyPhone = asyncHandler(async (req, res) => {
 // POST /auth/oauth/link/google
 // Body: { idToken }
 export const oauthLinkGoogle = asyncHandler(async (req, res) => {
-  const user = await oauthLinkGoogleService({ userId: req.user._id, ...req.body });
+  const user = await oauthLinkGoogleService({
+    userId: req.user._id,
+    ...req.body,
+  });
   res.status(200).json({
     data: buildAuthUserResponse(user),
   });
@@ -248,7 +250,10 @@ export const oauthLinkGoogle = asyncHandler(async (req, res) => {
 // POST /auth/oauth/link/apple
 // Body: { identityToken, nonce? }
 export const oauthLinkApple = asyncHandler(async (req, res) => {
-  const user = await oauthLinkAppleService({ userId: req.user._id, ...req.body });
+  const user = await oauthLinkAppleService({
+    userId: req.user._id,
+    ...req.body,
+  });
   res.status(200).json({
     data: buildAuthUserResponse(user),
   });
@@ -279,7 +284,10 @@ export const oauthUnlinkApple = asyncHandler(async (req, res) => {
 // POST /auth/oauth/set-password
 // Body: { newPassword, cNewPassword }
 export const oauthSetPassword = asyncHandler(async (req, res) => {
-  await oauthSetPasswordService({ userId: req.user._id, newPassword: req.body.newPassword });
+  await oauthSetPasswordService({
+    userId: req.user._id,
+    newPassword: req.body.newPassword,
+  });
   res.status(200).json({
     status: "success",
     message: "Password set successfully",

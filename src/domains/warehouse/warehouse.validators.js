@@ -9,7 +9,7 @@ const governoratesConfig = require("../../shared/constants/governorates.json");
 const egyptianPhoneRegex = /^(?:\+20|20|0)(?:10|11|12|15)\d{8}$/;
 
 const GOVERNORATE_CODES = (governoratesConfig.governorates || []).map(
-  (g) => g.code
+  (g) => g.code,
 );
 
 export const createWarehouseValidator = [

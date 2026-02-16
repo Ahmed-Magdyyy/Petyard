@@ -35,7 +35,7 @@ async function issueSessionTokensForUser(user) {
   const now = Date.now();
 
   user.refreshTokens = (user.refreshTokens || []).filter(
-    (t) => !t.expiresAt || t.expiresAt.getTime() > now
+    (t) => !t.expiresAt || t.expiresAt.getTime() > now,
   );
 
   const accessToken = createAccessToken(user._id, user.role);
@@ -128,7 +128,7 @@ export async function signupService({ name, email, phone, password }) {
     await UserModel.findByIdAndDelete(user._id);
     throw new ApiError(
       "Failed to send verification SMS, please try again later",
-      502
+      502,
     );
   }
 
@@ -138,23 +138,36 @@ export async function signupService({ name, email, phone, password }) {
     email: user.email,
     phone: user.phone,
     phoneVerified: user.phoneVerified,
-    otp: otp,
   };
 }
 
-export async function resendOtpService({ phone }) {
-  if (!phone) {
-    throw new ApiError("phone is required", 400);
+function buildIdentifierQuery(identifier) {
+  const trimmed = String(identifier).trim();
+  const isEmail = /.+@.+\..+/.test(trimmed);
+
+  if (isEmail) {
+    return { email: trimmed.toLowerCase() };
   }
 
   let normalizedPhone;
   try {
-    normalizedPhone = normalizeEgyptianMobile(phone);
-  } catch (err) {
-    throw new ApiError("Invalid Egyptian mobile format", 400);
+    normalizedPhone = normalizeEgyptianMobile(trimmed);
+  } catch {
+    throw new ApiError(
+      "Identifier must be a valid email or Egyptian phone number",
+      400,
+    );
+  }
+  return { phone: normalizedPhone };
+}
+
+export async function resendOtpService({ identifier }) {
+  if (!identifier) {
+    throw new ApiError("identifier is required", 400);
   }
 
-  const user = await UserModel.findOne({ phone: normalizedPhone });
+  const query = buildIdentifierQuery(identifier);
+  const user = await UserModel.findOne(query);
 
   if (!user) {
     throw new ApiError("User not found", 404);
@@ -196,34 +209,20 @@ export async function resendOtpService({ phone }) {
 
   await sendOtpSms(user.phone, otp);
 
-  console.log("otp:", otp);
-
   return {
     id: user._id,
     phone: user.phone,
     phoneVerified: user.phoneVerified,
-    otp: otp,
   };
 }
 
-export async function verifyPhoneService({ phone, otp }) {
-  if (!phone || !otp) {
-    throw new ApiError("phone and otp are required", 400);
+export async function verifyPhoneService({ identifier, otp }) {
+  if (!identifier || !otp) {
+    throw new ApiError("identifier and otp are required", 400);
   }
 
-  let normalizedPhone;
-  try {
-    normalizedPhone = normalizeEgyptianMobile(phone);
-
-    console.log("phone", phone);
-    console.log("normalizedPhone", normalizedPhone);
-  } catch (err) {
-    throw new ApiError("Invalid Egyptian mobile format", 400);
-  }
-
-  const user = await UserModel.findOne({ phone: normalizedPhone }).select(
-    "+password"
-  );
+  const query = buildIdentifierQuery(identifier);
+  const user = await UserModel.findOne(query).select("+password");
 
   if (!user) {
     throw new ApiError("User not found", 404);
@@ -234,17 +233,17 @@ export async function verifyPhoneService({ phone, otp }) {
   }
 
   if (!user.phoneVerificationCode || !user.phoneVerificationExpires) {
-    throw new ApiError("No active OTP, please request a new code", 400);
+    throw new ApiError("No active OTP, please request a new OTP", 400);
   }
 
   if (user.phoneVerificationExpires.getTime() < Date.now()) {
-    throw new ApiError("OTP has expired", 400);
+    throw new ApiError("OTP has expired, please request a new OTP", 400);
   }
 
   const hashedOtp = hashOtp(otp);
 
   if (hashedOtp !== user.phoneVerificationCode) {
-    throw new ApiError("Invalid OTP", 400);
+    throw new ApiError("Invalid OTP, please request a new OTP", 400);
   }
 
   user.phoneVerified = true;
@@ -353,7 +352,7 @@ export async function sendGuestOtpService({ phone }) {
     console.error("Failed to send guest OTP SMS", err);
     throw new ApiError(
       "Failed to send verification SMS, please try again later",
-      502
+      502,
     );
   }
 
@@ -444,7 +443,7 @@ export async function loginService({ identifier, password }) {
     } catch {
       throw new ApiError(
         "Identifier must be a valid email or Egyptian phone number",
-        400
+        400,
       );
     }
     query = { phone: normalizedPhone };
@@ -467,7 +466,7 @@ export async function loginService({ identifier, password }) {
   if (!user.active) {
     throw new ApiError(
       "Account has been deactivated. Contact customer support",
-      401
+      401,
     );
   }
 
@@ -511,7 +510,7 @@ async function ensureProviderIdentityNotLinkedToAnotherUserOrThrow({
   if (existing) {
     throw new ApiError(
       "This social account is already linked to another user",
-      409
+      409,
     );
   }
 }
@@ -522,7 +521,7 @@ async function linkProviderToUser({ user, provider, providerUserId, email }) {
   }
 
   const exists = user.authProviders.some(
-    (p) => p.provider === provider && p.providerUserId === providerUserId
+    (p) => p.provider === provider && p.providerUserId === providerUserId,
   );
   if (exists) {
     return;
@@ -622,7 +621,7 @@ async function socialLoginOrCreateUser({
             "image.url": String(pictureUrl).trim(),
             "image.public_id": null,
           },
-        }
+        },
       );
       user.image = {
         ...(user.image || {}),
@@ -757,7 +756,7 @@ export async function oauthSendOtpService({ userId, phone }) {
     console.error("Failed to send OTP SMS", err);
     throw new ApiError(
       "Failed to send verification SMS, please try again later",
-      502
+      502,
     );
   }
 
@@ -830,7 +829,8 @@ export async function oauthLinkGoogleService({ userId, idToken }) {
     throw new ApiError("idToken is required", 400);
   }
 
-  const { providerUserId, email, picture } = await verifyGoogleIdTokenOrThrow(idToken);
+  const { providerUserId, email, picture } =
+    await verifyGoogleIdTokenOrThrow(idToken);
   const user = await UserModel.findById(userId);
   if (!user) {
     throw new ApiError("User not found", 404);
@@ -884,7 +884,7 @@ export async function oauthLinkAppleService({
 
 function hasAnotherLoginMethodAfterUnlink({ user, providerToRemove }) {
   const providersLeft = (user.authProviders || []).filter(
-    (p) => p.provider !== providerToRemove
+    (p) => p.provider !== providerToRemove,
   );
   const hasPassword = Boolean(user.password);
   return hasPassword || providersLeft.length > 0;
@@ -901,7 +901,7 @@ export async function oauthUnlinkProviderService({ userId, provider }) {
   }
 
   user.authProviders = (user.authProviders || []).filter(
-    (p) => p.provider !== provider
+    (p) => p.provider !== provider,
   );
   await user.save();
   return user;
@@ -920,7 +920,7 @@ export async function oauthSetPasswordService({ userId, newPassword }) {
   if (user.password) {
     throw new ApiError(
       "Password is already set. Use /users/me/password to change it",
-      400
+      400,
     );
   }
 
@@ -961,7 +961,7 @@ export async function refreshTokenService({ refreshToken }) {
   // Remove expired refresh tokens
   const now = Date.now();
   user.refreshTokens = user.refreshTokens.filter(
-    (t) => !t.expiresAt || t.expiresAt.getTime() > now
+    (t) => !t.expiresAt || t.expiresAt.getTime() > now,
   );
 
   const hashedProvidedToken = crypto
@@ -970,7 +970,7 @@ export async function refreshTokenService({ refreshToken }) {
     .digest("hex");
 
   const validToken = user.refreshTokens.find(
-    (t) => t.token === hashedProvidedToken
+    (t) => t.token === hashedProvidedToken,
   );
 
   if (!validToken) {
@@ -981,7 +981,7 @@ export async function refreshTokenService({ refreshToken }) {
   const newRefreshToken = createRefreshToken(user._id);
 
   user.refreshTokens = user.refreshTokens.filter(
-    (t) => t.token !== validToken.token
+    (t) => t.token !== validToken.token,
   );
 
   const newHashedRefreshToken = crypto
@@ -1025,7 +1025,7 @@ export async function logoutService({ userId, refreshToken, deviceToken }) {
   const beforeCount = user.refreshTokens.length;
 
   user.refreshTokens = user.refreshTokens.filter(
-    (t) => t.token !== hashedProvidedToken
+    (t) => t.token !== hashedProvidedToken,
   );
 
   if (user.refreshTokens.length === beforeCount) {
