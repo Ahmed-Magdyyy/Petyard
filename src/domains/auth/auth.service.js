@@ -1003,7 +1003,7 @@ export async function refreshTokenService({ refreshToken }) {
   };
 }
 
-export async function logoutService({ userId, refreshToken, deviceToken }) {
+export async function logoutService({ userId, refreshToken, fcmToken }) {
   if (!refreshToken) {
     throw new ApiError("No active session to logout", 400);
   }
@@ -1014,7 +1014,7 @@ export async function logoutService({ userId, refreshToken, deviceToken }) {
     throw new ApiError("User not found", 404);
   }
 
-  await detachDevicesForUserService({ userId, token: deviceToken });
+  await detachDevicesForUserService({ userId, token: fcmToken });
 
   // Remove provided refresh token from stored list (single session logout)
   const hashedProvidedToken = crypto
