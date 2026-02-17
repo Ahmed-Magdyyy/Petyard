@@ -158,11 +158,11 @@ export async function getTopProductsService({
     {
       $group: {
         _id: "$items.product",
+        totalIncome: { $sum: "$items.lineTotal" },
         totalQuantitySold: { $sum: "$items.quantity" },
-        totalRevenue: { $sum: "$items.lineTotal" },
       },
     },
-    { $sort: { totalQuantitySold: -1 } },
+    { $sort: { totalIncome: -1, totalQuantitySold: -1 } },
     { $limit: Number(limit) },
     {
       $lookup: {
@@ -182,7 +182,7 @@ export async function getTopProductsService({
           $ifNull: [{ $arrayElemAt: ["$product.images.url", 0] }, null],
         },
         totalQuantitySold: 1,
-        totalRevenue: 1,
+        totalIncome: 1,
       },
     },
   ]);
