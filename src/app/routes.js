@@ -1,4 +1,4 @@
-// src/app/routes.js
+import analyticsRoutes from "../domains/analytics/analytics.routes.js";
 import authRoutes from "../domains/auth/auth.routes.js";
 import userRoutes from "../domains/user/user.routes.js";
 import conditionRoutes from "../domains/condition/condition.routes.js";
@@ -25,6 +25,7 @@ import serviceReservationRoutes from "../domains/serviceReservation/reservations
 import recommendationRoutes from "../domains/recommendation/recommendation.routes.js";
 
 export function mountRoutes(app) {
+  app.use("/api/v1/analytics", analyticsRoutes);
   app.use("/api/v1/auth", authRoutes);
   app.use("/api/v1/users", userRoutes);
   app.use("/api/v1/conditions", conditionRoutes);
