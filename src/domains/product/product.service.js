@@ -10,6 +10,7 @@ import {
 import { findCollectionById } from "../collection/collection.repository.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { normalizeTag, normalizeTagsInput } from "../../shared/utils/tagging.js";
+import { generateProductTags, mergeTagsWithAI } from "../../shared/utils/aiTagging.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
 import { productTypeEnum, roles, enabledControls } from "../../shared/constants/enums.js";
@@ -31,6 +32,7 @@ import {
   findActivePromotionsForProducts,
 } from "../collection/collection.promotion.js";
 import { brandExists } from "../brand/brand.repository.js";
+import { BrandModel } from "../brand/brand.model.js";
 import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
 import { countWarehouses } from "../warehouse/warehouse.repository.js";
 
@@ -863,22 +865,29 @@ async function getProductByIdService(id, lang = "en", user = null) {
 }
 
 async function ensureSubcategoryAndCategory(subcategoryId) {
-  const subcategory = await findSubcategoryById(subcategoryId).select(
-    "category"
-  );
+  const subcategory = await findSubcategoryById(subcategoryId)
+    .select("category name_en")
+    .populate("category", "name_en");
   if (!subcategory) {
     throw new ApiError(
       `No subcategory found for this id: ${subcategoryId}`,
       400
     );
   }
-  if (!subcategory.category) {
+  const categoryRef = subcategory.category;
+  const categoryId = typeof categoryRef === "object" ? categoryRef._id : categoryRef;
+  if (!categoryId) {
     throw new ApiError(
       `Subcategory with id ${subcategoryId} does not have a linked category`,
       500
     );
   }
-  return { subcategoryId, categoryId: subcategory.category };
+  return {
+    subcategoryId,
+    categoryId,
+    subcategoryName: subcategory.name_en || null,
+    categoryName: typeof categoryRef === "object" ? categoryRef.name_en || null : null,
+  };
 }
 
 async function ensureBrandExists(brandId) {
@@ -1070,9 +1079,23 @@ async function createProductService(payload, files = []) {
     );
   }
 
-  const { categoryId } = await ensureSubcategoryAndCategory(subcategoryId);
+  const { categoryId, subcategoryName, categoryName } =
+    await ensureSubcategoryAndCategory(subcategoryId);
   const brand = await ensureBrandExists(brandId);
+
+  // Resolve brand name for AI context (lightweight query)
+  let brandName = null;
+  if (brand) {
+    const brandDoc = await BrandModel.findById(brand).select("name_en").lean();
+    brandName = brandDoc?.name_en || null;
+  }
+
   const normalizedTags = normalizeTags(tags);
+  const aiTags = await generateProductTags({
+    name_en, name_ar, desc_en, desc_ar,
+    subcategoryName, categoryName, brandName,
+  });
+  const finalTags = mergeTagsWithAI(normalizedTags, aiTags);
   const normalizedOptions =
     normalizedType === productTypeEnum.VARIANT
       ? normalizeProductOptions(options)
@@ -1163,7 +1186,7 @@ async function createProductService(payload, files = []) {
       desc_en,
       desc_ar,
       sku,
-      tags: normalizedTags,
+      tags: finalTags,
       price:
         normalizedType === productTypeEnum.SIMPLE ? simplePrice : undefined,
       discountedPrice:
@@ -1213,18 +1236,26 @@ async function updateProductService(id, payload, files = []) {
     isFeatured,
   } = payload;
 
+  let subcategoryName = null;
+  let categoryName = null;
+
   if (subcategoryId !== undefined) {
-    const { categoryId } = await ensureSubcategoryAndCategory(subcategoryId);
+    const resolved = await ensureSubcategoryAndCategory(subcategoryId);
     product.subcategory = subcategoryId;
-    product.category = categoryId;
+    product.category = resolved.categoryId;
+    subcategoryName = resolved.subcategoryName;
+    categoryName = resolved.categoryName;
   }
 
+  let brandName = null;
   if (brandId !== undefined) {
     if (brandId === null || brandId === "") {
       product.brand = undefined;
     } else {
       const brand = await ensureBrandExists(brandId);
       product.brand = brand;
+      const brandDoc = await BrandModel.findById(brand).select("name_en").lean();
+      brandName = brandDoc?.name_en || null;
     }
   }
 
@@ -1235,8 +1266,39 @@ async function updateProductService(id, payload, files = []) {
 
   if (sku !== undefined) product.sku = sku;
 
-  if (tags !== undefined) {
-    product.tags = normalizeTags(tags);
+  // Re-generate AI tags when content or classification changes
+  const shouldRegenTags =
+    tags !== undefined ||
+    name_en !== undefined ||
+    desc_en !== undefined ||
+    subcategoryId !== undefined ||
+    brandId !== undefined;
+
+  if (shouldRegenTags) {
+    const adminTags = tags !== undefined ? normalizeTags(tags) : (product.tags || []);
+
+    // Resolve names for AI context if not already available from above
+    if (!subcategoryName && product.subcategory) {
+      const resolved = await ensureSubcategoryAndCategory(product.subcategory);
+      subcategoryName = resolved.subcategoryName;
+      categoryName = resolved.categoryName;
+    }
+    if (!brandName && product.brand) {
+      const brandDoc = await BrandModel.findById(product.brand).select("name_en").lean();
+      brandName = brandDoc?.name_en || null;
+    }
+
+    const aiTags = await generateProductTags({
+      name_en: product.name_en,
+      name_ar: product.name_ar,
+      desc_en: product.desc_en,
+      desc_ar: product.desc_ar,
+      subcategoryName,
+      categoryName,
+      brandName,
+    });
+
+    product.tags = mergeTagsWithAI(adminTags, aiTags);
   }
 
   if (options !== undefined) {
