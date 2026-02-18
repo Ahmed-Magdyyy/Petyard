@@ -65,7 +65,7 @@ router.use(
 router.post(
   "/",
 
-  uploadMultipleImages("images", 5),
+  uploadMultipleImages("images", 10),
 
   createProductValidator,
 
