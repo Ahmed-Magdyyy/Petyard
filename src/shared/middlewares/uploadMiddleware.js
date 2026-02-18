@@ -5,5 +5,5 @@ const storage = multer.memoryStorage();
 export const uploadSingleImage = (fieldName) =>
   multer({ storage }).single(fieldName);
 
-export const uploadMultipleImages = (fieldName, maxCount = 5) =>
+export const uploadMultipleImages = (fieldName, maxCount = 10) =>
   multer({ storage }).array(fieldName, maxCount);
