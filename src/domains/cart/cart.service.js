@@ -8,7 +8,10 @@ import { UserModel } from "../user/user.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
-import { cartStatusEnum, productTypeEnum } from "../../shared/constants/enums.js";
+import {
+  cartStatusEnum,
+  productTypeEnum,
+} from "../../shared/constants/enums.js";
 import {
   autoHideExpiredCollections,
   findActivePromotionForProduct,
@@ -204,14 +207,14 @@ function findVariantById(product, variantId) {
 function findSimpleWarehouseStock(product, warehouseId) {
   if (!Array.isArray(product.warehouseStocks)) return null;
   return product.warehouseStocks.find(
-    (ws) => String(ws.warehouse) === String(warehouseId)
+    (ws) => String(ws.warehouse) === String(warehouseId),
   );
 }
 
 function findVariantWarehouseStock(variant, warehouseId) {
   if (!Array.isArray(variant.warehouseStocks)) return null;
   return variant.warehouseStocks.find(
-    (ws) => String(ws.warehouse) === String(warehouseId)
+    (ws) => String(ws.warehouse) === String(warehouseId),
   );
 }
 
@@ -254,7 +257,7 @@ function buildCartProductIds(items) {
     ...new Set(
       items
         .map((item) => (item.product ? String(item.product) : null))
-        .filter(Boolean)
+        .filter(Boolean),
     ),
   ];
 }
@@ -280,16 +283,21 @@ async function fetchPromotionsForProducts(products, now) {
           subcategoryId: product.subcategory,
           brandId: product.brand,
         },
-        now
+        now,
       );
       promotionByProductId.set(pid, promotion || null);
-    })
+    }),
   );
 
   return promotionByProductId;
 }
 
-function buildRemovedItems({ originalItems, keptItems, productById, normalizedLang }) {
+function buildRemovedItems({
+  originalItems,
+  keptItems,
+  productById,
+  normalizedLang,
+}) {
   const keptIds = new Set(keptItems.map((it) => String(it._id)));
   const removedRaw = originalItems.filter((it) => !keptIds.has(String(it._id)));
 
@@ -344,7 +352,10 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
   const productById = new Map(products.map((p) => [String(p._id), p]));
 
   const promoNow = new Date();
-  const promotionByProductId = await fetchPromotionsForProducts(products, promoNow);
+  const promotionByProductId = await fetchPromotionsForProducts(
+    products,
+    promoNow,
+  );
 
   const keptItems = [];
 
@@ -386,7 +397,9 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
 
       const price = typeof product.price === "number" ? product.price : 0;
       const discounted =
-        typeof product.discountedPrice === "number" ? product.discountedPrice : null;
+        typeof product.discountedPrice === "number"
+          ? product.discountedPrice
+          : null;
 
       const itemPricing = computeCartItemPricing({
         price,
@@ -416,7 +429,9 @@ async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
 
       const price = typeof variant.price === "number" ? variant.price : 0;
       const discounted =
-        typeof variant.discountedPrice === "number" ? variant.discountedPrice : null;
+        typeof variant.discountedPrice === "number"
+          ? variant.discountedPrice
+          : null;
 
       const itemPricing = computeCartItemPricing({
         price,
@@ -598,14 +613,20 @@ export async function upsertCartItemService({
   if (product.type !== normalizedProductType) {
     throw new ApiError(
       `Product type mismatch. Expected ${product.type}, got ${productType}`,
-      400
+      400,
     );
   }
 
   const normalizedLang = normalizeLang(lang);
   const productName = pickLocalizedField(product, "name", normalizedLang);
 
-  const cart = await getOrCreateCart({ userId, guestId, warehouseId });
+  const rawCart = await getOrCreateCart({ userId, guestId, warehouseId });
+
+  // Rebind first so stale / abandoned items are validated & pruned
+  // before the stock check below runs.
+  await rebindCartToWarehouse(rawCart, warehouseId, lang);
+
+  const cart = rawCart;
   const items = Array.isArray(cart.items) ? cart.items : [];
 
   const existing = items.find((item) => {
@@ -632,13 +653,13 @@ export async function upsertCartItemService({
     if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
       throw new ApiError(
         "This product is not available in the selected warehouse",
-        400
+        400,
       );
     }
     if (requestedTotalQuantity > stock.quantity) {
       throw new ApiError(
         `Requested quantity exceeds available stock (${stock.quantity})`,
-        400
+        400,
       );
     }
 
@@ -660,13 +681,13 @@ export async function upsertCartItemService({
     if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
       throw new ApiError(
         "This product variant is out of stock or not available in the selected warehouse",
-        400
+        400,
       );
     }
     if (requestedTotalQuantity > stock.quantity) {
       throw new ApiError(
         `Requested quantity exceeds available stock (${stock.quantity})`,
-        400
+        400,
       );
     }
 
@@ -750,13 +771,13 @@ export async function updateCartItemQuantityService({
     if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
       throw new ApiError(
         "This product is not available in the selected warehouse",
-        400
+        400,
       );
     }
     if (quantity > stock.quantity) {
       throw new ApiError(
         `Requested quantity exceeds available stock (${stock.quantity})`,
-        400
+        400,
       );
     }
   } else if (product.type === "VARIANT") {
@@ -769,13 +790,13 @@ export async function updateCartItemQuantityService({
     if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
       throw new ApiError(
         "This product variant is not available in the selected warehouse",
-        400
+        400,
       );
     }
     if (quantity > stock.quantity) {
       throw new ApiError(
         `Requested quantity exceeds available stock (${stock.quantity})`,
-        400
+        400,
       );
     }
   }
@@ -832,7 +853,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     });
     const refreshedUserCart = await rebindCartToWarehouse(
       baseUserCart,
-      warehouseId
+      warehouseId,
     );
     return mapCartToResponse(refreshedUserCart);
   }
@@ -871,7 +892,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     ...new Set(
       allItems
         .map((item) => (item.product ? String(item.product) : null))
-        .filter(Boolean)
+        .filter(Boolean),
     ),
   ];
 
@@ -1085,7 +1106,7 @@ export async function markAbandonedCartsService(thresholdMs) {
         message: abandonedCart(
           capitalizedName,
           itemsForEmail,
-          cart.currency || "EGP"
+          cart.currency || "EGP",
         ),
       });
     } catch (error) {
