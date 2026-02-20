@@ -6,6 +6,7 @@ import {
   createCollectionService,
   updateCollectionService,
   deleteCollectionService,
+  updateCollectionPositionsService,
 } from "./collection.service.js";
 
 export const getCollections = asyncHandler(async (req, res) => {
@@ -49,4 +50,9 @@ export const updateCollection = asyncHandler(async (req, res) => {
 export const deleteCollection = asyncHandler(async (req, res) => {
   await deleteCollectionService(req.params.id);
   res.status(200).json({ message: "Collection deleted successfully" });
+});
+
+export const updateCollectionPositions = asyncHandler(async (req, res) => {
+  const result = await updateCollectionPositionsService(req.body.positions);
+  res.status(200).json({ data: result });
 });

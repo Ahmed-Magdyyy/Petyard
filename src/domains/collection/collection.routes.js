@@ -6,6 +6,7 @@ import {
   createCollection,
   updateCollection,
   deleteCollection,
+  updateCollectionPositions,
 } from "./collection.controller.js";
 import {
   protect,
@@ -21,6 +22,7 @@ import {
   createCollectionValidator,
   updateCollectionValidator,
   collectionIdParamValidator,
+  updateCollectionPositionsValidator,
 } from "./collection.validators.js";
 import { listProductsQueryValidator } from "../product/product.validators.js";
 import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
@@ -48,6 +50,12 @@ router.post(
   uploadSingleImage("image"),
   createCollectionValidator,
   createCollection
+);
+
+router.patch(
+  "/positions",
+  updateCollectionPositionsValidator,
+  updateCollectionPositions
 );
 
 router.patch(

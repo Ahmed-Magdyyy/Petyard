@@ -308,3 +308,19 @@ export const collectionIdParamValidator = [
 
   validatorMiddleware,
 ];
+
+export const updateCollectionPositionsValidator = [
+  body("positions")
+    .isArray({ min: 1, max: 50 })
+    .withMessage("positions must be an array with 1–50 items"),
+
+  body("positions.*.id")
+    .isMongoId()
+    .withMessage("each positions item must have a valid id"),
+
+  body("positions.*.position")
+    .isInt({ min: 0 })
+    .withMessage("each positions item must have a position (integer >= 0)"),
+
+  validatorMiddleware,
+];

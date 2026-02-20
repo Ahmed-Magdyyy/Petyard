@@ -318,3 +318,19 @@ export async function deleteCollectionService(id) {
 
   await CollectionModel.deleteOne({ _id: id });
 }
+
+export async function updateCollectionPositionsService(positions) {
+  const ops = positions.map(({ id, position }) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: { $set: { position: Number(position) } },
+    },
+  }));
+
+  const result = await CollectionModel.bulkWrite(ops, { ordered: false });
+  return {
+    requested: positions.length,
+    matched: result.matchedCount,
+    modified: result.modifiedCount,
+  };
+}
