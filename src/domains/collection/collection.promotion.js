@@ -125,18 +125,43 @@ export async function ensurePromotionalCollectionUniqueness({
   if (otherCollections.length === 0) return;
 
   const productIdSet = new Set(productIds);
+  const conflicts = [];
 
   for (const other of otherCollections) {
     const otherProductIds = await resolveProductIdsForSelector(other.selector);
+    const overlapping = otherProductIds.filter((pid) => productIdSet.has(String(pid)));
 
-    for (const pid of otherProductIds) {
-      if (productIdSet.has(String(pid))) {
-        throw new ApiError(
-          `Product cannot belong to more than one promotional collection. Conflict with collection '${other.slug}'.`,
-          409
-        );
-      }
+    if (overlapping.length > 0) {
+      conflicts.push({
+        collectionId: other._id,
+        collectionSlug: other.slug,
+        conflictingProductIds: overlapping,
+      });
     }
+  }
+
+  if (conflicts.length > 0) {
+    const allProductIds = [...new Set(conflicts.flatMap((c) => c.conflictingProductIds))];
+    const collectionSlugs = conflicts.map((c) => c.collectionSlug);
+
+    // Fetch product names in a single query
+    const products = await ProductModel.find(
+      { _id: { $in: allProductIds } },
+      { name_en: 1 }
+    ).lean();
+    const nameMap = new Map(products.map((p) => [String(p._id), p.name_en]));
+
+    const enrichedConflicts = conflicts.map((c) => ({
+      collectionSlug: c.collectionSlug,
+      conflictingProducts: c.conflictingProductIds.map((id) => nameMap.get(String(id)) || String(id)),
+    }));
+
+    const err = new ApiError(
+      `${allProductIds.length} product(s) already belong to another promotional collection with overlapping dates. Conflicting collection(s): ${collectionSlugs.join(", ")}.`,
+      409
+    );
+    err.errors = enrichedConflicts;
+    throw err;
   }
 }
 

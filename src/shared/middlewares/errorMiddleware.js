@@ -8,9 +8,21 @@ const handelJwtExpire = () =>
   new ApiError("Expired token, Please login again", 401);
 
 const handleDuplicateFieldsDB = (err) => {
-  const field = Object.keys(err.keyValue)[0];
-  const message = `${field} already exists. Please use another ${field}!`;
-  return new ApiError(message, 400);
+  // keyValue may be undefined in newer Mongoose / MongoDB driver versions
+  if (err.keyValue && typeof err.keyValue === "object") {
+    const field = Object.keys(err.keyValue)[0];
+    const message = `${field} already exists. Please use another ${field}!`;
+    return new ApiError(message, 400);
+  }
+
+  // Fallback: try to extract field name from the error message
+  const match = err.message?.match(/index:\s+(?:\w+\.)*?(\w+)_/);
+  if (match) {
+    const field = match[1];
+    return new ApiError(`${field} already exists. Please use another ${field}!`, 400);
+  }
+
+  return new ApiError("Duplicate value entered. Please use a different value.", 400);
 };
 
 const handleValidationErrorDB = (err) => {
@@ -69,6 +81,9 @@ export const globalError = async (err, req, res, next) => {
 
   let error = { ...err };
   error.message = err.message;
+  error.name = err.name;
+  error.code = err.code;
+  error.keyValue = err.keyValue;
 
   if (error.code === 11000) error = handleDuplicateFieldsDB(error);
   if (error.name === "ValidationError") error = handleValidationErrorDB(error);
