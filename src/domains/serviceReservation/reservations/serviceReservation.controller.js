@@ -9,7 +9,6 @@ import {
   listReservationsForGuestService,
   listReservationsForUserService,
 } from "./serviceReservation.service.js";
-import { getServiceCatalog as getServiceCatalogData } from "../catalog/serviceCatalog.js";
 
 function getGuestId(req) {
   const headerValue = req.headers["x-guest-id"];
@@ -18,11 +17,6 @@ function getGuestId(req) {
   }
   return null;
 }
-
-export const getServiceCatalog = asyncHandler(async (req, res) => {
-  const data = getServiceCatalogData(req.lang);
-  res.status(200).json({ data });
-});
 
 export const getAvailability = asyncHandler(async (req, res) => {
   const result = await getAvailabilityService({

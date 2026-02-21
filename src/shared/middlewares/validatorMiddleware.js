@@ -6,7 +6,9 @@ export const validatorMiddleware = (req, res, next) => {
 
   if (!errors.isEmpty()) {
     const formatted = errors.array().map((e) => ({
-      field: e.param,
+      field: e.path,
+      value: e.value,
+      location: e.location,
       message: e.msg,
     }));
 

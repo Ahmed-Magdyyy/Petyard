@@ -15,7 +15,7 @@ import {
   getServiceOptionNameFallback,
   getServiceDefinition,
   resolveServiceSelectionOrThrow,
-} from "../catalog/serviceCatalog.js";
+} from "../catalog/serviceCatalog.service.js";
 import {
   addHoursUtc,
   cairoSlotToUtcDate,
@@ -33,7 +33,8 @@ import { dispatchNotification } from "../../notification/notificationDispatcher.
 import { buildPagination } from "../../../shared/utils/apiFeatures.js";
 
 function getRoomTypeForService(serviceType) {
-  if (serviceType === serviceTypeEnum.CLINIC) return serviceRoomTypeEnum.CLINIC_ROOM;
+  if (serviceType === serviceTypeEnum.CLINIC)
+    return serviceRoomTypeEnum.CLINIC_ROOM;
   return serviceRoomTypeEnum.GROOMING_ROOM;
 }
 
@@ -99,7 +100,7 @@ async function reserveInventorySlotOrThrow({
       $set: { capacity },
       $inc: { bookedCount: 1 },
     },
-    { session }
+    { session },
   );
 
   if (updateExisting.modifiedCount > 0) return;
@@ -113,7 +114,7 @@ async function reserveInventorySlotOrThrow({
           bookedCount: 1,
         },
       ],
-      { session }
+      { session },
     );
   } catch (err) {
     if (err?.code !== 11000) {
@@ -129,7 +130,7 @@ async function reserveInventorySlotOrThrow({
         $set: { capacity },
         $inc: { bookedCount: 1 },
       },
-      { session }
+      { session },
     );
 
     if (retry.modifiedCount === 0) {
@@ -153,15 +154,8 @@ function computeAgeYears(birthDate) {
 }
 
 async function resolvePetSnapshot({ userId, petId, payload }) {
-  const {
-    ownerName,
-    ownerPhone,
-    petType,
-    petName,
-    age,
-    gender,
-    comment,
-  } = payload;
+  const { ownerName, ownerPhone, petType, petName, age, gender, comment } =
+    payload;
 
   const snapshot = {
     ownerName: ownerName || null,
@@ -202,31 +196,40 @@ async function resolvePetSnapshot({ userId, petId, payload }) {
 
     // Calculate age from birthDate if not provided or is 0
     const derivedAge = computeAgeYears(pet.birthDate);
-    if ((snapshot.petAge == null || snapshot.petAge === 0) && derivedAge != null) {
+    if (
+      (snapshot.petAge == null || snapshot.petAge === 0) &&
+      derivedAge != null
+    ) {
       snapshot.petAge = derivedAge;
     }
   }
 
   const missing = [];
-  if (!snapshot.ownerName || snapshot.ownerName.trim() === "") missing.push("ownerName"); 
-  if (!snapshot.ownerPhone || snapshot.ownerPhone.trim() === "") missing.push("ownerPhone");
-  if (!snapshot.petType || snapshot.petType.trim() === "") missing.push("petType");
-  if (!snapshot.petName || snapshot.petName.trim() === "") missing.push("petName");
-  if (snapshot.petAge == null || Number.isNaN(snapshot.petAge)) missing.push("age");
-  if (!snapshot.petGender || snapshot.petGender.trim() === "") missing.push("gender");
+  if (!snapshot.ownerName || snapshot.ownerName.trim() === "")
+    missing.push("ownerName");
+  if (!snapshot.ownerPhone || snapshot.ownerPhone.trim() === "")
+    missing.push("ownerPhone");
+  if (!snapshot.petType || snapshot.petType.trim() === "")
+    missing.push("petType");
+  if (!snapshot.petName || snapshot.petName.trim() === "")
+    missing.push("petName");
+  if (snapshot.petAge == null || Number.isNaN(snapshot.petAge))
+    missing.push("age");
+  if (!snapshot.petGender || snapshot.petGender.trim() === "")
+    missing.push("gender");
 
   if (missing.length) {
     console.log("Missing required reservation fields:", missing);
     throw new ApiError(
       `Missing required reservation fields: ${missing.join(", ")}`,
-      400
+      400,
     );
   }
 
   return snapshot;
 }
 
-function buildReservationDto(reservation, location, lang) {
+async function buildReservationDto(reservation, location, lang) {
   const localDate = toCairoDateISO(reservation.startsAt);
   const hour24 = toCairoHour24(reservation.startsAt);
   const label = formatHourLabel12(hour24);
@@ -235,15 +238,15 @@ function buildReservationDto(reservation, location, lang) {
 
   const serviceName =
     pickLocalizedField(reservation, "serviceName", normalizedLang) ||
-    getServiceNameFallback(reservation.serviceType, normalizedLang);
+    (await getServiceNameFallback(reservation.serviceType, normalizedLang));
 
   const serviceOptionName = reservation.serviceOptionKey
     ? pickLocalizedField(reservation, "serviceOptionName", normalizedLang) ||
-      getServiceOptionNameFallback(
+      (await getServiceOptionNameFallback(
         reservation.serviceType,
         reservation.serviceOptionKey,
-        normalizedLang
-      )
+        normalizedLang,
+      ))
     : "";
 
   return {
@@ -298,7 +301,12 @@ function assertWithinBookingWindowOrThrow(cairoDateStart) {
   }
 }
 
-export async function getAvailabilityService({ locationId, serviceType, date, lang }) {
+export async function getAvailabilityService({
+  locationId,
+  serviceType,
+  date,
+  lang,
+}) {
   const location = await getServiceLocationByIdService(locationId);
   if (!location || !location.active) {
     throw new ApiError("Service location not found", 404);
@@ -306,7 +314,7 @@ export async function getAvailabilityService({ locationId, serviceType, date, la
 
   const normalizedLang = lang === "ar" ? "ar" : "en";
 
-  const svcDef = getServiceDefinition(serviceType);
+  const svcDef = await getServiceDefinition(serviceType);
   if (!svcDef) {
     throw new ApiError("Invalid serviceType", 400);
   }
@@ -335,7 +343,7 @@ export async function getAvailabilityService({ locationId, serviceType, date, la
     .lean();
 
   const invByStartsAt = new Map(
-    inventories.map((inv) => [new Date(inv.startsAt).toISOString(), inv])
+    inventories.map((inv) => [new Date(inv.startsAt).toISOString(), inv]),
   );
 
   const slots = [];
@@ -394,7 +402,12 @@ export async function getAvailabilityService({ locationId, serviceType, date, la
   };
 }
 
-export async function createReservationService({ userId, guestId, payload, lang }) {
+export async function createReservationService({
+  userId,
+  guestId,
+  payload,
+  lang,
+}) {
   const identity = parseIdentityOrThrow({ userId, guestId });
 
   const location = await getServiceLocationByIdService(payload.locationId);
@@ -402,14 +415,15 @@ export async function createReservationService({ userId, guestId, payload, lang 
     throw new ApiError("Service location not found", 404);
   }
 
-  const requestedServices = Array.isArray(payload.services) && payload.services.length
-    ? payload.services
-    : [
-        {
-          serviceType: payload.serviceType,
-          serviceOptionKey: payload.serviceOptionKey,
-        },
-      ];
+  const requestedServices =
+    Array.isArray(payload.services) && payload.services.length
+      ? payload.services
+      : [
+          {
+            serviceType: payload.serviceType,
+            serviceOptionKey: payload.serviceOptionKey,
+          },
+        ];
 
   const cairoDateStart = parseCairoDateOrThrow(payload.date);
   assertWithinBookingWindowOrThrow(cairoDateStart);
@@ -443,9 +457,9 @@ export async function createReservationService({ userId, guestId, payload, lang 
 
   // Pre-check: Fail fast if any slot is at capacity (before expensive transaction)
   const startsAtListForPreCheck = requestedServices.map((_, idx) =>
-    addHoursUtc(startsAt, idx)
+    addHoursUtc(startsAt, idx),
   );
-  
+
   for (let idx = 0; idx < requestedServices.length; idx++) {
     const svc = requestedServices[idx] || {};
     const serviceType = svc.serviceType;
@@ -461,7 +475,10 @@ export async function createReservationService({ userId, guestId, payload, lang 
 
     if (existingSlot && existingSlot.bookedCount >= capacity) {
       const slotLabel = formatSlotLabelFromUtc(slotStartsAt);
-      throw new ApiError(`Selected time ${slotLabel.text} is fully booked`, 409);
+      throw new ApiError(
+        `Selected time ${slotLabel.text} is fully booked`,
+        409,
+      );
     }
   }
 
@@ -471,7 +488,7 @@ export async function createReservationService({ userId, guestId, payload, lang 
   try {
     await session.withTransaction(async () => {
       const startsAtList = requestedServices.map((_, idx) =>
-        addHoursUtc(startsAt, idx)
+        addHoursUtc(startsAt, idx),
       );
 
       const existingAny = await findActorReservationAtAnyTime({
@@ -485,7 +502,7 @@ export async function createReservationService({ userId, guestId, payload, lang 
         const slotLabel = formatSlotLabelFromUtc(existingAny.startsAt);
         throw new ApiError(
           `You already have a reservation at ${slotLabel.text}`,
-          409
+          409,
         );
       }
 
@@ -493,10 +510,13 @@ export async function createReservationService({ userId, guestId, payload, lang 
       for (let idx = 0; idx < requestedServices.length; idx += 1) {
         const svc = requestedServices[idx] || {};
         const serviceType = svc.serviceType;
-        if (!serviceType || !Object.values(serviceTypeEnum).includes(serviceType)) {
+        if (
+          !serviceType ||
+          !Object.values(serviceTypeEnum).includes(serviceType)
+        ) {
           throw new ApiError(
             `services[${idx}].serviceType is invalid or missing`,
-            400
+            400,
           );
         }
         const roomType = getRoomTypeForService(serviceType);
@@ -505,11 +525,11 @@ export async function createReservationService({ userId, guestId, payload, lang 
         if (capacity <= 0) {
           throw new ApiError(
             "Selected service is not available at this location",
-            400
+            400,
           );
         }
 
-        const selection = resolveServiceSelectionOrThrow({
+        const selection = await resolveServiceSelectionOrThrow({
           serviceType,
           optionKey: svc.serviceOptionKey,
         });
@@ -569,17 +589,19 @@ export async function createReservationService({ userId, guestId, payload, lang 
 
   if (Array.isArray(created)) {
     if (created.length === 1) {
-      return buildReservationDto(created[0], location, lang);
+      return await buildReservationDto(created[0], location, lang);
     }
 
     return {
-      reservations: created
-        .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))
-        .map((r) => buildReservationDto(r, location, lang)),
+      reservations: await Promise.all(
+        created
+          .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))
+          .map((r) => buildReservationDto(r, location, lang)),
+      ),
     };
   }
 
-  return buildReservationDto(created, location, lang);
+  return await buildReservationDto(created, location, lang);
 }
 
 export async function listReservationsForUserService({
@@ -616,14 +638,16 @@ export async function listReservationsForUserService({
   const reservations = await ServiceReservationModel.find(filter)
     .populate(
       "location",
-      "_id slug name_en name_ar city timezone googleMapsLink phone"
+      "_id slug name_en name_ar city timezone googleMapsLink phone",
     )
     .sort(sortOrder)
     .lean();
 
   return {
     results: reservations.length,
-    data: reservations.map((r) => buildReservationDto(r, r.location, lang)),
+    data: await Promise.all(
+      reservations.map((r) => buildReservationDto(r, r.location, lang)),
+    ),
   };
 }
 
@@ -658,7 +682,7 @@ export async function adminListReservationsByDateService({
     ServiceReservationModel.find(filter)
       .populate(
         "location",
-        "_id slug name_en name_ar city timezone googleMapsLink phone"
+        "_id slug name_en name_ar city timezone googleMapsLink phone",
       )
       .sort({ startsAt: 1 })
       .skip(skip)
@@ -671,7 +695,9 @@ export async function adminListReservationsByDateService({
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     page: pageNum,
     results: reservations.length,
-    data: reservations.map((r) => buildReservationDto(r, r.location, lang)),
+    data: await Promise.all(
+      reservations.map((r) => buildReservationDto(r, r.location, lang)),
+    ),
   };
 
   if (cairoDateStart) {
@@ -715,14 +741,16 @@ export async function listReservationsForGuestService({
   const reservations = await ServiceReservationModel.find(filter)
     .populate(
       "location",
-      "_id slug name_en name_ar city timezone googleMapsLink phone"
+      "_id slug name_en name_ar city timezone googleMapsLink phone",
     )
     .sort(sortOrder)
     .lean();
 
   return {
     results: reservations.length,
-    data: reservations.map((r) => buildReservationDto(r, r.location, lang)),
+    data: await Promise.all(
+      reservations.map((r) => buildReservationDto(r, r.location, lang)),
+    ),
   };
 }
 
@@ -770,11 +798,13 @@ export async function cancelReservationService({ id, userId, guestId, lang }) {
       }
 
       const nowUtc = getNowCairo().toUTC().toJSDate();
-      const cutoff = new Date(reservation.startsAt.getTime() - 24 * 60 * 60 * 1000);
+      const cutoff = new Date(
+        reservation.startsAt.getTime() - 24 * 60 * 60 * 1000,
+      );
       if (nowUtc > cutoff) {
         throw new ApiError(
           "Cancellation is only allowed up to 24 hours before the reservation time",
-          400
+          400,
         );
       }
 
@@ -790,7 +820,7 @@ export async function cancelReservationService({ id, userId, guestId, lang }) {
           bookedCount: { $gt: 0 },
         },
         { $inc: { bookedCount: -1 } },
-        { session }
+        { session },
       );
 
       cancelled = reservation;
@@ -804,10 +834,14 @@ export async function cancelReservationService({ id, userId, guestId, lang }) {
   }
 
   const location = await getServiceLocationByIdService(cancelled.location);
-  return buildReservationDto(cancelled, location, lang);
+  return await buildReservationDto(cancelled, location, lang);
 }
 
-export async function adminUpdateReservationStatusService({ id, status, lang }) {
+export async function adminUpdateReservationStatusService({
+  id,
+  status,
+  lang,
+}) {
   if (!id) {
     throw new ApiError("id is required", 400);
   }
@@ -825,7 +859,7 @@ export async function adminUpdateReservationStatusService({ id, status, lang }) 
   if (!allowed.includes(nextStatus)) {
     throw new ApiError(
       "status must be CANCELLED, COMPLETED, IN_PROGRESS, or NO_SHOW",
-      400
+      400,
     );
   }
 
@@ -850,7 +884,7 @@ export async function adminUpdateReservationStatusService({ id, status, lang }) 
       if (reservation.status !== serviceReservationStatusEnum.BOOKED) {
         throw new ApiError(
           "Only booked reservations can be updated to this status",
-          400
+          400,
         );
       }
 
@@ -868,7 +902,7 @@ export async function adminUpdateReservationStatusService({ id, status, lang }) 
             bookedCount: { $gt: 0 },
           },
           { $inc: { bookedCount: -1 } },
-          { session }
+          { session },
         );
       } else {
         // COMPLETED / NO_SHOW do not free capacity (slot time has been used).
@@ -895,7 +929,10 @@ export async function adminUpdateReservationStatusService({ id, status, lang }) 
       IN_PROGRESS: { en: "in progress", ar: "قيد التنفيذ" },
       NO_SHOW: { en: "marked as no-show", ar: "تم تسجيله كعدم حضور" },
     };
-    const label = statusLabels[nextStatus] || { en: nextStatus.toLowerCase(), ar: nextStatus };
+    const label = statusLabels[nextStatus] || {
+      en: nextStatus.toLowerCase(),
+      ar: nextStatus,
+    };
 
     dispatchNotification({
       userId: updated.user,
@@ -918,10 +955,13 @@ export async function adminUpdateReservationStatusService({ id, status, lang }) 
       },
       channels: { push: true, inApp: true },
     }).catch((err) => {
-      console.error("[Reservation] Failed to dispatch status notification:", err.message);
+      console.error(
+        "[Reservation] Failed to dispatch status notification:",
+        err.message,
+      );
     });
   }
 
   const location = await getServiceLocationByIdService(updated.location);
-  return buildReservationDto(updated, location, lang);
+  return await buildReservationDto(updated, location, lang);
 }

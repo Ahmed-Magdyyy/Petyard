@@ -82,6 +82,7 @@ export const serviceTypeEnum = Object.freeze({
   GROOMING: "GROOMING",
   SHOWERING: "SHOWERING",
   CLINIC: "CLINIC",
+  BOARDING: "BOARDING",
 });
 
 export const serviceRoomTypeEnum = Object.freeze({

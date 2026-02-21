@@ -8,7 +8,6 @@ import {
   cancelReservationForUser,
   createReservationForGuest,
   createReservationForUser,
-  getServiceCatalog,
   getAvailability,
   listGuestReservations,
   listMyReservations,
@@ -21,11 +20,12 @@ import {
   listReservationsQueryValidator,
   reservationIdParamValidator,
 } from "./serviceReservation.validators.js";
+import serviceCatalogRoutes from "../catalog/serviceCatalog.routes.js";
 import serviceReviewRoutes from "../reviews/serviceReview.routes.js";
 
 const router = Router();
 
-router.get("/catalog", getServiceCatalog);
+router.use("/catalog", serviceCatalogRoutes);
 router.get("/availability", availabilityQueryValidator, getAvailability);
 
 router.post("/guest", createReservationValidator, createReservationForGuest);
@@ -33,7 +33,7 @@ router.get("/guest", listReservationsQueryValidator, listGuestReservations);
 router.patch(
   "/guest/:id/cancel",
   reservationIdParamValidator,
-  cancelReservationForGuest
+  cancelReservationForGuest,
 );
 
 router.use("/admin", protect, allowedTo(roles.SUPER_ADMIN, roles.ADMIN));
@@ -41,13 +41,13 @@ router.use("/admin", protect, allowedTo(roles.SUPER_ADMIN, roles.ADMIN));
 router.get(
   "/admin",
   adminListReservationsByDateQueryValidator,
-  adminListReservationsByDate
+  adminListReservationsByDate,
 );
 
 router.patch(
   "/admin/:id/status",
   adminUpdateReservationStatusValidator,
-  adminUpdateReservationStatus
+  adminUpdateReservationStatus,
 );
 
 // Mount review routes on /:reservationId
@@ -59,20 +59,19 @@ router.get(
   "/me",
   // allowedTo(roles.USER),
   listReservationsQueryValidator,
-  listMyReservations
+  listMyReservations,
 );
 router.post(
   "/",
   // allowedTo(roles.USER),
   createReservationValidator,
-  createReservationForUser
+  createReservationForUser,
 );
 router.patch(
   "/:id/cancel",
   // allowedTo(roles.USER),
   reservationIdParamValidator,
-  cancelReservationForUser
+  cancelReservationForUser,
 );
-
 
 export default router;

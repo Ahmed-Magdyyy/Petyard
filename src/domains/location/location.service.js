@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const governoratesConfig = require("../../shared/constants/governorates.json");
 
 const GOVERNORATES_BY_CODE = new Map(
-  (governoratesConfig.governorates || []).map((g) => [g.code, g])
+  (governoratesConfig.governorates || []).map((g) => [g.code, g]),
 );
 
 function isSupportedGovernorate(code) {
@@ -72,13 +72,10 @@ async function reverseGeocodeGovernorate({ latNum, lngNum }) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
-    throw new ApiError("no apiii", 500)
-    return { raw: null, normalized: null };
+    throw new ApiError("no api key provided", 500);
   }
 
   try {
-    console.log("fdjfsiodfdofis");
-    
     const url = "https://maps.googleapis.com/maps/api/geocode/json";
     const params = {
       latlng: `${latNum},${lngNum}`,
@@ -106,7 +103,10 @@ async function reverseGeocodeGovernorate({ latNum, lngNum }) {
 
         if (types.includes("administrative_area_level_1")) {
           level1Name = comp.long_name || comp.short_name || null;
-        } else if (types.includes("administrative_area_level_2") && !level2Name) {
+        } else if (
+          types.includes("administrative_area_level_2") &&
+          !level2Name
+        ) {
           level2Name = comp.long_name || comp.short_name || null;
         }
       }
@@ -116,7 +116,7 @@ async function reverseGeocodeGovernorate({ latNum, lngNum }) {
         break;
       }
     }
-    
+
     if (!govName) {
       return { raw: null, normalized: null };
     }
@@ -130,7 +130,7 @@ async function reverseGeocodeGovernorate({ latNum, lngNum }) {
   } catch (err) {
     console.error(
       "[reverseGeocodeGovernorate] Failed to reverse geocode governorate:",
-      err.message
+      err.message,
     );
     return { raw: null, normalized: null };
   }
@@ -207,7 +207,11 @@ function normalizeGovernorateName(raw) {
   return null;
 }
 
-async function findNearestWarehouseByGovernorate({ governorate, latNum, lngNum }) {
+async function findNearestWarehouseByGovernorate({
+  governorate,
+  latNum,
+  lngNum,
+}) {
   if (!governorate) return null;
 
   const userPoint = {
@@ -229,15 +233,20 @@ async function findNearestWarehouseByGovernorate({ governorate, latNum, lngNum }
 }
 
 async function findDefaultWarehouse() {
-  let warehouse = await WarehouseModel.findOne({ isDefault: true, active: true });
+  let warehouse = await WarehouseModel.findOne({
+    isDefault: true,
+    active: true,
+  });
 
   if (!warehouse) {
-    warehouse = await WarehouseModel.findOne({ active: true }).sort({ createdAt: 1 });
+    warehouse = await WarehouseModel.findOne({ active: true }).sort({
+      createdAt: 1,
+    });
   }
 
   return warehouse;
 }
- 
+
 export async function resolveLocationByCoordinatesService({
   lat,
   lng,
@@ -250,7 +259,10 @@ export async function resolveLocationByCoordinatesService({
   // Governorate/area-only mode (manual selection, no precise coordinates)
   if (!hasCoords) {
     if (!governorateCode || typeof governorateCode !== "string") {
-      throw new ApiError("Either (lat & lng) or governorateCode must be provided", 400);
+      throw new ApiError(
+        "Either (lat & lng) or governorateCode must be provided",
+        400,
+      );
     }
 
     const govCode = governorateCode.toLowerCase().trim();
@@ -320,7 +332,10 @@ export async function resolveLocationByCoordinatesService({
 
       if (!productsWarehouse) {
         productsWarehouse =
-          (await WarehouseModel.findOne({ governorate: govCode, active: true }).sort({
+          (await WarehouseModel.findOne({
+            governorate: govCode,
+            active: true,
+          }).sort({
             createdAt: 1,
           })) || (await findDefaultWarehouse());
       }
@@ -389,7 +404,7 @@ export async function resolveLocationByCoordinatesService({
     active: true,
     boundaryGeometry: { $exists: true },
   }).select(
-    "name code governorate active defaultShippingPrice isDefault location boundaryGeometry"
+    "name code governorate active defaultShippingPrice isDefault location boundaryGeometry",
   );
 
   const insideCandidates = [];
@@ -422,7 +437,7 @@ export async function resolveLocationByCoordinatesService({
                 return [lngCoord, latCoord];
               })
               .filter(Boolean)
-          : []
+          : [],
       ),
     };
 
@@ -523,8 +538,7 @@ export async function resolveLocationByCoordinatesService({
       requiresPreciseLocation: false,
       effectiveShippingPrice,
       shippingFee: null,
-      defaultShippingPrice:
-        productsWarehouseDoc.defaultShippingPrice ?? 0,
+      defaultShippingPrice: productsWarehouseDoc.defaultShippingPrice ?? 0,
     },
   };
 }
@@ -537,14 +551,13 @@ export async function getLocationOptionsService(lang = "en") {
   const result = await getOrSetCache(cacheKey, ttlSeconds, async () => {
     const defaultWarehouse = await findDefaultWarehouse();
     const activeWarehouses = await WarehouseModel.find({ active: true }).select(
-      "_id code governorate"
+      "_id code governorate",
     );
-    const warehousesByCode = new Map(
-      activeWarehouses.map((w) => [w.code, w])
-    );
+    const warehousesByCode = new Map(activeWarehouses.map((w) => [w.code, w]));
 
     const governorates = (governoratesConfig.governorates || []).map((g) => {
-      const simpleAreas = Array.isArray(g.areas) && g.areas.length > 0 ? g.areas : [];
+      const simpleAreas =
+        Array.isArray(g.areas) && g.areas.length > 0 ? g.areas : [];
       const warehouseGroups = Array.isArray(g.warehouses) ? g.warehouses : [];
 
       const groupedAreas = [];
@@ -578,7 +591,8 @@ export async function getLocationOptionsService(lang = "en") {
               : null;
           const resolvedWarehouseId = wh ? wh._id : a.warehouseId || null;
 
-          const areaName = pickLocalizedField(a, "name", normalizedLang) || null;
+          const areaName =
+            pickLocalizedField(a, "name", normalizedLang) || null;
 
           return {
             code: a.code || null,

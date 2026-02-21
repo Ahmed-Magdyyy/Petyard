@@ -8,6 +8,7 @@ const DEFAULT_ALLOWED_MIME_TYPES = [
   "image/gif",
   "image/webp",
   "image/svg+xml",
+  "image/webp",
 ];
 
 const DEFAULT_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -17,14 +18,14 @@ export function validateImageFile(
   {
     allowedMimeTypes = DEFAULT_ALLOWED_MIME_TYPES,
     maxSizeBytes = DEFAULT_MAX_SIZE_BYTES,
-  } = {}
+  } = {},
 ) {
   if (!file) return;
 
   if (!allowedMimeTypes.includes(file.mimetype)) {
     throw new ApiError(
       `Invalid image type. Allowed types: ${allowedMimeTypes.join(", ")}`,
-      400
+      400,
     );
   }
 
@@ -38,7 +39,7 @@ export async function uploadImageToCloudinary(file, { folder, publicId } = {}) {
   if (!file) return null;
 
   const dataUri = `data:${file.mimetype};base64,${file.buffer.toString(
-    "base64"
+    "base64",
   )}`;
 
   try {
