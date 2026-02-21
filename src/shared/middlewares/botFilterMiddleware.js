@@ -10,6 +10,8 @@ const IGNORED_ROUTE_PATTERNS = [
   /^\/(cgi-bin|scripts|shell|eval|setup|install|config)/i,
   /^\/(login|signin|dashboard|panel|manager|jmx-console)/i,
   /^\/[a-zA-Z]*\.(php|asp|aspx|jsp|cgi)$/i,
+  /^\/(CSCOSSLC|global-protect|ssl-vpn|Dr0v)/i,
+  /^https?:\/\//i,
 ];
 
 /**
