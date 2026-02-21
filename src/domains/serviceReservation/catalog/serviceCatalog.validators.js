@@ -1,8 +1,5 @@
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../../shared/middlewares/validatorMiddleware.js";
-import { serviceTypeEnum } from "../../../shared/constants/enums.js";
-
-const validTypes = Object.values(serviceTypeEnum);
 
 export const serviceTypeParamValidator = [
   param("type")
@@ -10,9 +7,7 @@ export const serviceTypeParamValidator = [
     .withMessage("Service type is required")
     .isString()
     .trim()
-    .customSanitizer((v) => v.toUpperCase())
-    .isIn(validTypes)
-    .withMessage(`Service type must be one of: ${validTypes.join(", ")}`),
+    .customSanitizer((v) => v.toUpperCase()),
   validatorMiddleware,
 ];
 
@@ -22,9 +17,7 @@ export const createServiceValidator = [
     .withMessage("type is required")
     .isString()
     .trim()
-    .customSanitizer((v) => v.toUpperCase())
-    .isIn(validTypes)
-    .withMessage(`type must be one of: ${validTypes.join(", ")}`),
+    .customSanitizer((v) => v.toUpperCase()),
   body("name_en")
     .notEmpty()
     .withMessage("name_en is required")
@@ -49,16 +42,12 @@ export const updateServiceValidator = [
     .withMessage("Service type is required")
     .isString()
     .trim()
-    .customSanitizer((v) => v.toUpperCase())
-    .isIn(validTypes)
-    .withMessage(`Service type must be one of: ${validTypes.join(", ")}`),
+    .customSanitizer((v) => v.toUpperCase()),
   body("type")
     .optional()
     .isString()
     .trim()
-    .customSanitizer((v) => v.toUpperCase())
-    .isIn(validTypes)
-    .withMessage(`type must be one of: ${validTypes.join(", ")}`),
+    .customSanitizer((v) => v.toUpperCase()),
   body("name_en").optional().isString().trim(),
   body("name_ar").optional().isString().trim(),
   body("isActive")
