@@ -11,6 +11,7 @@ import cookieParser from "cookie-parser";
 import https from "https";
 import {ApiError} from "../shared/utils/ApiError.js";
 import {globalError} from "../shared/middlewares/errorMiddleware.js";
+import { unmatchedRouteHandler } from "../shared/middlewares/botFilterMiddleware.js";
 import {dbConnection} from "../config/database.js";
 import { mountRoutes } from "./routes.js";
 import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
@@ -53,9 +54,7 @@ app.get('/', (req, res) => {
   res.send('Petyard API is running.');
 });
 
-app.all("*", (req, res, next) => {
-  next(new ApiError(`can't find this route: ${req.originalUrl}`, 400));
-});
+app.all("*", unmatchedRouteHandler);
 
 // Global error handling middleware
 app.use(globalError);
