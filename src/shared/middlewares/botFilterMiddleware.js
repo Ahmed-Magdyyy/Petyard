@@ -1,38 +1,30 @@
 import { ApiError } from "../utils/ApiError.js";
 
-// Known bot/scanner paths — respond silently without logging
-const IGNORED_ROUTE_PATTERNS = [
-  /^\/(\\.env|\\.git|\\.aws|\\.ssh|\\.DS_Store)/i,
-  /^\/(wp-admin|wp-login|wp-content|wp-includes|wordpress)/i,
-  /^\/(admin|administrator|phpmyadmin|phpMyAdmin|pma)/i,
-  /^\/(favicon\.ico|robots\.txt|sitemap\.xml|ads\.txt|\.well-known)/i,
-  /^\/(webui|geoserver|developmentserver|solr|actuator|console)/i,
-  /^\/(cgi-bin|scripts|shell|eval|setup|install|config)/i,
-  /^\/(login|signin|dashboard|panel|manager|jmx-console)/i,
-  /^\/[a-zA-Z]*\.(php|asp|aspx|jsp|cgi)$/i,
-  /^\/(CSCOSSLC|global-protect|ssl-vpn|Dr0v)/i,
-  /^https?:\/\//i,
+// Allowlisted route prefixes — only these are legitimate app routes.
+// Everything else that reaches the catch-all is bot/scanner noise.
+const ALLOWED_ROUTE_PREFIXES = [
+  "/api/v1/",
 ];
 
 /**
  * Catch-all middleware for unmatched routes.
- * Silently rejects known bot/scanner probes with a 404.
- * Only logs genuinely unexpected routes via ApiError.
+ * Uses an ALLOWLIST approach: only routes starting with known prefixes
+ * get logged as genuine "route not found" errors.
+ * Everything else (bot probes, scanners, random paths) is silently rejected.
  */
 export const unmatchedRouteHandler = (req, res, next) => {
-  // Silently reject known bot/scanner probes
-  const isIgnored = IGNORED_ROUTE_PATTERNS.some((pattern) =>
-    pattern.test(req.originalUrl)
+  const url = req.originalUrl;
+
+  // Check if the route belongs to a legitimate API prefix
+  const isLegitimate = ALLOWED_ROUTE_PREFIXES.some((prefix) =>
+    url.startsWith(prefix)
   );
-  if (isIgnored) {
-    return res.status(404).json({ status: "fail", message: "Not found" });
+
+  if (isLegitimate) {
+    // This is a real API route that doesn't exist — log it
+    return next(new ApiError(`can't find this route: ${url}`, 400));
   }
 
-  // Also silently reject non-API POST/PUT/DELETE to root "/"
-  if (req.originalUrl === "/" && req.method !== "GET") {
-    return res.status(404).json({ status: "fail", message: "Not found" });
-  }
-
-  // Only log genuinely unexpected routes
-  next(new ApiError(`can't find this route: ${req.originalUrl}`, 400));
+  // Everything else is bot/scanner noise — reject silently
+  return res.status(404).json({ status: "fail", message: "Not found" });
 };
