@@ -11,3 +11,6 @@ src/shared/petyard-dev-firebase-adminsdk-fbsvc-2b99f13262.json
 .windsurf
 
 .agents
+shopify_products.csv
+scripts/migrateShopifyCsv.js
+scripts/patchDescriptions.js

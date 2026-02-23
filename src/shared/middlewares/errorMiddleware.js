@@ -1,5 +1,4 @@
 import { ApiError } from "../utils/ApiError.js";
-// const { deleteImageCloud } = require("../utils/Cloudinary/cloud");
 
 const handelJwtInvalidSignature = () =>
   new ApiError("Invalid token, Please login again", 401);
@@ -19,10 +18,16 @@ const handleDuplicateFieldsDB = (err) => {
   const match = err.message?.match(/index:\s+(?:\w+\.)*?(\w+)_/);
   if (match) {
     const field = match[1];
-    return new ApiError(`${field} already exists. Please use another ${field}!`, 400);
+    return new ApiError(
+      `${field} already exists. Please use another ${field}!`,
+      400,
+    );
   }
 
-  return new ApiError("Duplicate value entered. Please use a different value.", 400);
+  return new ApiError(
+    "Duplicate value entered. Please use a different value.",
+    400,
+  );
 };
 
 const handleValidationErrorDB = (err) => {

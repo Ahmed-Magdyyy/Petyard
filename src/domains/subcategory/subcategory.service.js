@@ -10,7 +10,11 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 
-export async function getSubcategoriesService(query = {}, lang = "en", user = null) {
+export async function getSubcategoriesService(
+  query = {},
+  lang = "en",
+  user = null,
+) {
   const { category } = query;
   const normalizedLang = lang === "ar" ? "ar" : "en";
   const includeAllLanguages =
@@ -26,6 +30,7 @@ export async function getSubcategoriesService(query = {}, lang = "en", user = nu
 
   const subcategories = await SubcategoryModel.find(filter)
     .populate("category", "_id slug name_en name_ar")
+    .populate("parent", "_id slug name_en name_ar")
     .sort({ category: 1, slug: 1 });
 
   return subcategories.map((s) => ({
@@ -45,6 +50,7 @@ export async function getSubcategoriesService(query = {}, lang = "en", user = nu
           desc: pickLocalizedField(s, "desc", normalizedLang),
         }),
     image: s.image?.url || null,
+    parent: s.parent?._id || s.parent || null,
   }));
 }
 
@@ -56,10 +62,9 @@ export async function getSubcategoryByIdService(id, lang = "en", user = null) {
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.SUBCATEGORIES)));
 
-  const subcategory = await SubcategoryModel.findById(id).populate(
-    "category",
-    "_id slug name_en name_ar"
-  );
+  const subcategory = await SubcategoryModel.findById(id)
+    .populate("category", "_id slug name_en name_ar")
+    .populate("parent", "_id slug name_en name_ar");
   if (!subcategory) {
     throw new ApiError(`No subcategory found for this id: ${id}`, 404);
   }
@@ -81,11 +86,12 @@ export async function getSubcategoryByIdService(id, lang = "en", user = null) {
           desc: pickLocalizedField(subcategory, "desc", normalizedLang),
         }),
     image: subcategory.image?.url || null,
+    parent: subcategory.parent?._id || subcategory.parent || null,
   };
 }
 
 export async function createSubcategoryService(payload, file) {
-  const { category, name_en, name_ar, desc_en, desc_ar } = payload;
+  const { category, parent, name_en, name_ar, desc_en, desc_ar } = payload;
 
   const categoryExists = await CategoryModel.exists({ _id: category });
   if (!categoryExists) {
@@ -102,11 +108,14 @@ export async function createSubcategoryService(payload, file) {
     throw new ApiError("Unable to generate slug from name_en", 400);
   }
 
-  const existing = await SubcategoryModel.findOne({ category, slug: normalizedSlug });
+  const existing = await SubcategoryModel.findOne({
+    category,
+    slug: normalizedSlug,
+  });
   if (existing) {
     throw new ApiError(
       `Subcategory with slug '${normalizedSlug}' already exists for this category`,
-      409
+      409,
     );
   }
 
@@ -126,6 +135,7 @@ export async function createSubcategoryService(payload, file) {
     const subcategory = await SubcategoryModel.create({
       slug: normalizedSlug,
       category,
+      parent: parent || null,
       name_en,
       name_ar,
       desc_en,
@@ -148,7 +158,7 @@ export async function updateSubcategoryService(id, payload, file) {
     throw new ApiError(`No subcategory found for this id: ${id}`, 404);
   }
 
-  const { category, name_en, name_ar, desc_en, desc_ar } = payload;
+  const { category, parent, name_en, name_ar, desc_en, desc_ar } = payload;
 
   if (category !== undefined) {
     const categoryExists = await CategoryModel.exists({ _id: category });
@@ -157,6 +167,8 @@ export async function updateSubcategoryService(id, payload, file) {
     }
     subcategory.category = category;
   }
+
+  if (parent !== undefined) subcategory.parent = parent || null;
 
   if (name_en !== undefined) subcategory.name_en = name_en;
   if (name_ar !== undefined) subcategory.name_ar = name_ar;
@@ -203,4 +215,21 @@ export async function deleteSubcategoryService(id) {
   }
 
   await SubcategoryModel.deleteOne({ _id: id });
+}
+
+/**
+ * Recursively collects all descendant subcategory IDs for a given parent.
+ * Used for inclusive browsing: querying a parent subcategory returns
+ * products from that subcategory AND all its nested children.
+ */
+export async function getSubcategoryChildrenIds(parentId) {
+  const children = await SubcategoryModel.find(
+    { parent: parentId },
+    { _id: 1 },
+  ).lean();
+
+  const ids = children.map((c) => c._id);
+  const nested = await Promise.all(ids.map(getSubcategoryChildrenIds));
+
+  return ids.concat(nested.flat());
 }

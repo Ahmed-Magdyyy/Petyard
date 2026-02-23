@@ -8,6 +8,11 @@ export const createSubcategoryValidator = [
     .isMongoId()
     .withMessage("category must be a valid id"),
 
+  body("parent")
+    .optional({ values: "null" })
+    .isMongoId()
+    .withMessage("parent must be a valid subcategory id"),
+
   body("name_en").notEmpty().withMessage("English name is required"),
 
   body("name_ar")
@@ -31,15 +36,17 @@ export const createSubcategoryValidator = [
 export const updateSubcategoryValidator = [
   param("id").isMongoId().withMessage("Invalid subcategory id"),
 
-  body("slug")
-    .not()
-    .exists()
-    .withMessage("slug cannot be updated"),
+  body("slug").not().exists().withMessage("slug cannot be updated"),
 
   body("category")
     .optional()
     .isMongoId()
     .withMessage("category must be a valid id"),
+
+  body("parent")
+    .optional({ values: "null" })
+    .isMongoId()
+    .withMessage("parent must be a valid subcategory id"),
 
   body("name_en")
     .optional()

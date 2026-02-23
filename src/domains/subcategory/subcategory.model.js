@@ -15,6 +15,11 @@ const subcategorySchema = new Schema(
       ref: "Category",
       required: true,
     },
+    parent: {
+      type: Schema.Types.ObjectId,
+      ref: "Subcategory",
+      default: null,
+    },
     name_en: {
       type: String,
       required: true,
@@ -37,7 +42,7 @@ const subcategorySchema = new Schema(
       url: { type: String },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 subcategorySchema.index({ category: 1, slug: 1 }, { unique: true });
