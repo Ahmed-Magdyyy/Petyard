@@ -374,7 +374,7 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
 
   // Persist updated products
   for (const product of products) {
-    await product.save({ session });
+    await product.save({ session, validateBeforeSave: false });
   }
 }
 
@@ -511,7 +511,7 @@ export async function restoreStockForOrder({ session, order }) {
   }
 
   for (const product of products) {
-    await product.save({ session });
+    await product.save({ session, validateBeforeSave: false });
   }
 }
 
