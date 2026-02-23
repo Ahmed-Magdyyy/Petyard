@@ -852,8 +852,10 @@ export async function createOrderForUserService({
 
     await invalidateProductCaches(productIds);
 
-    // Fire-and-forget notification; no need to await in the main flow
-    void sendOrderStatusChangedNotification(createdOrder);
+    // Fire-and-forget notification; catch errors so they appear in logs
+    sendOrderStatusChangedNotification(createdOrder).catch((err) =>
+      console.error("[Order] Failed to send order created notification:", err.message)
+    );
   }
 
   return createdOrder;
@@ -1263,7 +1265,9 @@ export async function updateOrderStatusService({
 
   if (updated) {
     // Fire-and-forget notification about the status change
-    void sendOrderStatusChangedNotification(updated);
+    sendOrderStatusChangedNotification(updated).catch((err) =>
+      console.error("[Order] Failed to send status change notification:", err.message)
+    );
   }
 
   return updated;

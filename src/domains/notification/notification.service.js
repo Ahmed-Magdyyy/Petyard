@@ -204,6 +204,11 @@ async function sendPushToTokens({ tokens, notification, data }) {
       tokens: batchTokens,
       notification: notification || undefined,
       data: payloadData,
+      android: { priority: "high" },
+      apns: {
+        payload: { aps: { "content-available": 1 } },
+        headers: { "apns-priority": "10" },
+      },
     };
 
     try {
