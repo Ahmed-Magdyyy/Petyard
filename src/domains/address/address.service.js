@@ -80,7 +80,7 @@ export async function updateMyAddressService({ userId, addressId, payload }) {
 
   const fields = pickAddressFields(payload);
   Object.assign(address, fields);
-  await address.save();
+  await address.save({ validateModifiedOnly: true });
 
   return allAddresses({ user: userId });
 }
@@ -100,7 +100,7 @@ export async function deleteMyAddressService({ userId, addressId }) {
     });
     if (first) {
       first.isDefault = true;
-      await first.save();
+      await first.save({ validateModifiedOnly: true });
     }
   }
 
@@ -115,7 +115,7 @@ export async function setDefaultMyAddressService({ userId, addressId }) {
 
   await AddressModel.updateMany({ user: userId }, { isDefault: false });
   address.isDefault = true;
-  await address.save();
+  await address.save({ validateModifiedOnly: true });
 
   return allAddresses({ user: userId });
 }
@@ -157,7 +157,7 @@ export async function updateGuestAddressService({
 
   const fields = pickAddressFields(payload);
   Object.assign(address, fields);
-  await address.save();
+  await address.save({ validateModifiedOnly: true });
 
   return allAddresses({ guestId });
 }
@@ -177,7 +177,7 @@ export async function deleteGuestAddressService({ guestId, addressId }) {
     });
     if (first) {
       first.isDefault = true;
-      await first.save();
+      await first.save({ validateModifiedOnly: true });
     }
   }
 
@@ -192,7 +192,7 @@ export async function setDefaultGuestAddressService({ guestId, addressId }) {
 
   await AddressModel.updateMany({ guestId }, { isDefault: false });
   address.isDefault = true;
-  await address.save();
+  await address.save({ validateModifiedOnly: true });
 
   return allAddresses({ guestId });
 }
@@ -225,11 +225,11 @@ export async function mergeGuestAddressesService({ userId, guestId }) {
     // Keep only the first default
     for (let i = 1; i < defaults.length; i++) {
       defaults[i].isDefault = false;
-      await defaults[i].save();
+      await defaults[i].save({ validateModifiedOnly: true });
     }
   } else if (defaults.length === 0 && userAddresses.length > 0) {
     userAddresses[0].isDefault = true;
-    await userAddresses[0].save();
+    await userAddresses[0].save({ validateModifiedOnly: true });
   }
 
   return allAddresses({ user: userId });
