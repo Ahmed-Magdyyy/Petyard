@@ -126,8 +126,7 @@ export async function setDefaultMyAddressService({ userId, addressId }) {
   }
 
   await AddressModel.updateMany({ user: userId }, { isDefault: false });
-  address.isDefault = true;
-  await address.save({ validateModifiedOnly: true });
+  await AddressModel.updateOne({ _id: addressId }, { isDefault: true });
 
   return allAddresses({ user: userId });
 }
@@ -201,10 +200,10 @@ export async function setDefaultGuestAddressService({ guestId, addressId }) {
   }
 
   await AddressModel.updateMany({ guestId }, { isDefault: false });
-  address.isDefault = true;
-  await address.save({ validateModifiedOnly: true });
+  await AddressModel.updateOne({ _id: addressId }, { isDefault: true });
 
-  return sanitize(address);
+  const updated = await AddressModel.findById(addressId).lean();
+  return sanitize(updated);
 }
 
 // ── Merge guest → user ─────────────────────────────────────────────────────
