@@ -329,6 +329,7 @@ export const mergeGuest = asyncHandler(async (req, res) => {
   ]);
 
   res.status(200).json({
+    message: "Guest merged successfully",
     data: { cart, favorites, addresses },
   });
 });
