@@ -35,12 +35,14 @@ export const addGuestAddress = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const addresses = await addGuestAddressService({
+  const address = await addGuestAddressService({
     guestId,
     payload: req.body,
   });
 
-  res.status(201).json({ data: addresses });
+  res
+    .status(201)
+    .json({ message: "Address created successfully", data: address });
 });
 
 export const updateGuestAddress = asyncHandler(async (req, res) => {
@@ -49,13 +51,15 @@ export const updateGuestAddress = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const addresses = await updateGuestAddressService({
+  const address = await updateGuestAddressService({
     guestId,
     addressId: req.params.addressId,
     payload: req.body,
   });
 
-  res.status(200).json({ data: addresses });
+  res
+    .status(200)
+    .json({ message: "Address updated successfully", data: address });
 });
 
 export const deleteGuestAddress = asyncHandler(async (req, res) => {
@@ -78,12 +82,12 @@ export const setDefaultGuestAddress = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const addresses = await setDefaultGuestAddressService({
+  const address = await setDefaultGuestAddressService({
     guestId,
     addressId: req.params.addressId,
   });
 
-  res.status(200).json({ data: addresses });
+  res.status(200).json({ message: "Default address updated", data: address });
 });
 
 // ── Merge controller (requires JWT + x-guest-id) ──────────────────────────

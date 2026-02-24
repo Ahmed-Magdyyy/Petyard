@@ -42,7 +42,19 @@ function pickAddressFields(payload) {
 }
 
 async function allAddresses(ownerFilter) {
-  return AddressModel.find(ownerFilter).select("-createdAt -user -guestId -__v").sort({ createdAt: 1 }).lean();
+  return AddressModel.find(ownerFilter)
+    .select("-createdAt -user -guestId -__v")
+    .sort({ createdAt: 1 })
+    .lean();
+}
+
+function sanitize(doc) {
+  const obj = doc.toObject ? doc.toObject() : { ...doc };
+  delete obj.createdAt;
+  delete obj.user;
+  delete obj.guestId;
+  delete obj.__v;
+  return obj;
 }
 
 // ── User address services (called from user.controller.js) ─────────────────
@@ -141,8 +153,8 @@ export async function addGuestAddressService({ guestId, payload }) {
     await AddressModel.updateMany(ownerFilter, { isDefault: false });
   }
 
-  await AddressModel.create(fields);
-  return allAddresses(ownerFilter);
+  const created = await AddressModel.create(fields);
+  return sanitize(created);
 }
 
 export async function updateGuestAddressService({
@@ -159,7 +171,7 @@ export async function updateGuestAddressService({
   Object.assign(address, fields);
   await address.save({ validateModifiedOnly: true });
 
-  return allAddresses({ guestId });
+  return sanitize(address);
 }
 
 export async function deleteGuestAddressService({ guestId, addressId }) {
@@ -180,8 +192,6 @@ export async function deleteGuestAddressService({ guestId, addressId }) {
       await first.save({ validateModifiedOnly: true });
     }
   }
-
-  return allAddresses({ guestId });
 }
 
 export async function setDefaultGuestAddressService({ guestId, addressId }) {
@@ -194,7 +204,7 @@ export async function setDefaultGuestAddressService({ guestId, addressId }) {
   address.isDefault = true;
   await address.save({ validateModifiedOnly: true });
 
-  return allAddresses({ guestId });
+  return sanitize(address);
 }
 
 // ── Merge guest → user ─────────────────────────────────────────────────────
