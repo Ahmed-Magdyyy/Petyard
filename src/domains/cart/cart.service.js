@@ -60,6 +60,9 @@ async function autoHideExpiredCollectionsThrottled() {
 }
 
 async function assertWarehouseExists(warehouseId) {
+  if (!warehouseId) {
+    throw new ApiError("Warehouse ID is required", 400);
+  }
   const exists = await WarehouseModel.exists({ _id: warehouseId });
   if (!exists) {
     throw new ApiError(`No warehouse found for this id: ${warehouseId}`, 400);

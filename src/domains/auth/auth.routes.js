@@ -21,6 +21,7 @@ import {
   oauthUnlinkGoogle,
   oauthUnlinkApple,
   oauthSetPassword,
+  mergeGuest,
 } from "./auth.controller.js";
 import {
   signupValidator,
@@ -54,11 +55,7 @@ router.use(authRateLimiter);
 // Auth routes
 router.post("/signup", signupValidator, signup);
 router.post("/resend-otp", resendOtpValidator, resendOtp);
-router.post(
-  "/verify-phone",
-  verifyPhoneValidator,
-  verifyPhone,
-);
+router.post("/verify-phone", verifyPhoneValidator, verifyPhone);
 router.post("/guest/send-otp", guestSendOtpValidator, sendGuestOtp);
 router.post("/guest/verify-phone", guestVerifyOtpValidator, verifyGuestOtp);
 router.post("/login", loginValidator, login);
@@ -114,5 +111,8 @@ router.post(
   oauthSetPasswordValidator,
   oauthSetPassword,
 );
+
+// Merge all guest data (cart + favorites + addresses) into user
+router.post("/merge-guest", protect, mergeGuest);
 
 export default router;

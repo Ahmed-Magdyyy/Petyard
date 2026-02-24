@@ -27,7 +27,6 @@ export const protect = asyncHandler(async (req, res, next) => {
   }
 
   const currentUser = await UserModel.findById(decoded.userId);
-  console.log("currentUser", currentUser);
 
   if (!currentUser) {
     throw new ApiError("User no longer exists", 401);

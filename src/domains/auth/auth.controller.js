@@ -22,6 +22,7 @@ import {
   oauthSetPasswordService,
 } from "./auth.service.js";
 import { roles, authProviderEnum } from "../../shared/constants/enums.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 
 function buildAuthUserResponse(user) {
   return {
@@ -291,5 +292,43 @@ export const oauthSetPassword = asyncHandler(async (req, res) => {
   res.status(200).json({
     status: "success",
     message: "Password set successfully",
+  });
+});
+
+// POST /auth/merge-guest
+// Headers: x-guest-id, Authorization
+// Query: { warehouse }
+export const mergeGuest = asyncHandler(async (req, res) => {
+  const guestId =
+    typeof req.headers["x-guest-id"] === "string" &&
+    req.headers["x-guest-id"].trim()
+      ? req.headers["x-guest-id"].trim()
+      : null;
+
+  if (!guestId) {
+    throw new ApiError("x-guest-id header is required", 400);
+  }
+
+  const userId = req.user._id;
+  const { warehouse } = req.query;
+
+  if (!warehouse) {
+    throw new ApiError("warehouse query parameter is required", 400);
+  }
+
+  const { mergeGuestCartService } = await import("../cart/cart.service.js");
+  const { mergeGuestFavoriteService } =
+    await import("../favorite/favorite.service.js");
+  const { mergeGuestAddressesService } =
+    await import("../address/address.service.js");
+
+  const [cart, favorites, addresses] = await Promise.all([
+    mergeGuestCartService({ userId, guestId, warehouseId: warehouse }),
+    mergeGuestFavoriteService({ userId, guestId }),
+    mergeGuestAddressesService({ userId, guestId }),
+  ]);
+
+  res.status(200).json({
+    data: { cart, favorites, addresses },
   });
 });
