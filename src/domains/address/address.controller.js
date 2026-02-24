@@ -64,12 +64,12 @@ export const deleteGuestAddress = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const addresses = await deleteGuestAddressService({
+  await deleteGuestAddressService({
     guestId,
     addressId: req.params.addressId,
   });
 
-  res.status(200).json({ data: addresses });
+  res.status(200).json({ message: "Address deleted successfully" });
 });
 
 export const setDefaultGuestAddress = asyncHandler(async (req, res) => {

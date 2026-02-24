@@ -42,7 +42,7 @@ function pickAddressFields(payload) {
 }
 
 async function allAddresses(ownerFilter) {
-  return AddressModel.find(ownerFilter).sort({ createdAt: 1 }).lean();
+  return AddressModel.find(ownerFilter).select("-createdAt -user -guestId -__v").sort({ createdAt: 1 }).lean();
 }
 
 // ── User address services (called from user.controller.js) ─────────────────
