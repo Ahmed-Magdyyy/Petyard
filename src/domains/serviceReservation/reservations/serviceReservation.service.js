@@ -285,6 +285,8 @@ async function buildReservationDto(reservation, location, lang) {
     hour24,
     label,
     timezone: "Africa/Cairo",
+    createdAt: reservation.createdAt,
+    
   };
 }
 
