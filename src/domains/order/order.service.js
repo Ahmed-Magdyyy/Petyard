@@ -20,7 +20,10 @@ import {
 import { sendOrderStatusChangedNotification } from "../notification/notification.service.js";
 import { dispatchNotification } from "../notification/notificationDispatcher.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
-import { calculateLoyaltyPointsForOrder, deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
+import {
+  calculateLoyaltyPointsForOrder,
+  deductLoyaltyPointsOnReturnService,
+} from "../loyalty/loyalty.service.js";
 import { LoyaltyTransactionModel } from "../loyalty/loyaltyTransaction.model.js";
 import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
@@ -57,7 +60,9 @@ function generateOrderNumber() {
 
 async function invalidateProductCaches(productIds) {
   const uniqueIds = [
-    ...new Set((productIds || []).map((id) => (id ? String(id) : null)).filter(Boolean)),
+    ...new Set(
+      (productIds || []).map((id) => (id ? String(id) : null)).filter(Boolean),
+    ),
   ];
 
   if (!uniqueIds.length) return;
@@ -66,7 +71,7 @@ async function invalidateProductCaches(productIds) {
     uniqueIds.flatMap((id) => [
       deleteCacheKey(`product:${id}:en`),
       deleteCacheKey(`product:${id}:ar`),
-    ])
+    ]),
   );
 }
 
@@ -117,7 +122,9 @@ function mapCartItemToOrderItem(item) {
     variantOptions,
     quantity,
     baseEffectivePrice:
-      typeof item.baseEffectivePrice === "number" ? item.baseEffectivePrice : null,
+      typeof item.baseEffectivePrice === "number"
+        ? item.baseEffectivePrice
+        : null,
     promotion: item.promotion || null,
     promotionDiscountedPrice:
       typeof item.promotionDiscountedPrice === "number"
@@ -140,7 +147,7 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
     ...new Set(
       items
         .map((item) => (item.product ? String(item.product) : null))
-        .filter(Boolean)
+        .filter(Boolean),
     ),
   ];
 
@@ -164,7 +171,7 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
         subcategoryId: product.subcategory,
         brandId: product.brand,
       },
-      now
+      now,
     );
     promotionByProductId.set(pid, promotion || null);
     return promotion || null;
@@ -186,7 +193,9 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
     }
 
     const quantity =
-      typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 0;
+      typeof item.quantity === "number" && item.quantity > 0
+        ? item.quantity
+        : 0;
     if (quantity <= 0) {
       throw new ApiError("Cart item quantity must be greater than 0", 400);
     }
@@ -203,16 +212,22 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
     if (product.type === "SIMPLE") {
       basePrice = typeof product.price === "number" ? product.price : 0;
       baseDiscounted =
-        typeof product.discountedPrice === "number" ? product.discountedPrice : null;
+        typeof product.discountedPrice === "number"
+          ? product.discountedPrice
+          : null;
     } else {
       const variants = Array.isArray(product.variants) ? product.variants : [];
-      const variant = variants.find((v) => String(v._id) === String(item.variantId));
+      const variant = variants.find(
+        (v) => String(v._id) === String(item.variantId),
+      );
       if (!variant) {
         throw new ApiError("Variant not found on this product", 404);
       }
       basePrice = typeof variant.price === "number" ? variant.price : 0;
       baseDiscounted =
-        typeof variant.discountedPrice === "number" ? variant.discountedPrice : null;
+        typeof variant.discountedPrice === "number"
+          ? variant.discountedPrice
+          : null;
     }
 
     const pricing = computeFinalDiscountedPrice({
@@ -227,8 +242,11 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
         : pricing.basePrice;
 
     const appliedPromotion = !!pricing.appliedPromotion;
-    const promotionDiscountedPrice = appliedPromotion ? pricing.promoPrice : null;
-    const itemPrice = typeof pricing.finalEffective === "number" ? pricing.finalEffective : 0;
+    const promotionDiscountedPrice = appliedPromotion
+      ? pricing.promoPrice
+      : null;
+    const itemPrice =
+      typeof pricing.finalEffective === "number" ? pricing.finalEffective : 0;
 
     if (appliedPromotion) {
       hasPromotionalItems = true;
@@ -250,7 +268,7 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
         promotion: appliedPromotion ? promotion || null : null,
         promotionDiscountedPrice,
         itemPrice,
-      })
+      }),
     );
   }
 
@@ -293,7 +311,7 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
     ...new Set(
       items
         .map((item) => (item.product ? String(item.product) : null))
-        .filter(Boolean)
+        .filter(Boolean),
     ),
   ];
 
@@ -325,25 +343,25 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
         ? product.warehouseStocks
         : [];
       const stock = stocks.find(
-        (ws) => String(ws.warehouse) === String(cart.warehouse)
+        (ws) => String(ws.warehouse) === String(cart.warehouse),
       );
       if (!stock || typeof stock.quantity !== "number") {
         throw new ApiError(
           "This product is not available in the selected warehouse",
-          400
+          400,
         );
       }
       if (stock.quantity < quantity) {
         throw new ApiError(
           `Requested quantity exceeds available stock (${stock.quantity})`,
-          400
+          400,
         );
       }
       stock.quantity -= quantity;
     } else {
       const variants = Array.isArray(product.variants) ? product.variants : [];
       const variant = variants.find(
-        (v) => String(v._id) === String(item.variantId)
+        (v) => String(v._id) === String(item.variantId),
       );
       if (!variant) {
         throw new ApiError("Variant not found on this product", 404);
@@ -353,19 +371,19 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
         ? variant.warehouseStocks
         : [];
       const vStock = vStocks.find(
-        (ws) => String(ws.warehouse) === String(cart.warehouse)
+        (ws) => String(ws.warehouse) === String(cart.warehouse),
       );
 
       if (!vStock || typeof vStock.quantity !== "number") {
         throw new ApiError(
           "This product variant is not available in the selected warehouse",
-          400
+          400,
         );
       }
       if (vStock.quantity < quantity) {
         throw new ApiError(
           `Requested quantity exceeds available stock (${vStock.quantity})`,
-          400
+          400,
         );
       }
       vStock.quantity -= quantity;
@@ -404,9 +422,7 @@ async function rebindOrdersLocalization(ordersOrOrder, lang = "en") {
     return ordersOrOrder;
   }
 
-  const productIds = [
-    ...new Set(allItems.map((entry) => entry.productId)),
-  ];
+  const productIds = [...new Set(allItems.map((entry) => entry.productId))];
 
   const products = await ProductModel.find({
     _id: { $in: productIds },
@@ -436,7 +452,7 @@ export async function restoreStockForOrder({ session, order }) {
     ...new Set(
       items
         .map((item) => (item.product ? String(item.product) : null))
-        .filter(Boolean)
+        .filter(Boolean),
     ),
   ];
 
@@ -471,7 +487,7 @@ export async function restoreStockForOrder({ session, order }) {
       }
 
       let stock = stocks.find(
-        (ws) => String(ws.warehouse) === String(order.warehouse)
+        (ws) => String(ws.warehouse) === String(order.warehouse),
       );
       if (!stock) {
         stocks.push({
@@ -484,7 +500,7 @@ export async function restoreStockForOrder({ session, order }) {
     } else {
       const variants = Array.isArray(product.variants) ? product.variants : [];
       const variant = variants.find(
-        (v) => String(v._id) === String(item.variantId)
+        (v) => String(v._id) === String(item.variantId),
       );
       if (!variant) {
         continue;
@@ -497,7 +513,7 @@ export async function restoreStockForOrder({ session, order }) {
       }
 
       let vStock = vStocks.find(
-        (ws) => String(ws.warehouse) === String(order.warehouse)
+        (ws) => String(ws.warehouse) === String(order.warehouse),
       );
       if (!vStock) {
         vStocks.push({
@@ -545,12 +561,12 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
     if (!userId) {
       throw new ApiError(
         "This coupon is only available to specific users",
-        403
+        403,
       );
     }
 
     const isAllowed = allowedUserIds.some(
-      (id) => String(id) === String(userId)
+      (id) => String(id) === String(userId),
     );
 
     if (!isAllowed) {
@@ -565,7 +581,7 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
   ) {
     throw new ApiError(
       `This coupon requires a minimum order total of ${coupon.minOrderTotal}`,
-      400
+      400,
     );
   }
 
@@ -576,7 +592,7 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
   ) {
     throw new ApiError(
       `This coupon can only be applied to orders up to ${coupon.maxOrderTotal}`,
-      400
+      400,
     );
   }
 
@@ -599,7 +615,7 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
       if (userUsage >= coupon.maxUsagePerUser) {
         throw new ApiError(
           "You have already used this coupon the maximum number of times",
-          400
+          400,
         );
       }
     }
@@ -628,14 +644,17 @@ async function applyWalletIfUser({ session, userId, netSubtotal }) {
     return { walletUsed: 0, finalSubtotal: 0 };
   }
 
-  const user = await UserModel.findById(userId).session(session).select("walletBalance");
+  const user = await UserModel.findById(userId)
+    .session(session)
+    .select("walletBalance");
   if (!user) {
     return { walletUsed: 0, finalSubtotal: netSubtotal };
   }
 
-  const walletBalance = typeof user.walletBalance === "number" && user.walletBalance >= 0
-    ? user.walletBalance
-    : 0;
+  const walletBalance =
+    typeof user.walletBalance === "number" && user.walletBalance >= 0
+      ? user.walletBalance
+      : 0;
 
   const walletUsed = Math.min(walletBalance, netSubtotal);
   const finalSubtotal = netSubtotal - walletUsed;
@@ -668,7 +687,7 @@ async function processOrderCreationWithCart({
   }
 
   const warehouse = await WarehouseModel.findById(cart.warehouse).session(
-    session
+    session,
   );
   if (!warehouse) {
     throw new ApiError("Warehouse not found for this cart", 404);
@@ -681,7 +700,7 @@ async function processOrderCreationWithCart({
   if (couponCode && hasPromotionalItems) {
     throw new ApiError(
       "Coupons cannot be applied when the cart contains promotional items",
-      400
+      400,
     );
   }
 
@@ -747,7 +766,7 @@ async function processOrderCreationWithCart({
   };
 
   const createdOrder = await OrderModel.create([orderDoc], { session }).then(
-    (res) => res[0]
+    (res) => res[0],
   );
 
   if (walletResult.walletUsed > 0 && orderUserId) {
@@ -757,13 +776,13 @@ async function processOrderCreationWithCart({
         walletBalance: { $gte: walletResult.walletUsed },
       },
       { $inc: { walletBalance: -walletResult.walletUsed } },
-      { session }
+      { session },
     );
 
     if (updateResult.matchedCount === 0) {
       throw new ApiError(
         "Insufficient wallet balance or concurrent modification",
-        400
+        400,
       );
     }
 
@@ -782,7 +801,7 @@ async function processOrderCreationWithCart({
           balanceAfter: userAfterDebit?.walletBalance ?? 0,
         },
       ],
-      { session }
+      { session },
     );
   }
 
@@ -790,7 +809,7 @@ async function processOrderCreationWithCart({
     await CouponModel.updateOne(
       { code: couponResult.couponCode },
       { $inc: { usageCount: 1 } },
-      { session }
+      { session },
     );
   }
 
@@ -854,7 +873,10 @@ export async function createOrderForUserService({
 
     // Fire-and-forget notification; catch errors so they appear in logs
     sendOrderStatusChangedNotification(createdOrder).catch((err) =>
-      console.error("[Order] Failed to send order created notification:", err.message)
+      console.error(
+        "[Order] Failed to send order created notification:",
+        err.message,
+      ),
     );
   }
 
@@ -926,7 +948,7 @@ export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
-    .populate({path: "history.byUserId", select: "name role"})
+    .populate({ path: "history.byUserId", select: "name role" });
 
   await rebindOrdersLocalization(orders, lang);
 
@@ -939,8 +961,56 @@ export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
 }
 
 export async function getMyOrderByIdService({ userId, orderId, lang = "en" }) {
-  const order = await OrderModel.findById(orderId).populate({path: "history.byUserId", select: "role name"})
+  const order = await OrderModel.findById(orderId).populate({
+    path: "history.byUserId",
+    select: "role name",
+  });
   if (!order || String(order.user) !== String(userId)) {
+    throw new ApiError("Order not found", 404);
+  }
+  await rebindOrdersLocalization(order, lang);
+  return order;
+}
+
+export async function getGuestOrdersService({
+  guestId,
+  page,
+  limit,
+  lang = "en",
+}) {
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter = { guestId };
+
+  const totalCount = await OrderModel.countDocuments(filter);
+  const orders = await OrderModel.find(filter)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limitNum)
+    .populate({ path: "history.byUserId", select: "name role" });
+
+  await rebindOrdersLocalization(orders, lang);
+
+  return {
+    totalPages: Math.ceil(totalCount / limitNum) || 1,
+    page: pageNum,
+    results: orders.length,
+    data: orders,
+  };
+}
+
+export async function getGuestOrderByIdService({
+  guestId,
+  orderId,
+  lang = "en",
+}) {
+  const order = await OrderModel.findById(orderId).populate({
+    path: "history.byUserId",
+    select: "role name",
+  });
+  if (!order || order.guestId !== guestId) {
     throw new ApiError("Order not found", 404);
   }
   await rebindOrdersLocalization(order, lang);
@@ -990,7 +1060,7 @@ export async function listOrdersForAdminService(query = {}) {
   if (warehouse) {
     if (hasWarehouseScope) {
       const allowed = warehouseScope.some(
-        (w) => String(w) === String(warehouse)
+        (w) => String(w) === String(warehouse),
       );
       if (!allowed) {
         throw new ApiError("You are not allowed to access this route", 403);
@@ -1043,7 +1113,7 @@ export async function listOrdersForAdminService(query = {}) {
 export async function getOrderByIdForAdminService(
   orderId,
   lang = "en",
-  warehouseScope
+  warehouseScope,
 ) {
   const order = await OrderModel.findById(orderId).populate({
     path: "history.byUserId",
@@ -1055,7 +1125,7 @@ export async function getOrderByIdForAdminService(
 
   if (Array.isArray(warehouseScope)) {
     const allowed = warehouseScope.some(
-      (w) => String(w) === String(order.warehouse)
+      (w) => String(w) === String(order.warehouse),
     );
     if (!allowed) {
       throw new ApiError("Order not found", 404);
@@ -1089,7 +1159,7 @@ export async function updateOrderStatusService({
 
       if (Array.isArray(warehouseScope)) {
         const allowedWarehouse = warehouseScope.some(
-          (w) => String(w) === String(order.warehouse)
+          (w) => String(w) === String(order.warehouse),
         );
         if (!allowedWarehouse) {
           throw new ApiError("Order not found", 404);
@@ -1105,7 +1175,7 @@ export async function updateOrderStatusService({
       if (!isValidStatusTransition(oldStatus, newStatus)) {
         throw new ApiError(
           `Invalid status transition from ${oldStatus} to ${newStatus}`,
-          400
+          400,
         );
       }
 
@@ -1128,7 +1198,7 @@ export async function updateOrderStatusService({
         await UserModel.updateOne(
           { _id: order.user },
           { $inc: { walletBalance: order.walletUsed } },
-          { session }
+          { session },
         );
 
         const userAfterRefund = await UserModel.findById(order.user)
@@ -1147,34 +1217,39 @@ export async function updateOrderStatusService({
               note: `Refund for cancelled order ${order.orderNumber}`,
             },
           ],
-          { session }
+          { session },
         );
       }
 
       order.status = newStatus;
 
       // Auto-mark COD payments as paid when delivered
-      if (newStatus === orderStatusEnum.DELIVERED && 
-          order.paymentMethod === paymentMethodEnum.COD && 
-          order.paymentStatus !== paymentStatusEnum.PAID) {
+      if (
+        newStatus === orderStatusEnum.DELIVERED &&
+        order.paymentMethod === paymentMethodEnum.COD &&
+        order.paymentStatus !== paymentStatusEnum.PAID
+      ) {
         order.paymentStatus = paymentStatusEnum.PAID;
       }
 
       // Award loyalty points when order is delivered
       if (newStatus === orderStatusEnum.DELIVERED && order.user) {
         // Points on items only (subtotal - discounts), excluding shipping
-        const itemsValue = Math.max(0, (order.subtotal || 0) - (order.discountAmount || 0));
+        const itemsValue = Math.max(
+          0,
+          (order.subtotal || 0) - (order.discountAmount || 0),
+        );
         const pointsToAward = await calculateLoyaltyPointsForOrder(itemsValue);
-        
+
         if (pointsToAward > 0) {
           const userAfterPoints = await UserModel.findOneAndUpdate(
             { _id: order.user },
             { $inc: { loyaltyPoints: pointsToAward } },
-            { session, new: true, select: "loyaltyPoints" }
+            { session, new: true, select: "loyaltyPoints" },
           );
-          
+
           order.loyaltyPointsAwarded = pointsToAward;
-          
+
           await LoyaltyTransactionModel.create(
             [
               {
@@ -1187,7 +1262,7 @@ export async function updateOrderStatusService({
                 description: `Earned ${pointsToAward} points from order ${order.orderNumber}`,
               },
             ],
-            { session }
+            { session },
           );
 
           // Notify user about points earned
@@ -1212,40 +1287,47 @@ export async function updateOrderStatusService({
             },
             channels: { push: true, inApp: true },
           }).catch((err) => {
-            console.error("[Order] Failed to dispatch loyalty points notification:", err.message);
+            console.error(
+              "[Order] Failed to dispatch loyalty points notification:",
+              err.message,
+            );
           });
         }
       }
 
       // Deduct loyalty points if order is cancelled/returned after points were awarded
-      if ((newStatus === orderStatusEnum.CANCELLED || newStatus === orderStatusEnum.RETURNED) && 
-          order.user && 
-          order.loyaltyPointsAwarded > 0) {
+      if (
+        (newStatus === orderStatusEnum.CANCELLED ||
+          newStatus === orderStatusEnum.RETURNED) &&
+        order.user &&
+        order.loyaltyPointsAwarded > 0
+      ) {
         const deductionResult = await deductLoyaltyPointsOnReturnService({
           userId: order.user,
           pointsToDeduct: order.loyaltyPointsAwarded,
           session,
         });
-        
+
         const userAfterDeduction = await UserModel.findById(order.user)
           .select("loyaltyPoints")
           .session(session);
-        
+
         await LoyaltyTransactionModel.create(
           [
             {
               user: order.user,
-              points: -(deductionResult.pointsDeducted),
+              points: -deductionResult.pointsDeducted,
               type: "DEDUCTED",
               referenceType: "ORDER",
               referenceId: order._id,
               balanceAfter: userAfterDeduction?.loyaltyPoints ?? 0,
-              description: deductionResult.walletDeducted > 0
-                ? `Deducted ${deductionResult.pointsDeducted} points and ${deductionResult.walletDeducted} EGP from wallet for ${newStatus} order ${order.orderNumber}`
-                : `Deducted ${order.loyaltyPointsAwarded} points due to ${newStatus} order ${order.orderNumber}`,
+              description:
+                deductionResult.walletDeducted > 0
+                  ? `Deducted ${deductionResult.pointsDeducted} points and ${deductionResult.walletDeducted} EGP from wallet for ${newStatus} order ${order.orderNumber}`
+                  : `Deducted ${order.loyaltyPointsAwarded} points due to ${newStatus} order ${order.orderNumber}`,
             },
           ],
-          { session }
+          { session },
         );
       }
 
@@ -1266,7 +1348,10 @@ export async function updateOrderStatusService({
   if (updated) {
     // Fire-and-forget notification about the status change
     sendOrderStatusChangedNotification(updated).catch((err) =>
-      console.error("[Order] Failed to send status change notification:", err.message)
+      console.error(
+        "[Order] Failed to send status change notification:",
+        err.message,
+      ),
     );
   }
 

@@ -5,6 +5,8 @@ import {
   createOrderForGuestService,
   getMyOrdersService,
   getMyOrderByIdService,
+  getGuestOrdersService,
+  getGuestOrderByIdService,
   listOrdersForAdminService,
   getOrderByIdForAdminService,
   updateOrderStatusService,
@@ -76,6 +78,41 @@ export const getMyOrder = asyncHandler(async (req, res) => {
   res.status(200).json({ data: order });
 });
 
+export const getGuestOrders = asyncHandler(async (req, res) => {
+  const guestId = getGuestId(req);
+  if (!guestId) {
+    throw new ApiError("x-guest-id header is required", 400);
+  }
+
+  const { page, limit } = req.query;
+
+  const result = await getGuestOrdersService({
+    guestId,
+    page,
+    limit,
+    lang: req.lang,
+  });
+
+  res.status(200).json(result);
+});
+
+export const getGuestOrder = asyncHandler(async (req, res) => {
+  const guestId = getGuestId(req);
+  if (!guestId) {
+    throw new ApiError("x-guest-id header is required", 400);
+  }
+
+  const orderId = req.params.id;
+
+  const order = await getGuestOrderByIdService({
+    guestId,
+    orderId,
+    lang: req.lang,
+  });
+
+  res.status(200).json({ data: order });
+});
+
 export const listOrdersForAdmin = asyncHandler(async (req, res) => {
   const result = await listOrdersForAdminService({
     ...req.query,
@@ -91,7 +128,7 @@ export const getOrderForAdmin = asyncHandler(async (req, res) => {
   const order = await getOrderByIdForAdminService(
     orderId,
     req.lang,
-    req.orderWarehouseScope
+    req.orderWarehouseScope,
   );
 
   res.status(200).json({ data: order });

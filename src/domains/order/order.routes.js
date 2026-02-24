@@ -4,6 +4,8 @@ import {
   createOrderForUser,
   getMyOrders,
   getMyOrder,
+  getGuestOrders,
+  getGuestOrder,
   listOrdersForAdmin,
   getOrderForAdmin,
   updateOrderStatusForAdmin,
@@ -30,6 +32,8 @@ const router = Router();
 
 // Guest checkout order
 router.post("/guest", createOrderForGuestValidator, createOrderForGuest);
+router.get("/guest", getGuestOrders);
+router.get("/guest/:id", orderIdParamValidator, getGuestOrder);
 
 // Logged-in user orders
 router.use("/me", protect);
@@ -38,7 +42,7 @@ router.post(
   "/me",
   requireSystemPhoneVerifiedForSensitiveActions,
   createOrderForUserValidator,
-  createOrderForUser
+  createOrderForUser,
 );
 router.get("/me", getMyOrders);
 router.get("/me/:id", orderIdParamValidator, getMyOrder);
@@ -49,7 +53,7 @@ router.use(
   protect,
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
   enabledControlsMiddleware(enabledControlsEnum.ORDERS),
-  scopeOrdersToModeratorWarehouses
+  scopeOrdersToModeratorWarehouses,
 );
 
 router.get("/admin", listOrdersForAdmin);
@@ -58,7 +62,7 @@ router.patch(
   "/admin/:id/status",
   orderIdParamValidator,
   updateOrderStatusValidator,
-  updateOrderStatusForAdmin
+  updateOrderStatusForAdmin,
 );
 
 export default router;
