@@ -148,7 +148,10 @@ serviceReservationSchema.index(
   { guestId: 1, startsAt: 1 },
   {
     unique: true,
-    partialFilterExpression: { status: serviceReservationStatusEnum.BOOKED },
+    partialFilterExpression: {
+      status: serviceReservationStatusEnum.BOOKED,
+      guestId: { $type: "string" },
+    },
   }
 );
 
