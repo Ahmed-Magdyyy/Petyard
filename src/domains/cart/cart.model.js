@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
-import { cartStatusEnum, productTypeEnum } from "../../shared/constants/enums.js";
+import {
+  cartStatusEnum,
+  productTypeEnum,
+} from "../../shared/constants/enums.js";
 
 const { Schema, model } = mongoose;
 
@@ -24,7 +27,7 @@ const cartItemSchema = new Schema(
     productImageUrl: {
       type: String,
     },
-    
+
     variantId: {
       type: Schema.Types.ObjectId,
     },
@@ -51,7 +54,7 @@ const cartItemSchema = new Schema(
   },
   {
     _id: true,
-  }
+  },
 );
 
 const cartSchema = new Schema(
@@ -89,7 +92,7 @@ const cartSchema = new Schema(
       type: String,
       default: "EGP",
     },
-    
+
     deliveryAddress: {
       userAddressId: {
         type: Schema.Types.ObjectId,
@@ -99,6 +102,9 @@ const cartSchema = new Schema(
       governorate: String,
       area: String,
       phone: String,
+      building: String,
+      floor: String,
+      apartment: String,
       location: {
         lat: Number,
         lng: Number,
@@ -132,7 +138,7 @@ const cartSchema = new Schema(
       default: 0,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 cartSchema.index({ user: 1 });

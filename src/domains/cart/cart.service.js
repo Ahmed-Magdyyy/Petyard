@@ -505,15 +505,12 @@ export async function setCartAddressFromUserService({
 }) {
   await assertWarehouseExists(warehouseId);
 
-  const user = await UserModel.findById(userId);
-  if (!user) {
-    throw new ApiError("User not found", 404);
-  }
-
-  const address = user.addresses && user.addresses.id(userAddressId);
-  if (!address) {
-    throw new ApiError("Address not found for this user", 404);
-  }
+  const { findAddressByIdForUser } =
+    await import("../address/address.service.js");
+  const address = await findAddressByIdForUser({
+    addressId: userAddressId,
+    userId,
+  });
 
   const baseCart = await getOrCreateCart({
     userId,
@@ -524,10 +521,13 @@ export async function setCartAddressFromUserService({
   baseCart.deliveryAddress = {
     userAddressId: address._id,
     label: address.label || undefined,
-    name: address.name || user.name || undefined,
+    name: address.name || undefined,
     governorate: address.governorate || undefined,
     area: address.area || undefined,
-    phone: address.phone || user.phone || undefined,
+    phone: address.phone || undefined,
+    building: address.building || undefined,
+    floor: address.floor || undefined,
+    apartment: address.apartment || undefined,
     location: address.location
       ? {
           lat: address.location.lat,

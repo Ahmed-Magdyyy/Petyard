@@ -50,7 +50,7 @@ export const updateUserPassword = asyncHandler(async (req, res) => {
   const { password } = req.body;
   const updatedUser = await updateUserPasswordByAdminService(
     req.params.id,
-    password
+    password,
   );
 
   res.status(200).json({ data: updatedUser });
@@ -59,15 +59,18 @@ export const updateUserPassword = asyncHandler(async (req, res) => {
 // DELETE /users/:id
 export const deleteUser = asyncHandler(async (req, res) => {
   const deletedUser = await deleteUserService(req.params.id);
-  res
-    .status(200)
-    .json({ message: "user deleted successfully" });
+  res.status(200).json({ message: "user deleted successfully" });
 });
 
 // PATCH /users/:id/toggle-active
 export const toggleUserActive = asyncHandler(async (req, res) => {
   const updatedUser = await toggleUserActiveService(req.params.id);
-  res.status(200).json({message: "user active status changed successfully", data: updatedUser });
+  res
+    .status(200)
+    .json({
+      message: "user active status changed successfully",
+      data: updatedUser,
+    });
 });
 
 // ----- Logged-in User Controllers -----

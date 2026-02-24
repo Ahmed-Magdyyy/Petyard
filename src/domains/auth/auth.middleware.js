@@ -2,7 +2,11 @@ import asyncHandler from "express-async-handler";
 import jwt from "jsonwebtoken";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { UserModel } from "../user/user.model.js";
-import { authProviderEnum, roles, accountStatus } from "../../shared/constants/enums.js";
+import {
+  authProviderEnum,
+  roles,
+  accountStatus,
+} from "../../shared/constants/enums.js";
 
 export const protect = asyncHandler(async (req, res, next) => {
   let accessToken;
@@ -23,6 +27,7 @@ export const protect = asyncHandler(async (req, res, next) => {
   }
 
   const currentUser = await UserModel.findById(decoded.userId);
+  console.log("currentUser", currentUser);
 
   if (!currentUser) {
     throw new ApiError("User no longer exists", 401);
@@ -33,7 +38,10 @@ export const protect = asyncHandler(async (req, res, next) => {
   }
 
   if (currentUser.account_status === accountStatus.PANNED) {
-    throw new ApiError("Your account have been panned. please contact support", 403)
+    throw new ApiError(
+      "Your account have been panned. please contact support",
+      403,
+    );
   }
 
   if (
@@ -42,7 +50,7 @@ export const protect = asyncHandler(async (req, res, next) => {
   ) {
     throw new ApiError(
       "Password was changed recently, please login again",
-      401
+      401,
     );
   }
 
@@ -86,7 +94,10 @@ export const optionalProtect = asyncHandler(async (req, res, next) => {
     currentUser.passwordChangedAT &&
     currentUser.passwordChangedAT.getTime() > decoded.iat * 1000
   ) {
-    throw new ApiError("Password was changed recently, please login again", 401);
+    throw new ApiError(
+      "Password was changed recently, please login again",
+      401,
+    );
   }
 
   if (!currentUser.active) {
@@ -110,12 +121,12 @@ export const enabledControls = (...scope) =>
     if (req.user.role === roles.ADMIN) {
       const normalizedScope = scope.flat();
       const hasControl = normalizedScope.every((s) =>
-        req.user.enabledControls?.includes(s)
+        req.user.enabledControls?.includes(s),
       );
       if (!hasControl) {
         throw new ApiError(
           "You don't have the permission to access this. Contact support to enable it.",
-          403
+          403,
         );
       }
     }
@@ -131,7 +142,7 @@ export const onlySocialProfileCompletionPhone = asyncHandler(
     if (req.user.signupProvider === authProviderEnum.SYSTEM) {
       throw new ApiError(
         "Only users who signed up via Google/Apple allowed for this route",
-        403
+        403,
       );
     }
 
@@ -140,7 +151,7 @@ export const onlySocialProfileCompletionPhone = asyncHandler(
     }
 
     next();
-  }
+  },
 );
 
 export const requireSystemPhoneVerifiedForSensitiveActions = asyncHandler(
@@ -158,5 +169,5 @@ export const requireSystemPhoneVerifiedForSensitiveActions = asyncHandler(
     }
 
     next();
-  }
+  },
 );

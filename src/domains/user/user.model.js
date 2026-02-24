@@ -22,7 +22,7 @@ const authProviderSchema = new Schema(
     email: { type: String, lowercase: true },
     linkedAt: { type: Date, default: Date.now },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const userSchema = new Schema(
@@ -81,25 +81,6 @@ const userSchema = new Schema(
     pendingPhoneVerificationExpires: { type: Date },
     pendingPhoneOtpLastSentAt: { type: Date },
     pendingPhoneOtpSendCountToday: { type: Number, default: 0 },
-
-    addresses: {
-      type: [
-        {
-          label: String,
-          name: String,
-          governorate: String,
-          area: String,
-          phone: String,
-          location: {
-            lat: Number,
-            lng: Number,
-          },
-          details: String,
-          isDefault: { type: Boolean, default: false },
-        },
-      ],
-      default: [],
-    },
 
     walletBalance: {
       type: Number,
@@ -183,7 +164,7 @@ const userSchema = new Schema(
         return ret;
       },
     },
-  }
+  },
 );
 
 userSchema.index(
@@ -191,7 +172,7 @@ userSchema.index(
   {
     unique: true,
     partialFilterExpression: { email: { $type: "string" } },
-  }
+  },
 );
 
 userSchema.index(
@@ -199,7 +180,7 @@ userSchema.index(
   {
     unique: true,
     partialFilterExpression: { phone: { $type: "string" } },
-  }
+  },
 );
 
 userSchema.index(
@@ -207,7 +188,7 @@ userSchema.index(
   {
     unique: true,
     sparse: true,
-  }
+  },
 );
 
 userSchema.index({ role: 1 });

@@ -20,9 +20,19 @@ import {
 } from "./user.controller.js";
 
 import { oauthSendOtp, oauthVerifyPhone } from "../auth/auth.controller.js";
-import { protect, allowedTo, enabledControls as enabledControlsMiddleware } from "../auth/auth.middleware.js";
-import { roles, enabledControls as enabledControlsEnum } from "../../shared/constants/enums.js";
-import { oauthSendOtpValidator, oauthVerifyPhoneValidator } from "../auth/auth.validators.js";
+import {
+  protect,
+  allowedTo,
+  enabledControls as enabledControlsMiddleware,
+} from "../auth/auth.middleware.js";
+import {
+  roles,
+  enabledControls as enabledControlsEnum,
+} from "../../shared/constants/enums.js";
+import {
+  oauthSendOtpValidator,
+  oauthVerifyPhoneValidator,
+} from "../auth/auth.validators.js";
 import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
 import {
   createUserValidator,
@@ -31,64 +41,82 @@ import {
   updateLoggedUserPasswordValidator,
   updateLoggedUserDataValidator,
   updateUserActiveValidator,
-  addressIdParamValidator,
-  addMyAddressValidator,
-  updateMyAddressValidator,
-  setDefaultMyAddressValidator,
 } from "./user.validators.js";
+import {
+  addAddressValidator,
+  updateAddressValidator,
+  deleteAddressValidator,
+  setDefaultAddressValidator,
+} from "../address/address.validators.js";
 
 const router = Router();
 
 // ----- Logged-in User Routes -----
 
 router.get("/me", protect, getLoggedUser);
-router.patch("/me/password", protect, updateLoggedUserPasswordValidator, updateLoggedUserPassword);
+router.patch(
+  "/me/password",
+  protect,
+  updateLoggedUserPasswordValidator,
+  updateLoggedUserPassword,
+);
 router.patch(
   "/me",
   protect,
   uploadSingleImage("image"),
   updateLoggedUserDataValidator,
-  updateLoggedUserData
+  updateLoggedUserData,
 );
 router.post("/me/phone/send-otp", protect, oauthSendOtpValidator, oauthSendOtp);
-router.post("/me/phone/verify", protect, oauthVerifyPhoneValidator, oauthVerifyPhone);
+router.post(
+  "/me/phone/verify",
+  protect,
+  oauthVerifyPhoneValidator,
+  oauthVerifyPhone,
+);
 router.delete("/me", protect, deleteLoggedUser);
 
 router.get("/me/addresses", protect, getMyAddresses);
-router.post("/me/addresses", protect, addMyAddressValidator, addMyAddress);
+router.post("/me/addresses", protect, addAddressValidator, addMyAddress);
 router.patch(
   "/me/addresses/:addressId",
   protect,
-  addressIdParamValidator,
-  updateMyAddressValidator,
-  updateMyAddress
+  updateAddressValidator,
+  updateMyAddress,
 );
 router.delete(
   "/me/addresses/:addressId",
   protect,
-  addressIdParamValidator,
-  deleteMyAddress
+  deleteAddressValidator,
+  deleteMyAddress,
 );
 router.patch(
   "/me/addresses/:addressId/default",
   protect,
-  setDefaultMyAddressValidator,
-  setDefaultMyAddress
+  setDefaultAddressValidator,
+  setDefaultMyAddress,
 );
 
 // ----- Admin Routes -----
-router.use(protect, allowedTo(roles.ADMIN, roles.SUPER_ADMIN), enabledControlsMiddleware(enabledControlsEnum.USERS));
+router.use(
+  protect,
+  allowedTo(roles.ADMIN, roles.SUPER_ADMIN),
+  enabledControlsMiddleware(enabledControlsEnum.USERS),
+);
 
-router.route("/")
-  .get(getUsers)
-  .post(createUserValidator, createUser);
+router.route("/").get(getUsers).post(createUserValidator, createUser);
 
-router.route("/:id")
+router
+  .route("/:id")
   .get(getUser)
   .patch(updateUserValidator, updateUser)
   .delete(deleteUser);
 
-router.patch("/:id/password", updateUserPasswordByAdminValidator, updateUserPassword);
+router.patch(
+  "/:id/password",
+  updateUserPasswordByAdminValidator,
+  updateUserPassword,
+);
 
 router.patch("/:id/toggle-active", updateUserActiveValidator, toggleUserActive);
 
