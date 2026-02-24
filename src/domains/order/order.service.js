@@ -945,6 +945,7 @@ export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
 
   const totalCount = await OrderModel.countDocuments(filter);
   const orders = await OrderModel.find(filter)
+    .select("-guestId")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
@@ -961,7 +962,7 @@ export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
 }
 
 export async function getMyOrderByIdService({ userId, orderId, lang = "en" }) {
-  const order = await OrderModel.findById(orderId).populate({
+  const order = await OrderModel.findById(orderId).select("-guestId").populate({
     path: "history.byUserId",
     select: "role name",
   });
@@ -986,6 +987,7 @@ export async function getGuestOrdersService({
 
   const totalCount = await OrderModel.countDocuments(filter);
   const orders = await OrderModel.find(filter)
+    .select("-user")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
@@ -1006,7 +1008,7 @@ export async function getGuestOrderByIdService({
   orderId,
   lang = "en",
 }) {
-  const order = await OrderModel.findById(orderId).populate({
+  const order = await OrderModel.findById(orderId).select("-user").populate({
     path: "history.byUserId",
     select: "role name",
   });
