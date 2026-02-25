@@ -36,12 +36,14 @@ const addressFields = [
     .withMessage("Apartment number must be a string"),
 
   body("location.lat")
-    .optional({ nullable: true })
+    .notEmpty()
+    .withMessage("location.lat is required")
     .isFloat()
     .withMessage("location.lat must be a number"),
 
   body("location.lng")
-    .optional({ nullable: true })
+    .notEmpty()
+    .withMessage("location.lng is required")
     .isFloat()
     .withMessage("location.lng must be a number"),
 
