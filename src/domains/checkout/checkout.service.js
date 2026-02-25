@@ -378,11 +378,32 @@ export async function getCheckoutSummaryService({
     estimatedLoyaltyPoints = await calculateLoyaltyPointsForOrder(netSubtotal);
   }
 
+  // Validate delivery address completeness before returning summary
+  const addr = cartResponse.deliveryAddress;
+  if (!addr) {
+    throw new ApiError("Delivery address is not set for this cart", 400);
+  }
+  const requiredFields = ["name", "governorate", "phone", "building", "floor", "apartment", "details"];
+  const missingFields = requiredFields.filter((f) => !addr[f]);
+  if (missingFields.length > 0) {
+    throw new ApiError(
+      `Delivery address is missing required fields: ${missingFields.join(", ")}`,
+      400
+    );
+  }
+  if (
+    !addr.location ||
+    typeof addr.location.lat !== "number" ||
+    typeof addr.location.lng !== "number"
+  ) {
+    throw new ApiError("Delivery address is missing location (lat, lng)", 400);
+  }
+
   return {
     cartId: cartResponse.id,
     warehouseId: cartResponse.warehouseId,
     currency: cartResponse.currency || "EGP",
-    deliveryAddress: cartResponse.deliveryAddress,
+    deliveryAddress: addr,
     items: cartResponse.items,
     pricing: {
       ...pricing,

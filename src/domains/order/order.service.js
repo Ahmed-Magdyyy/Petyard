@@ -727,6 +727,26 @@ async function processOrderCreationWithCart({
     throw new ApiError("Delivery address is not set for this cart", 400);
   }
 
+  // Validate required address fields
+  const requiredFields = ["name", "governorate", "phone", "building", "floor", "apartment", "details"];
+  const missingFields = requiredFields.filter((f) => !deliveryAddress[f]);
+  if (missingFields.length > 0) {
+    throw new ApiError(
+      `Delivery address is missing required fields: ${missingFields.join(", ")}`,
+      400
+    );
+  }
+  if (
+    !deliveryAddress.location ||
+    typeof deliveryAddress.location.lat !== "number" ||
+    typeof deliveryAddress.location.lng !== "number"
+  ) {
+    throw new ApiError(
+      "Delivery address is missing location (lat, lng)",
+      400
+    );
+  }
+
   await ensureSufficientStockAndDecrement({ session, cart });
 
   const orderNumber = generateOrderNumber();
