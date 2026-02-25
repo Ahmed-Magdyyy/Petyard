@@ -142,6 +142,9 @@ function mapCartToResponse(cart) {
         governorate: cart.deliveryAddress.governorate || null,
         area: cart.deliveryAddress.area || null,
         phone: cart.deliveryAddress.phone || null,
+        building: cart.deliveryAddress.building || null,
+        floor: cart.deliveryAddress.floor || null,
+        apartment: cart.deliveryAddress.apartment || null,
         location: cart.deliveryAddress.location
           ? {
               lat: cart.deliveryAddress.location.lat,
@@ -520,7 +523,6 @@ export async function setCartAddressFromUserService({
     guestId: null,
     warehouseId,
   });
-
   baseCart.deliveryAddress = {
     userAddressId: address._id,
     label: address.label || undefined,
@@ -547,7 +549,7 @@ export async function setCartAddressFromUserService({
 export async function setCartAddressForGuestService({
   guestId,
   warehouseId,
-  address,
+  guestAddressId,
   lang = "en",
 }) {
   if (!guestId) {
@@ -556,31 +558,36 @@ export async function setCartAddressForGuestService({
 
   await assertWarehouseExists(warehouseId);
 
+  const { findAddressByIdForGuest } =
+    await import("../address/address.service.js");
+  const address = await findAddressByIdForGuest({
+    addressId: guestAddressId,
+    guestId,
+  });
+
   const baseCart = await getOrCreateCart({
     userId: null,
     guestId,
     warehouseId,
   });
 
-  const safeAddress = address || {};
-
   baseCart.deliveryAddress = {
     userAddressId: undefined,
-    label: safeAddress.label || undefined,
-    name: safeAddress.name || undefined,
-    governorate: safeAddress.governorate || undefined,
-    area: safeAddress.area || undefined,
-    phone: safeAddress.phone || undefined,
-    location:
-      safeAddress.location &&
-      typeof safeAddress.location === "object" &&
-      safeAddress.location !== null
-        ? {
-            lat: safeAddress.location.lat,
-            lng: safeAddress.location.lng,
-          }
-        : undefined,
-    details: safeAddress.details || undefined,
+    label: address.label || undefined,
+    name: address.name || undefined,
+    governorate: address.governorate || undefined,
+    area: address.area || undefined,
+    phone: address.phone || undefined,
+    building: address.building || undefined,
+    floor: address.floor || undefined,
+    apartment: address.apartment || undefined,
+    location: address.location
+      ? {
+          lat: address.location.lat,
+          lng: address.location.lng,
+        }
+      : undefined,
+    details: address.details || undefined,
   };
 
   const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);

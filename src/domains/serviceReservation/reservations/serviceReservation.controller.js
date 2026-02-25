@@ -40,12 +40,13 @@ export const adminUpdateReservationStatus = asyncHandler(async (req, res) => {
 });
 
 export const adminListReservationsByDate = asyncHandler(async (req, res) => {
-  const { date, locationId, status, page, limit } = req.query;
+  const { date, locationId, status, sort, page, limit } = req.query;
 
   const result = await adminListReservationsByDateService({
     date,
     locationId: locationId || undefined,
     status: status || undefined,
+    sort: sort || undefined,
     page,
     limit,
     lang: req.lang,
@@ -82,12 +83,13 @@ export const createReservationForGuest = asyncHandler(async (req, res) => {
 });
 
 export const listMyReservations = asyncHandler(async (req, res) => {
-  const { scope, status } = req.query;
+  const { scope, status, sort } = req.query;
 
   const result = await listReservationsForUserService({
     userId: req.user._id,
     scope,
     status,
+    sort: sort || undefined,
     lang: req.lang,
   });
 
@@ -100,12 +102,13 @@ export const listGuestReservations = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const { scope, status } = req.query;
+  const { scope, status, sort } = req.query;
 
   const result = await listReservationsForGuestService({
     guestId,
     scope: scope || "upcoming",
     status,
+    sort: sort || undefined,
     lang: req.lang,
   });
 

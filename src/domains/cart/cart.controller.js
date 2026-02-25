@@ -127,21 +127,12 @@ export const setGuestCartAddress = asyncHandler(async (req, res) => {
   }
 
   const warehouseId = req.params.warehouseId;
-
-  const address = {
-    label: req.body.label,
-    name: req.body.name,
-    governorate: req.body.governorate,
-    area: req.body.area,
-    phone: req.body.phone,
-    location: req.body.location,
-    details: req.body.details,
-  };
+  const { guestAddressId } = req.body;
 
   const cart = await setCartAddressForGuestService({
     guestId,
     warehouseId,
-    address,
+    guestAddressId,
     lang: req.lang,
   });
 

@@ -253,3 +253,11 @@ export async function findAddressByIdForUser({ addressId, userId }) {
   }
   return address;
 }
+
+export async function findAddressByIdForGuest({ addressId, guestId }) {
+  const address = await AddressModel.findOne({ _id: addressId, guestId });
+  if (!address) {
+    throw new ApiError("Address not found for this guest", 404);
+  }
+  return address;
+}

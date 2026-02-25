@@ -6,13 +6,24 @@ export function buildPagination({ page, limit }, defaultLimit = 10) {
   return { pageNum, limitNum, skip };
 }
 
+// Common sort aliases so consumers can use friendly names
+const SORT_ALIASES = {
+  upcoming: "startsAt",
+  past: "-startsAt",
+  newest: "-createdAt",
+  oldest: "createdAt",
+};
+
 // Build sort object from query params
 export function buildSort({ sort }, defaultSort = "-createdAt") {
-  const sortValue = sort || defaultSort;
+  const raw = sort || defaultSort;
 
-  if (!sortValue) return undefined;
+  if (!raw) return undefined;
 
-  const sortFields = String(sortValue)
+  // Resolve alias if the entire value matches one
+  const resolved = SORT_ALIASES[raw] || raw;
+
+  const sortFields = String(resolved)
     .split(",")
     .map((field) => field.trim())
     .filter(Boolean);

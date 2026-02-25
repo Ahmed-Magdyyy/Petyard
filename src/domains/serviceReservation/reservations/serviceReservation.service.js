@@ -30,7 +30,7 @@ import {
 } from "./serviceReservation.utils.js";
 import { getServiceLocationByIdService } from "../locations/serviceLocation.service.js";
 import { dispatchNotification } from "../../notification/notificationDispatcher.js";
-import { buildPagination } from "../../../shared/utils/apiFeatures.js";
+import { buildPagination, buildSort } from "../../../shared/utils/apiFeatures.js";
 
 function getRoomTypeForService(serviceType) {
   if (serviceType === serviceTypeEnum.CLINIC)
@@ -610,6 +610,7 @@ export async function listReservationsForUserService({
   userId,
   scope,
   status,
+  sort,
   lang,
 }) {
   if (!userId) {
@@ -623,19 +624,15 @@ export async function listReservationsForUserService({
     filter.status = status;
   }
 
-  // Determine sort order based on scope
-  let sortOrder = { startsAt: 1 }; // default: ascending (upcoming first)
-
   if (scope === "upcoming") {
     filter.startsAt = { $gte: nowUtc };
-    sortOrder = { startsAt: 1 }; // earliest upcoming first
   } else if (scope === "past") {
     filter.startsAt = { $lt: nowUtc };
-    sortOrder = { startsAt: -1 }; // most recent past first
-  } else {
-    // No scope: show all, sorted by nearest to now (upcoming first, then past in reverse)
-    sortOrder = { startsAt: 1 };
   }
+
+  // Use explicit sort if provided, otherwise default based on scope
+  const defaultSort = scope === "past" ? "-startsAt" : "startsAt";
+  const sortOrder = buildSort({ sort }, defaultSort);
 
   const reservations = await ServiceReservationModel.find(filter)
     .populate(
@@ -657,6 +654,7 @@ export async function adminListReservationsByDateService({
   date,
   locationId,
   status,
+  sort,
   page = 1,
   limit = 20,
   lang,
@@ -678,6 +676,7 @@ export async function adminListReservationsByDateService({
   if (locationId) filter.location = locationId;
   if (status) filter.status = status;
 
+  const sortOrder = buildSort({ sort }, "startsAt");
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 20);
 
   const [reservations, totalCount] = await Promise.all([
@@ -686,7 +685,7 @@ export async function adminListReservationsByDateService({
         "location",
         "_id slug name_en name_ar city timezone googleMapsLink phone",
       )
-      .sort({ startsAt: 1 })
+      .sort(sortOrder)
       .skip(skip)
       .limit(limitNum)
       .lean(),
@@ -713,6 +712,7 @@ export async function listReservationsForGuestService({
   guestId,
   scope,
   status,
+  sort,
   lang,
 }) {
   if (!guestId) {
@@ -726,19 +726,15 @@ export async function listReservationsForGuestService({
     filter.status = status;
   }
 
-  // Determine sort order based on scope
-  let sortOrder = { startsAt: 1 }; // default: ascending
-
   if (scope === "upcoming") {
     filter.startsAt = { $gte: nowUtc };
-    sortOrder = { startsAt: 1 }; // earliest upcoming first
   } else if (scope === "past") {
     filter.startsAt = { $lt: nowUtc };
-    sortOrder = { startsAt: -1 }; // most recent past first
-  } else {
-    // No scope: show all, sorted by nearest to now
-    sortOrder = { startsAt: 1 };
   }
+
+  // Use explicit sort if provided, otherwise default based on scope
+  const defaultSort = scope === "past" ? "-startsAt" : "startsAt";
+  const sortOrder = buildSort({ sort }, defaultSort);
 
   const reservations = await ServiceReservationModel.find(filter)
     .populate(

@@ -391,6 +391,20 @@ export async function resolveLocationByCoordinatesService({
     throw new ApiError("lat and lng must be numbers", 400);
   }
 
+  // Egypt bounding box check — reject coordinates outside Egypt
+  const EGYPT_BOUNDS = { minLat: 22.0, maxLat: 31.7, minLng: 24.7, maxLng: 36.9 };
+  if (
+    latNum < EGYPT_BOUNDS.minLat ||
+    latNum > EGYPT_BOUNDS.maxLat ||
+    lngNum < EGYPT_BOUNDS.minLng ||
+    lngNum > EGYPT_BOUNDS.maxLng
+  ) {
+    throw new ApiError(
+      "Coordinates are outside Egypt. We only serve locations within Egypt.",
+      400,
+    );
+  }
+
   let decisionRawGov = null;
   let decisionNormalizedGov = null;
   let isDecisionGovSupported = false;
