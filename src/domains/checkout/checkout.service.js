@@ -383,6 +383,7 @@ export async function getCheckoutSummaryService({
   if (!addr) {
     throw new ApiError("Delivery address is not set for this cart", 400);
   }
+  console.log("address", addr);
   const requiredFields = ["name", "governorate", "phone", "building", "floor", "apartment", "details"];
   const missingFields = requiredFields.filter((f) => !addr[f]);
   if (missingFields.length > 0) {

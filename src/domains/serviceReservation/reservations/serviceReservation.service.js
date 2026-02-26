@@ -676,7 +676,22 @@ export async function adminListReservationsByDateService({
   if (locationId) filter.location = locationId;
   if (status) filter.status = status;
 
-  const sortOrder = buildSort({ sort }, "startsAt");
+  // Smart defaults: when no date filter, apply time-based filtering
+  const effectiveSort = sort || "upcoming";
+  const now = new Date();
+
+  if (!date) {
+    if (effectiveSort === "upcoming") {
+      // Only future reservations, soonest first
+      if (!filter.startsAt) filter.startsAt = { $gte: now };
+    } else if (effectiveSort === "past") {
+      // Only past reservations, most recent first
+      if (!filter.startsAt) filter.startsAt = { $lt: now };
+    }
+    // newest / oldest / raw fields → no time filter, show all
+  }
+
+  const sortOrder = buildSort({ sort: effectiveSort }, "startsAt");
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 20);
 
   const [reservations, totalCount] = await Promise.all([
@@ -692,18 +707,20 @@ export async function adminListReservationsByDateService({
     ServiceReservationModel.countDocuments(filter),
   ]);
 
+  const { DateTime } = await import("luxon");
+  const responseDate = cairoDateStart
+    ? cairoDateStart.toFormat("yyyy-LL-dd")
+    : DateTime.now().setZone("Africa/Cairo").toFormat("yyyy-LL-dd");
+
   const result = {
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     page: pageNum,
     results: reservations.length,
+    date: responseDate,
     data: await Promise.all(
       reservations.map((r) => buildReservationDto(r, r.location, lang)),
     ),
   };
-
-  if (cairoDateStart) {
-    result.date = cairoDateStart.toFormat("yyyy-LL-dd");
-  }
 
   return result;
 }
