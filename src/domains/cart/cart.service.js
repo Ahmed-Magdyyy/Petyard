@@ -332,6 +332,7 @@ async function finalizeActiveCartAndSave(cart, warehouseId) {
   computeTotalCartPrice(cart);
   cart.lastActivityAt = new Date();
   cart.status = cartStatusEnum.ACTIVE;
+  cart.abandonedAt = undefined
   await cart.save();
   return cart;
 }
