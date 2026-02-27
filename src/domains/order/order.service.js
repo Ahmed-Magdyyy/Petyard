@@ -291,6 +291,9 @@ function mapCartDeliveryAddressToOrder(cart, user) {
     governorate: src.governorate || undefined,
     area: src.area || undefined,
     phone: src.phone || (user && user.phone) || undefined,
+    building: src.building || undefined,
+    floor: src.floor || undefined,
+    apartment: src.apartment || undefined,
     location: src.location
       ? {
           lat: src.location.lat,
@@ -726,14 +729,21 @@ async function processOrderCreationWithCart({
   if (!deliveryAddress) {
     throw new ApiError("Delivery address is not set for this cart", 400);
   }
-
   // Validate required address fields
-  const requiredFields = ["name", "governorate", "phone", "building", "floor", "apartment", "details"];
+  const requiredFields = [
+    "name",
+    "governorate",
+    "phone",
+    "building",
+    "floor",
+    "apartment",
+    "details",
+  ];
   const missingFields = requiredFields.filter((f) => !deliveryAddress[f]);
   if (missingFields.length > 0) {
     throw new ApiError(
       `Delivery address is missing required fields: ${missingFields.join(", ")}`,
-      400
+      400,
     );
   }
   if (
@@ -741,10 +751,7 @@ async function processOrderCreationWithCart({
     typeof deliveryAddress.location.lat !== "number" ||
     typeof deliveryAddress.location.lng !== "number"
   ) {
-    throw new ApiError(
-      "Delivery address is missing location (lat, lng)",
-      400
-    );
+    throw new ApiError("Delivery address is missing location (lat, lng)", 400);
   }
 
   await ensureSufficientStockAndDecrement({ session, cart });
@@ -860,8 +867,7 @@ export async function createOrderForUserService({
     await session.withTransaction(async () => {
       const cart = await CartModel.findOne({ user: userId })
         .session(session)
-        .populate("user");
-
+        .populate("user", "name phone email");
       if (!cart) {
         throw new ApiError("Cart not found", 404);
       }

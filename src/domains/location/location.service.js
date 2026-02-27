@@ -392,7 +392,12 @@ export async function resolveLocationByCoordinatesService({
   }
 
   // Egypt bounding box check — reject coordinates outside Egypt
-  const EGYPT_BOUNDS = { minLat: 22.0, maxLat: 31.7, minLng: 24.7, maxLng: 36.9 };
+  const EGYPT_BOUNDS = {
+    minLat: 22.0,
+    maxLat: 31.7,
+    minLng: 24.7,
+    maxLng: 36.9,
+  };
   if (
     latNum < EGYPT_BOUNDS.minLat ||
     latNum > EGYPT_BOUNDS.maxLat ||
@@ -511,7 +516,7 @@ export async function resolveLocationByCoordinatesService({
     canDeliver = false;
     reasonCode = "NON_DELIVERABLE_OUTSIDE_BOUNDARIES_SUPPORTED_GOV";
     reasonMessage =
-      "We currently don't deliver to this exact area, but you can still browse products.";
+      "We currently don't deliver to this exact area, Choose another location.";
   } else {
     const defaultWarehouse = await findDefaultWarehouse();
     if (!defaultWarehouse) {

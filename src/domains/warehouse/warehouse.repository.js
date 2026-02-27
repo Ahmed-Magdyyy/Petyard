@@ -5,7 +5,7 @@ export async function countWarehouses(filter = {}) {
 }
 
 export async function findWarehouses(filter = {}, { skip, limit, sort } = {}) {
-  const query = WarehouseModel.find(filter);
+  const query = WarehouseModel.find(filter).select("-boundaryGeometry");
 
   if (typeof skip === "number" && skip > 0) {
     query.skip(skip);
@@ -31,13 +31,16 @@ export async function createWarehouse(doc) {
 }
 
 export async function clearAllDefaultWarehouses() {
-  return WarehouseModel.updateMany({ isDefault: true }, { $set: { isDefault: false } });
+  return WarehouseModel.updateMany(
+    { isDefault: true },
+    { $set: { isDefault: false } },
+  );
 }
 
 export async function clearDefaultForOtherWarehouses(id) {
   return WarehouseModel.updateMany(
     { _id: { $ne: id }, isDefault: true },
-    { $set: { isDefault: false } }
+    { $set: { isDefault: false } },
   );
 }
 

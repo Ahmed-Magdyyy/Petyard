@@ -126,12 +126,10 @@ export const setGuestCartAddress = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const warehouseId = req.params.warehouseId;
   const { guestAddressId } = req.body;
 
   const cart = await setCartAddressForGuestService({
     guestId,
-    warehouseId,
     guestAddressId,
     lang: req.lang,
   });
@@ -233,12 +231,10 @@ export const clearMyCart = asyncHandler(async (req, res) => {
 });
 
 export const setMyCartAddress = asyncHandler(async (req, res) => {
-  const warehouseId = req.params.warehouseId;
   const { userAddressId } = req.body;
 
   const cart = await setCartAddressFromUserService({
     userId: req.user._id,
-    warehouseId,
     userAddressId,
     lang: req.lang,
   });

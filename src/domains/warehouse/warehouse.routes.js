@@ -1,7 +1,14 @@
 // src/domains/warehouse/warehouse.routes.js
 import { Router } from "express";
-import { protect, allowedTo } from "../auth/auth.middleware.js";
-import { roles } from "../../shared/constants/enums.js";
+import {
+  protect,
+  allowedTo,
+  enabledControls as enabledControlsMiddleware,
+} from "../auth/auth.middleware.js";
+import {
+  roles,
+  enabledControls as enabledControlsEnum,
+} from "../../shared/constants/enums.js";
 import {
   getWarehouses,
   getWarehouse,
@@ -19,26 +26,54 @@ import {
 const router = Router();
 
 // Admin-only routes for managing warehouses
-router.use(
-  protect,
-  allowedTo(roles.SUPER_ADMIN, roles.ADMIN)
-);
 
 router
   .route("/")
-  .get(getWarehouses)
+  .get(
+    protect,
+    allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+    enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
+    getWarehouses,
+  )
   .post(createWarehouseValidator, createWarehouse);
 
 router
   .route("/:id")
-  .get(warehouseIdParamValidator, getWarehouse)
-  .patch(updateWarehouseValidator, updateWarehouse)
-  .delete(warehouseIdParamValidator, deleteWarehouse);
+  .get(
+    protect,
+    allowedTo(
+      roles.SUPER_ADMIN,
+      roles.ADMIN,
+      roles.MODERATOR,
+      roles.USER,
+      roles.GUEST,
+    ),
+    enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
+    warehouseIdParamValidator,
+    getWarehouse,
+  )
+  .patch(
+    protect,
+    allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+    enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
+    updateWarehouseValidator,
+    updateWarehouse,
+  )
+  .delete(
+    protect,
+    allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+    enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
+    warehouseIdParamValidator,
+    deleteWarehouse,
+  );
 
 router.patch(
   "/:id/toggle-active",
+  protect,
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+  enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
   warehouseIdParamValidator,
-  toggleWarehouseActive
+  toggleWarehouseActive,
 );
 
 export default router;

@@ -63,12 +63,29 @@ export async function getMyAddressesService({ userId }) {
   return allAddresses({ user: userId });
 }
 
+async function resolveWarehouseForAddressFields(fields) {
+  if (fields.location && fields.location.lat && fields.location.lng) {
+    const { resolveLocationByCoordinatesService } = await import(
+      "../location/location.service.js"
+    );
+    const resolved = await resolveLocationByCoordinatesService({
+      lat: fields.location.lat,
+      lng: fields.location.lng,
+    });
+    if (resolved && resolved.warehouse && resolved.warehouse.id) {
+      fields.warehouse = resolved.warehouse.id;
+    }
+  }
+}
+
 export async function addMyAddressService({ userId, payload }) {
   const ownerFilter = { user: userId };
   const existing = await AddressModel.countDocuments(ownerFilter);
 
   const fields = pickAddressFields(payload);
   fields.user = userId;
+
+  await resolveWarehouseForAddressFields(fields);
 
   // First address auto-becomes default
   if (existing === 0 && fields.isDefault !== true) {
@@ -91,6 +108,8 @@ export async function updateMyAddressService({ userId, addressId, payload }) {
   }
 
   const fields = pickAddressFields(payload);
+  await resolveWarehouseForAddressFields(fields);
+  
   Object.assign(address, fields);
   await address.save({ validateModifiedOnly: true });
 
@@ -144,6 +163,8 @@ export async function addGuestAddressService({ guestId, payload }) {
   const fields = pickAddressFields(payload);
   fields.guestId = guestId;
 
+  await resolveWarehouseForAddressFields(fields);
+
   if (existing === 0 && fields.isDefault !== true) {
     fields.isDefault = true;
   }
@@ -167,6 +188,8 @@ export async function updateGuestAddressService({
   }
 
   const fields = pickAddressFields(payload);
+  await resolveWarehouseForAddressFields(fields);
+
   Object.assign(address, fields);
   await address.save({ validateModifiedOnly: true });
 
@@ -246,7 +269,7 @@ export async function mergeGuestAddressesService({ userId, guestId }) {
 
 // ── Lookup helper for cart service ─────────────────────────────────────────
 
-export async function findAddressByIdForUser({ addressId, userId }) {
+export async function findAddressByIdForUser(addressId, userId) {
   const address = await AddressModel.findOne({ _id: addressId, user: userId });
   if (!address) {
     throw new ApiError("Address not found for this user", 404);
@@ -254,7 +277,7 @@ export async function findAddressByIdForUser({ addressId, userId }) {
   return address;
 }
 
-export async function findAddressByIdForGuest({ addressId, guestId }) {
+export async function findAddressByIdForGuest(addressId, guestId) {
   const address = await AddressModel.findOne({ _id: addressId, guestId });
   if (!address) {
     throw new ApiError("Address not found for this guest", 404);

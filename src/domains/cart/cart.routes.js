@@ -31,8 +31,7 @@ const router = Router();
 router.get("/guest/:warehouseId", warehouseIdParamValidator, getGuestCart);
 
 router.patch(
-  "/guest/:warehouseId/address",
-  warehouseIdParamValidator,
+  "/guest/address",
   setGuestCartAddressValidator,
   setGuestCartAddress
 );
@@ -78,8 +77,7 @@ router.use("/me", protect);
 router.get("/me/:warehouseId", warehouseIdParamValidator, getMyCart);
 
 router.patch(
-  "/me/:warehouseId/address",
-  warehouseIdParamValidator,
+  "/me/address",
   setUserCartAddressValidator,
   setMyCartAddress
 );

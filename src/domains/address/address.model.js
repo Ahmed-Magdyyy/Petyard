@@ -49,6 +49,10 @@ const addressSchema = new mongoose.Schema(
       type: String,
       required: [true, "Details is required"],
     },
+    warehouse: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Warehouse",
+    },
     isDefault: {
       type: Boolean,
       default: false,

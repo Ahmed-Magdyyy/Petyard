@@ -97,6 +97,9 @@ const cartSchema = new Schema(
       userAddressId: {
         type: Schema.Types.ObjectId,
       },
+      guestAddressId: {
+        type: Schema.Types.ObjectId,
+      },
       label: String,
       name: String,
       governorate: String,

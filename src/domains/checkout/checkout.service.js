@@ -380,6 +380,7 @@ export async function getCheckoutSummaryService({
 
   // Validate delivery address completeness before returning summary
   const addr = cartResponse.deliveryAddress;
+  console.log("addr", addr);
   if (!addr) {
     throw new ApiError("Delivery address is not set for this cart", 400);
   }

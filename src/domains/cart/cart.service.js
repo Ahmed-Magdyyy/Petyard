@@ -136,7 +136,8 @@ function mapCartToResponse(cart) {
 
   const deliveryAddress = cart.deliveryAddress
     ? {
-        userAddressId: cart.deliveryAddress.userAddressId || null,
+        userAddressId: cart.deliveryAddress.userAddressId || undefined,
+        guestAddressId: cart.deliveryAddress.guestAddressId || undefined,
         label: cart.deliveryAddress.label || null,
         name: cart.deliveryAddress.name || null,
         governorate: cart.deliveryAddress.governorate || null,
@@ -506,24 +507,30 @@ export async function getCartService({
 
 export async function setCartAddressFromUserService({
   userId,
-  warehouseId,
   userAddressId,
   lang = "en",
 }) {
-  await assertWarehouseExists(warehouseId);
-
   const { findAddressByIdForUser } =
     await import("../address/address.service.js");
-  const address = await findAddressByIdForUser({
-    addressId: userAddressId,
-    userId,
-  });
+  const address = await findAddressByIdForUser(userAddressId, userId);
+  if (!address) {
+    throw new ApiError("User address not found or belongs to someone else", 404);
+  }
 
-  const baseCart = await getOrCreateCart({
-    userId,
-    guestId: null,
-    warehouseId,
-  });
+  if (!address.warehouse) {
+    throw new ApiError(
+      "This address does not fall within covered delivery zones or is missing a valid warehouse assignment.",
+      400,
+    );
+  }
+
+  const warehouseId = address.warehouse;
+
+  const baseCart = await findCart({ user: userId });
+  if (!baseCart) {
+    throw new ApiError("Cart not found", 404);
+  }
+
   baseCart.deliveryAddress = {
     userAddressId: address._id,
     label: address.label || undefined,
@@ -543,13 +550,19 @@ export async function setCartAddressFromUserService({
     details: address.details || undefined,
   };
 
-  const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
-  return mapCartToResponse(cart);
+  baseCart.warehouse = warehouseId;
+  await baseCart.save();
+
+  return await getCartService({
+    userId,
+    guestId: null,
+    warehouseId,
+    lang,
+  });
 }
 
 export async function setCartAddressForGuestService({
   guestId,
-  warehouseId,
   guestAddressId,
   lang = "en",
 }) {
@@ -557,23 +570,30 @@ export async function setCartAddressForGuestService({
     throw new ApiError("guestId is required for setting cart address", 400);
   }
 
-  await assertWarehouseExists(warehouseId);
-
   const { findAddressByIdForGuest } =
     await import("../address/address.service.js");
-  const address = await findAddressByIdForGuest({
-    addressId: guestAddressId,
-    guestId,
-  });
+  const address = await findAddressByIdForGuest(guestAddressId, guestId);
+  if (!address) {
+    throw new ApiError("Guest address not found or belongs to another guest", 404);
+  }
 
-  const baseCart = await getOrCreateCart({
-    userId: null,
-    guestId,
-    warehouseId,
-  });
+  if (!address.warehouse) {
+    throw new ApiError(
+      "This address does not fall within covered delivery zones or is missing a valid warehouse assignment.",
+      400,
+    );
+  }
+
+  const warehouseId = address.warehouse;
+
+  const baseCart = await findCart({ guestId });
+  if (!baseCart) {
+    throw new ApiError("Cart not found", 404);
+  }
 
   baseCart.deliveryAddress = {
     userAddressId: undefined,
+    guestAddressId: address._id,
     label: address.label || undefined,
     name: address.name || undefined,
     governorate: address.governorate || undefined,
@@ -591,8 +611,15 @@ export async function setCartAddressForGuestService({
     details: address.details || undefined,
   };
 
-  const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
-  return mapCartToResponse(cart);
+  baseCart.warehouse = warehouseId;
+  await baseCart.save();
+
+  return await getCartService({
+    userId: null,
+    guestId,
+    warehouseId,
+    lang,
+  });
 }
 
 export async function upsertCartItemService({

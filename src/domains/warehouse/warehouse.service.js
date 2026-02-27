@@ -50,8 +50,6 @@ export async function getWarehousesService(queryParams = {}) {
   } else if (typeof isDefault === "boolean") {
     filter.isDefault = isDefault;
   }
-
-  console.log(filter);
   
   const totalCount = await countWarehouses(filter);
 
