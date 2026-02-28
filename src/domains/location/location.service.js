@@ -377,7 +377,7 @@ export async function resolveLocationByCoordinatesService({
           "Exact location is required to confirm delivery availability.",
         requiresPreciseLocation: true,
         effectiveShippingPrice: productsWarehouse.defaultShippingPrice ?? 0,
-        shippingFee: null,
+        shippingFee: productsWarehouse.defaultShippingPrice ?? 0,
         defaultShippingPrice: productsWarehouse.defaultShippingPrice ?? 0,
       },
     };
@@ -556,7 +556,7 @@ export async function resolveLocationByCoordinatesService({
       reasonMessage,
       requiresPreciseLocation: false,
       effectiveShippingPrice,
-      shippingFee: null,
+      shippingFee: effectiveShippingPrice,
       defaultShippingPrice: productsWarehouseDoc.defaultShippingPrice ?? 0,
     },
   };
