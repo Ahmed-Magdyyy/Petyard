@@ -1126,6 +1126,8 @@ export async function listOrdersForAdminService(query = {}) {
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
+    .populate({ path: "user", select: "name phone" })
+    .populate({ path: "warehouse", select: "name" })
     .populate({ path: "history.byUserId", select: "name role" });
 
   await rebindOrdersLocalization(orders, lang);
@@ -1143,10 +1145,16 @@ export async function getOrderByIdForAdminService(
   lang = "en",
   warehouseScope,
 ) {
-  const order = await OrderModel.findById(orderId).populate({
-    path: "history.byUserId",
-    select: "name role",
-  });
+  const order = await OrderModel.findById(orderId)
+    .populate({ path: "user", select: "name phone" })
+    .populate({
+      path: "warehouse",
+      select: "name phone governorate location.coordinates address",
+    })
+    .populate({
+      path: "history.byUserId",
+      select: "name role",
+    });
   if (!order) {
     throw new ApiError("Order not found", 404);
   }
