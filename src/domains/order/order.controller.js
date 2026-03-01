@@ -137,12 +137,14 @@ export const getOrderForAdmin = asyncHandler(async (req, res) => {
 export const updateOrderStatusForAdmin = asyncHandler(async (req, res) => {
   const orderId = req.params.id;
   const { status } = req.body;
+  const lang = req.lang;
 
   const updated = await updateOrderStatusService({
     orderId,
     newStatus: status,
     actorUserId: req.user._id,
     warehouseScope: req.orderWarehouseScope,
+    lang,
   });
 
   res.status(200).json({ data: updated });

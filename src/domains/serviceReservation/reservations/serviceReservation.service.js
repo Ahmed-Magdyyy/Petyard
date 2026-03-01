@@ -30,7 +30,10 @@ import {
 } from "./serviceReservation.utils.js";
 import { getServiceLocationByIdService } from "../locations/serviceLocation.service.js";
 import { dispatchNotification } from "../../notification/notificationDispatcher.js";
-import { buildPagination, buildSort } from "../../../shared/utils/apiFeatures.js";
+import {
+  buildPagination,
+  buildSort,
+} from "../../../shared/utils/apiFeatures.js";
 
 function getRoomTypeForService(serviceType) {
   if (serviceType === serviceTypeEnum.CLINIC)
@@ -286,7 +289,6 @@ async function buildReservationDto(reservation, location, lang) {
     label,
     timezone: "Africa/Cairo",
     createdAt: reservation.createdAt,
-    
   };
 }
 
@@ -608,7 +610,6 @@ export async function createReservationService({
 
 export async function listReservationsForUserService({
   userId,
-  scope,
   status,
   sort,
   lang,
@@ -624,15 +625,16 @@ export async function listReservationsForUserService({
     filter.status = status;
   }
 
-  if (scope === "upcoming") {
+  // Smart defaults: Apply time-based filtering based on sort
+  const effectiveSort = sort || "upcoming";
+
+  if (effectiveSort === "upcoming") {
     filter.startsAt = { $gte: nowUtc };
-  } else if (scope === "past") {
+  } else if (effectiveSort === "past") {
     filter.startsAt = { $lt: nowUtc };
   }
 
-  // Use explicit sort if provided, otherwise default based on scope
-  const defaultSort = scope === "past" ? "-startsAt" : "startsAt";
-  const sortOrder = buildSort({ sort }, defaultSort);
+  const sortOrder = buildSort({ sort: effectiveSort }, "startsAt");
 
   const reservations = await ServiceReservationModel.find(filter)
     .populate(
@@ -727,9 +729,10 @@ export async function adminListReservationsByDateService({
 
 export async function listReservationsForGuestService({
   guestId,
-  scope,
   status,
   sort,
+  page,
+  limit,
   lang,
 }) {
   if (!guestId) {
@@ -743,25 +746,34 @@ export async function listReservationsForGuestService({
     filter.status = status;
   }
 
-  if (scope === "upcoming") {
+  // Smart defaults: Apply time-based filtering based on sort
+  const effectiveSort = sort || "upcoming";
+
+  if (effectiveSort === "upcoming") {
     filter.startsAt = { $gte: nowUtc };
-  } else if (scope === "past") {
+  } else if (effectiveSort === "past") {
     filter.startsAt = { $lt: nowUtc };
   }
 
-  // Use explicit sort if provided, otherwise default based on scope
-  const defaultSort = scope === "past" ? "-startsAt" : "startsAt";
-  const sortOrder = buildSort({ sort }, defaultSort);
+  const sortOrder = buildSort({ sort: effectiveSort }, "startsAt");
+  const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 20);
 
-  const reservations = await ServiceReservationModel.find(filter)
-    .populate(
-      "location",
-      "_id slug name_en name_ar city timezone googleMapsLink phone",
-    )
-    .sort(sortOrder)
-    .lean();
+  const [reservations, totalCount] = await Promise.all([
+    ServiceReservationModel.find(filter)
+      .populate(
+        "location",
+        "_id slug name_en name_ar city timezone googleMapsLink phone",
+      )
+      .sort(sortOrder)
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    ServiceReservationModel.countDocuments(filter),
+  ]);
 
   return {
+    totalPages: Math.ceil(totalCount / limitNum) || 1,
+    page: pageNum,
     results: reservations.length,
     data: await Promise.all(
       reservations.map((r) => buildReservationDto(r, r.location, lang)),

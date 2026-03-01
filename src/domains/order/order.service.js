@@ -135,12 +135,12 @@ function mapCartItemToOrderItem(item) {
   };
 }
 
-async function buildOrderItemsWithPromotions({ session, cart }) {
+async function buildOrderItemsWithPromotions({ session, cart, lang = "en" }) {
   await autoHideExpiredCollections();
 
   const items = Array.isArray(cart.items) ? cart.items : [];
-  if (!items.length) {
-    throw new ApiError("Cart is empty", 400);
+  if (items.length === 0 || items.length < 1 || !items.length || !items) {
+    throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
   }
 
   const productIds = [
@@ -185,11 +185,19 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
   for (const item of items) {
     const product = productById.get(String(item.product));
     if (!product) {
-      throw new ApiError("Product no longer exists", 400);
+      throw new ApiError(
+        lang === "en" ? "Product no longer exists" : "المنتج غير موجود",
+        400,
+      );
     }
 
     if (product.type !== item.productType) {
-      throw new ApiError("Product type mismatch for cart item", 400);
+      throw new ApiError(
+        lang === "en"
+          ? "Product type mismatch for cart item"
+          : "نوع المنتج غير صحيح",
+        400,
+      );
     }
 
     const quantity =
@@ -197,7 +205,12 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
         ? item.quantity
         : 0;
     if (quantity <= 0) {
-      throw new ApiError("Cart item quantity must be greater than 0", 400);
+      throw new ApiError(
+        lang === "en"
+          ? "Cart item quantity must be greater than 0"
+          : "العدد فى السلة يجب ان يكون اكبر من 0",
+        400,
+      );
     }
 
     const promotion = await getPromotionForProduct(product);
@@ -221,7 +234,12 @@ async function buildOrderItemsWithPromotions({ session, cart }) {
         (v) => String(v._id) === String(item.variantId),
       );
       if (!variant) {
-        throw new ApiError("Variant not found on this product", 404);
+        throw new ApiError(
+          lang === "en"
+            ? "Variant not found on this product"
+            : "المتغير غير موجود فى هذا المنتج",
+          404,
+        );
       }
       basePrice = typeof variant.price === "number" ? variant.price : 0;
       baseDiscounted =
@@ -304,10 +322,14 @@ function mapCartDeliveryAddressToOrder(cart, user) {
   };
 }
 
-async function ensureSufficientStockAndDecrement({ session, cart }) {
+async function ensureSufficientStockAndDecrement({
+  session,
+  cart,
+  lang = "en",
+}) {
   const items = Array.isArray(cart.items) ? cart.items : [];
   if (!items.length) {
-    throw new ApiError("Cart is empty", 400);
+    throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
   }
 
   const productIds = [
@@ -326,11 +348,19 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
   for (const item of items) {
     const product = productById.get(String(item.product));
     if (!product) {
-      throw new ApiError("Product no longer exists", 400);
+      throw new ApiError(
+        lang === "en" ? "Product no longer exists" : "المنتج غير موجود",
+        400,
+      );
     }
 
     if (product.type !== item.productType) {
-      throw new ApiError("Product type mismatch for cart item", 400);
+      throw new ApiError(
+        lang === "en"
+          ? "Product type mismatch for cart item"
+          : "نوع المنتج غير صحيح",
+        400,
+      );
     }
 
     const quantity =
@@ -338,7 +368,12 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
         ? item.quantity
         : 0;
     if (quantity <= 0) {
-      throw new ApiError("Cart item quantity must be greater than 0", 400);
+      throw new ApiError(
+        lang === "en"
+          ? "Cart item quantity must be greater than 0"
+          : "العدد فى السلة يجب ان يكون اكبر من 0",
+        400,
+      );
     }
 
     if (product.type === "SIMPLE") {
@@ -350,13 +385,17 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
       );
       if (!stock || typeof stock.quantity !== "number") {
         throw new ApiError(
-          "This product is not available in the selected warehouse",
+          lang === "en"
+            ? "This product is not available in the selected warehouse"
+            : "المنتج غير موجود فى هذا المخزن",
           400,
         );
       }
       if (stock.quantity < quantity) {
         throw new ApiError(
-          `Requested quantity exceeds available stock (${stock.quantity})`,
+          lang === "en"
+            ? `Requested quantity exceeds available stock (${stock.quantity})`
+            : `الكمية المطلوبة تتجاوز عدد المخزون المتاح ${stock.quantity}`,
           400,
         );
       }
@@ -367,7 +406,12 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
         (v) => String(v._id) === String(item.variantId),
       );
       if (!variant) {
-        throw new ApiError("Variant not found on this product", 404);
+        throw new ApiError(
+          lang === "en"
+            ? "Variant not found on this product"
+            : "المتغير غير موجود فى هذا المنتج",
+          404,
+        );
       }
 
       const vStocks = Array.isArray(variant.warehouseStocks)
@@ -379,13 +423,17 @@ async function ensureSufficientStockAndDecrement({ session, cart }) {
 
       if (!vStock || typeof vStock.quantity !== "number") {
         throw new ApiError(
-          "This product variant is not available in the selected warehouse",
+          lang === "en"
+            ? "This product variant is not available in the selected warehouse"
+            : "المتغير غير موجود فى هذا المخزن",
           400,
         );
       }
       if (vStock.quantity < quantity) {
         throw new ApiError(
-          `Requested quantity exceeds available stock (${vStock.quantity})`,
+          lang === "en"
+            ? `Requested quantity exceeds available stock (${vStock.quantity})`
+            : `الكمية المطلوبة تتجاوز عدد المخزون المتاح ${vStock.quantity}`,
           400,
         );
       }
@@ -534,7 +582,13 @@ export async function restoreStockForOrder({ session, order }) {
   }
 }
 
-async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
+async function applyCouponIfAny({
+  couponCode,
+  userId,
+  subtotal,
+  shippingFee,
+  lang = "en",
+}) {
   if (!couponCode) {
     const total = subtotal + shippingFee;
     return {
@@ -551,7 +605,10 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
       ? couponCode.trim()
       : null;
   if (!trimmedCode) {
-    throw new ApiError("couponCode is required", 400);
+    throw new ApiError(
+      lang === "en" ? "couponCode is required" : "كود الكوبون مطلوب",
+      400,
+    );
   }
 
   const coupon = await findActiveCouponByCodeService(trimmedCode);
@@ -563,7 +620,9 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
   if (allowedUserIds.length > 0) {
     if (!userId) {
       throw new ApiError(
-        "This coupon is only available to specific users",
+        lang === "en"
+          ? "This coupon is only available to specific users"
+          : "هذا الكوبون متاح فقط لمستخدمين محددين",
         403,
       );
     }
@@ -573,7 +632,12 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
     );
 
     if (!isAllowed) {
-      throw new ApiError("This coupon is not valid for this user", 403);
+      throw new ApiError(
+        lang === "en"
+          ? "This coupon is not valid for this user"
+          : "هذا الكوبون غير صالح لهذا المستخدم",
+        403,
+      );
     }
   }
 
@@ -583,7 +647,9 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
     subtotal < coupon.minOrderTotal
   ) {
     throw new ApiError(
-      `This coupon requires a minimum order total of ${coupon.minOrderTotal}`,
+      lang === "en"
+        ? `This coupon requires a minimum order total of ${coupon.minOrderTotal}`
+        : `هذا الكوبون يتطلب حد أدنى للطلب بقيمة ${coupon.minOrderTotal}`,
       400,
     );
   }
@@ -594,7 +660,9 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
     subtotal > coupon.maxOrderTotal
   ) {
     throw new ApiError(
-      `This coupon can only be applied to orders up to ${coupon.maxOrderTotal}`,
+      lang === "en"
+        ? `This coupon can only be applied to orders up to ${coupon.maxOrderTotal}`
+        : `هذا الكوبون يمكن تطبيقه فقط على الطلبات التي تصل إلى ${coupon.maxOrderTotal}`,
       400,
     );
   }
@@ -605,7 +673,12 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
     typeof coupon.usageCount === "number" &&
     coupon.usageCount >= coupon.maxUsageTotal
   ) {
-    throw new ApiError("This coupon has reached its maximum usage limit", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "This coupon has reached its maximum usage limit"
+        : "هذا الكوبون وصل إلى الحد الأقصى للاستخدام",
+      400,
+    );
   }
 
   if (userId && typeof coupon.maxUsagePerUser === "number") {
@@ -617,7 +690,9 @@ async function applyCouponIfAny({ couponCode, userId, subtotal, shippingFee }) {
 
       if (userUsage >= coupon.maxUsagePerUser) {
         throw new ApiError(
-          "You have already used this coupon the maximum number of times",
+          lang === "en"
+            ? "You have already used this coupon"
+            : "لقد استخدمت هذا الكوبون بالفعل",
           400,
         );
       }
@@ -679,21 +754,38 @@ async function processOrderCreationWithCart({
   historyByUserId,
 }) {
   const { orderItems, subtotal, hasPromotionalItems } =
-    await buildOrderItemsWithPromotions({ session, cart });
+    await buildOrderItemsWithPromotions({ session, cart, lang });
+
+  if (cart.items.length === 0 || cart.items < 1) {
+    throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
+  }
 
   if (!cart.warehouse) {
-    throw new ApiError("Cart warehouse is not set", 400);
+    throw new ApiError(
+      lang === "en" ? "Cart warehouse is not set" : "لم يتم تحديد المخزن",
+      400,
+    );
   }
 
   if (subtotal <= 0) {
-    throw new ApiError("Cart total must be greater than 0", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Cart total must be greater than 0"
+        : "المجموع يجب أن يكون أكبر من 0",
+      400,
+    );
   }
 
   const warehouse = await WarehouseModel.findById(cart.warehouse).session(
     session,
   );
   if (!warehouse) {
-    throw new ApiError("Warehouse not found for this cart", 404);
+    throw new ApiError(
+      lang === "en"
+        ? "Warehouse not found for this cart"
+        : "المخزن غير موجود لهذا الطلب",
+      404,
+    );
   }
 
   const rawShipping = warehouse.defaultShippingPrice;
@@ -702,7 +794,9 @@ async function processOrderCreationWithCart({
 
   if (couponCode && hasPromotionalItems) {
     throw new ApiError(
-      "Coupons cannot be applied when the cart contains promotional items",
+      lang === "en"
+        ? "Coupons cannot be applied when the cart contains promotional items"
+        : "لا يمكن تطبيق الكوبون عندما تحتوي السلة على عناصر ترويجية",
       400,
     );
   }
@@ -712,6 +806,7 @@ async function processOrderCreationWithCart({
     userId: couponUserId,
     subtotal,
     shippingFee,
+    lang,
   });
 
   const netSubtotal = Math.max(0, subtotal - couponResult.discountAmount);
@@ -727,7 +822,12 @@ async function processOrderCreationWithCart({
 
   const deliveryAddress = mapCartDeliveryAddressToOrder(cart, addressUser);
   if (!deliveryAddress) {
-    throw new ApiError("Delivery address is not set for this cart", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Delivery address is not set for this cart"
+        : "لم يتم تحديد عنوان التوصيل لهذا الطلب",
+      400,
+    );
   }
   // Validate required address fields
   const requiredFields = [
@@ -742,7 +842,9 @@ async function processOrderCreationWithCart({
   const missingFields = requiredFields.filter((f) => !deliveryAddress[f]);
   if (missingFields.length > 0) {
     throw new ApiError(
-      `Delivery address is missing required fields: ${missingFields.join(", ")}`,
+      lang === "en"
+        ? `Delivery address is missing required fields: ${missingFields.join(", ")}`
+        : `عنوان التوصيل غير مكتمل البيانات برجاء اضافة: ${missingFields.join(", ")}`,
       400,
     );
   }
@@ -751,10 +853,15 @@ async function processOrderCreationWithCart({
     typeof deliveryAddress.location.lat !== "number" ||
     typeof deliveryAddress.location.lng !== "number"
   ) {
-    throw new ApiError("Delivery address is missing location (lat, lng)", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Delivery address is missing location (lat, lng)"
+        : "عنوان التوصيل ينقصه بيانات الموقع",
+      400,
+    );
   }
 
-  await ensureSufficientStockAndDecrement({ session, cart });
+  await ensureSufficientStockAndDecrement({ session, cart, lang });
 
   const orderNumber = generateOrderNumber();
 
@@ -808,7 +915,7 @@ async function processOrderCreationWithCart({
 
     if (updateResult.matchedCount === 0) {
       throw new ApiError(
-        "Insufficient wallet balance or concurrent modification",
+        lang === "en" ? "Insufficient wallet balance" : "رصيد المحفظة غير كافٍ",
         400,
       );
     }
@@ -857,7 +964,10 @@ export async function createOrderForUserService({
   lang = "en",
 }) {
   if (!userId) {
-    throw new ApiError("userId is required", 400);
+    throw new ApiError(
+      lang === "en" ? "userId is required" : "معرف المستخدم مطلوب",
+      400,
+    );
   }
 
   const session = await mongoose.startSession();
@@ -869,7 +979,10 @@ export async function createOrderForUserService({
         .session(session)
         .populate("user", "name phone email");
       if (!cart) {
-        throw new ApiError("Cart not found", 404);
+        throw new ApiError(
+          lang === "en" ? "Cart not found" : "السلة غير موجودة",
+          404,
+        );
       }
 
       createdOrder = await processOrderCreationWithCart({
@@ -917,7 +1030,10 @@ export async function createOrderForGuestService({
   lang = "en",
 }) {
   if (!guestId) {
-    throw new ApiError("guestId is required", 400);
+    throw new ApiError(
+      lang === "en" ? "guestId is required" : "معرف الضيف مطلوب",
+      400,
+    );
   }
 
   const session = await mongoose.startSession();
@@ -930,7 +1046,10 @@ export async function createOrderForGuestService({
         .populate("user");
 
       if (!cart) {
-        throw new ApiError("Cart not found", 404);
+        throw new ApiError(
+          lang === "en" ? "Cart not found" : "السلة غير موجودة",
+          404,
+        );
       }
 
       createdOrder = await processOrderCreationWithCart({
@@ -993,7 +1112,10 @@ export async function getMyOrderByIdService({ userId, orderId, lang = "en" }) {
     select: "role name",
   });
   if (!order || String(order.user) !== String(userId)) {
-    throw new ApiError("Order not found", 404);
+    throw new ApiError(
+      lang === "en" ? "Order not found" : "الطلب غير موجود",
+      404,
+    );
   }
   await rebindOrdersLocalization(order, lang);
   return order;
@@ -1039,7 +1161,10 @@ export async function getGuestOrderByIdService({
     select: "role name",
   });
   if (!order || order.guestId !== guestId) {
-    throw new ApiError("Order not found", 404);
+    throw new ApiError(
+      lang === "en" ? "Order not found" : "الطلب غير موجود",
+      404,
+    );
   }
   await rebindOrdersLocalization(order, lang);
   return order;
@@ -1091,7 +1216,12 @@ export async function listOrdersForAdminService(query = {}) {
         (w) => String(w) === String(warehouse),
       );
       if (!allowed) {
-        throw new ApiError("You are not allowed to access this route", 403);
+        throw new ApiError(
+          lang === "en"
+            ? "You are not allowed to access this route"
+            : "غير مسموح لك",
+          403,
+        );
       }
     }
     filter.warehouse = warehouse;
@@ -1156,7 +1286,10 @@ export async function getOrderByIdForAdminService(
       select: "name role",
     });
   if (!order) {
-    throw new ApiError("Order not found", 404);
+    throw new ApiError(
+      lang === "en" ? "Order not found" : "الطلب غير موجود",
+      404,
+    );
   }
 
   if (Array.isArray(warehouseScope)) {
@@ -1164,7 +1297,10 @@ export async function getOrderByIdForAdminService(
       (w) => String(w) === String(order.warehouse),
     );
     if (!allowed) {
-      throw new ApiError("Order not found", 404);
+      throw new ApiError(
+        lang === "en" ? "Order not found" : "الطلب غير موجود",
+        404,
+      );
     }
   }
 
@@ -1177,10 +1313,14 @@ export async function updateOrderStatusService({
   newStatus,
   actorUserId,
   warehouseScope,
+  lang = "en",
 }) {
   const allowed = Object.values(orderStatusEnum);
   if (!allowed.includes(newStatus)) {
-    throw new ApiError("Invalid order status", 400);
+    throw new ApiError(
+      lang === "en" ? "Invalid order status" : "حالة طلب غير صحيحة",
+      400,
+    );
   }
 
   const session = await mongoose.startSession();
@@ -1190,7 +1330,10 @@ export async function updateOrderStatusService({
     await session.withTransaction(async () => {
       const order = await OrderModel.findById(orderId).session(session);
       if (!order) {
-        throw new ApiError("Order not found", 404);
+        throw new ApiError(
+          lang === "en" ? "Order not found" : "الطلب غير موجود",
+          404,
+        );
       }
 
       if (Array.isArray(warehouseScope)) {
@@ -1198,7 +1341,10 @@ export async function updateOrderStatusService({
           (w) => String(w) === String(order.warehouse),
         );
         if (!allowedWarehouse) {
-          throw new ApiError("Order not found", 404);
+          throw new ApiError(
+            lang === "en" ? "Order not found" : "الطلب غير موجود",
+            404,
+          );
         }
       }
 
@@ -1210,7 +1356,9 @@ export async function updateOrderStatusService({
 
       if (!isValidStatusTransition(oldStatus, newStatus)) {
         throw new ApiError(
-          `Invalid status transition from ${oldStatus} to ${newStatus}`,
+          lang === "en"
+            ? `Invalid status transition from ${oldStatus} to ${newStatus}`
+            : `لا يمكن تغيير حالة الطلب الى الحالة المطلوبة`,
           400,
         );
       }
