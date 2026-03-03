@@ -30,6 +30,11 @@ import {
   autoHideExpiredCollections,
   findActivePromotionForProduct,
 } from "../collection/collection.promotion.js";
+import {
+  buildPagination,
+  buildSort,
+  buildRegexFilter,
+} from "../../shared/utils/apiFeatures.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -487,8 +492,6 @@ async function rebindOrdersLocalization(ordersOrOrder, lang = "en") {
     const localizedName = pickLocalizedField(product, "name", normalizedLang);
     entry.item.productName = localizedName;
   }
-
-  await Promise.all(orders.map((order) => order.save()));
 
   return ordersOrOrder;
 }
@@ -1094,7 +1097,8 @@ export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
-    .populate({ path: "history.byUserId", select: "name role" });
+    .populate({ path: "history.byUserId", select: "name role" })
+    .lean();
 
   await rebindOrdersLocalization(orders, lang);
 
@@ -1107,10 +1111,13 @@ export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
 }
 
 export async function getMyOrderByIdService({ userId, orderId, lang = "en" }) {
-  const order = await OrderModel.findById(orderId).select("-guestId").populate({
-    path: "history.byUserId",
-    select: "role name",
-  });
+  const order = await OrderModel.findById(orderId)
+    .select("-guestId")
+    .populate({
+      path: "history.byUserId",
+      select: "role name",
+    })
+    .lean();
   if (!order || String(order.user) !== String(userId)) {
     throw new ApiError(
       lang === "en" ? "Order not found" : "الطلب غير موجود",
@@ -1139,7 +1146,8 @@ export async function getGuestOrdersService({
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
-    .populate({ path: "history.byUserId", select: "name role" });
+    .populate({ path: "history.byUserId", select: "name role" })
+    .lean();
 
   await rebindOrdersLocalization(orders, lang);
 
@@ -1156,10 +1164,13 @@ export async function getGuestOrderByIdService({
   orderId,
   lang = "en",
 }) {
-  const order = await OrderModel.findById(orderId).select("-user").populate({
-    path: "history.byUserId",
-    select: "role name",
-  });
+  const order = await OrderModel.findById(orderId)
+    .select("-user")
+    .populate({
+      path: "history.byUserId",
+      select: "role name",
+    })
+    .lean();
   if (!order || order.guestId !== guestId) {
     throw new ApiError(
       lang === "en" ? "Order not found" : "الطلب غير موجود",
@@ -1172,8 +1183,9 @@ export async function getGuestOrderByIdService({
 
 export async function listOrdersForAdminService(query = {}) {
   const {
-    page = 1,
-    limit = 20,
+    page,
+    limit,
+    sort,
     status,
     orderNumber,
     warehouse,
@@ -1181,15 +1193,19 @@ export async function listOrdersForAdminService(query = {}) {
     guestId,
     from,
     to,
+    q,
     warehouseScope,
     lang = "en",
+    ...rest
   } = query;
+
+  const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 20);
+  const sortOrder = buildSort({ sort }, "-createdAt");
 
   const filter = {};
 
   const hasWarehouseScope = Array.isArray(warehouseScope);
   if (hasWarehouseScope && warehouseScope.length === 0) {
-    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     return {
       totalPages: 1,
       page: pageNum,
@@ -1200,8 +1216,7 @@ export async function listOrdersForAdminService(query = {}) {
 
   if (status) {
     const v = String(status).trim().toLowerCase();
-    const allowed = Object.values(orderStatusEnum);
-    if (allowed.includes(v)) {
+    if (Object.values(orderStatusEnum).includes(v)) {
       filter.status = v;
     }
   }
@@ -1239,26 +1254,69 @@ export async function listOrdersForAdminService(query = {}) {
 
   if (from || to) {
     filter.createdAt = {};
-    if (from) {
-      filter.createdAt.$gte = new Date(from);
+    if (from) filter.createdAt.$gte = new Date(from);
+    if (to) filter.createdAt.$lte = new Date(to);
+  }
+
+  const extraFilter = buildRegexFilter(rest, []);
+  Object.assign(filter, extraFilter);
+
+  if (typeof q === "string" && q.trim()) {
+    const regex = { $regex: q.trim(), $options: "i" };
+
+    const orConditions = [
+      { "items.productName": regex },
+      { "deliveryAddress.name": regex },
+      { "deliveryAddress.phone": regex },
+      { "deliveryAddress.governorate": regex },
+      { "deliveryAddress.area": regex },
+      { orderNumber: regex },
+      { couponCode: regex },
+      { status: regex },
+      { paymentMethod: regex },
+      { paymentStatus: regex },
+    ];
+
+    const matchedUsers = await UserModel.find({
+      $or: [{ name: regex }, { phone: regex }],
+    })
+      .select("_id")
+      .lean();
+
+    if (matchedUsers.length > 0) {
+      orConditions.push({ user: { $in: matchedUsers.map((u) => u._id) } });
     }
-    if (to) {
-      filter.createdAt.$lte = new Date(to);
+
+    const matchedWarehouses = await WarehouseModel.find({ name: regex })
+      .select("_id")
+      .lean();
+
+    if (matchedWarehouses.length > 0) {
+      orConditions.push({
+        warehouse: { $in: matchedWarehouses.map((w) => w._id) },
+      });
+    }
+
+    if (filter.$or) {
+      if (!filter.$and) filter.$and = [];
+      filter.$and.push({ $or: filter.$or }, { $or: orConditions });
+      delete filter.$or;
+    } else {
+      filter.$or = orConditions;
     }
   }
 
-  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-  const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
-  const skip = (pageNum - 1) * limitNum;
-
-  const totalCount = await OrderModel.countDocuments(filter);
-  const orders = await OrderModel.find(filter)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limitNum)
-    .populate({ path: "user", select: "name phone" })
-    .populate({ path: "warehouse", select: "name" })
-    .populate({ path: "history.byUserId", select: "name role" });
+  const [totalCount, orders] = await Promise.all([
+    OrderModel.countDocuments(filter),
+    OrderModel.find(filter)
+      .sort(sortOrder)
+      .skip(skip)
+      .limit(limitNum)
+      .populate({ path: "user", select: "name phone" })
+      .populate({ path: "warehouse", select: "name" })
+      .populate({ path: "history.byUserId", select: "name role" })
+      .lean(),
+  ]);
 
   await rebindOrdersLocalization(orders, lang);
 
@@ -1284,7 +1342,8 @@ export async function getOrderByIdForAdminService(
     .populate({
       path: "history.byUserId",
       select: "name role",
-    });
+    })
+    .lean();
   if (!order) {
     throw new ApiError(
       lang === "en" ? "Order not found" : "الطلب غير موجود",

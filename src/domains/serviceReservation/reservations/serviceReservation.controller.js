@@ -40,15 +40,8 @@ export const adminUpdateReservationStatus = asyncHandler(async (req, res) => {
 });
 
 export const adminListReservationsByDate = asyncHandler(async (req, res) => {
-  const { date, locationId, status, sort, page, limit } = req.query;
-
   const result = await adminListReservationsByDateService({
-    date,
-    locationId: locationId || undefined,
-    status: status || undefined,
-    sort: sort || undefined,
-    page,
-    limit,
+    ...req.query,
     lang: req.lang,
   });
 

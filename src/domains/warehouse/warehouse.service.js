@@ -1,6 +1,10 @@
 // src/domains/warehouse/warehouse.service.js
 import { ApiError } from "../../shared/utils/ApiError.js";
-import { buildPagination, buildSort, buildRegexFilter } from "../../shared/utils/apiFeatures.js";
+import {
+  buildPagination,
+  buildSort,
+  buildRegexFilter,
+} from "../../shared/utils/apiFeatures.js";
 import { roles } from "../../shared/constants/enums.js";
 import { UserModel } from "../user/user.model.js";
 import {
@@ -50,7 +54,7 @@ export async function getWarehousesService(queryParams = {}) {
   } else if (typeof isDefault === "boolean") {
     filter.isDefault = isDefault;
   }
-  
+
   const totalCount = await countWarehouses(filter);
 
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
@@ -84,10 +88,27 @@ export async function createWarehouseService(payload) {
 
   const validatedModerators = await validateModeratorsOrThrow(moderators);
 
+  if (
+    rest.boundaryGeometry &&
+    (!rest.boundaryGeometry.coordinates ||
+      rest.boundaryGeometry.coordinates.length === 0)
+  ) {
+    delete rest.boundaryGeometry;
+  }
+
+  if (
+    rest.location &&
+    (!rest.location.coordinates || rest.location.coordinates.length === 0)
+  ) {
+    delete rest.location;
+  }
+
   const warehouse = await createWarehouse({
     ...rest,
     ...(typeof isDefault === "boolean" ? { isDefault } : {}),
-    ...(validatedModerators !== undefined ? { moderators: validatedModerators } : {}),
+    ...(validatedModerators !== undefined
+      ? { moderators: validatedModerators }
+      : {}),
   });
 
   return warehouse;
@@ -121,8 +142,31 @@ export async function updateWarehouseService(id, payload) {
   if (address !== undefined) warehouse.address = address;
   if (email !== undefined) warehouse.email = email;
   if (phone !== undefined) warehouse.phone = phone;
-  if (location !== undefined) warehouse.location = location;
-  if (boundaryGeometry !== undefined) warehouse.boundaryGeometry = boundaryGeometry;
+
+  if (location !== undefined) {
+    if (
+      !location ||
+      !location.coordinates ||
+      location.coordinates.length === 0
+    ) {
+      warehouse.location = undefined;
+    } else {
+      warehouse.location = location;
+    }
+  }
+
+  if (boundaryGeometry !== undefined) {
+    if (
+      !boundaryGeometry ||
+      !boundaryGeometry.coordinates ||
+      boundaryGeometry.coordinates.length === 0
+    ) {
+      warehouse.boundaryGeometry = undefined;
+    } else {
+      warehouse.boundaryGeometry = boundaryGeometry;
+    }
+  }
+
   if (typeof isDefault === "boolean") {
     if (isDefault) {
       await clearDefaultForOtherWarehouses(id);

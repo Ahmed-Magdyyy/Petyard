@@ -9,6 +9,7 @@ import { PetModel } from "../../pet/pet.model.js";
 import { UserModel } from "../../user/user.model.js";
 import { ServiceReservationModel } from "./serviceReservation.model.js";
 import { ServiceSlotInventoryModel } from "../inventory/serviceSlotInventory.model.js";
+import { ServiceLocationModel } from "../locations/serviceLocation.model.js";
 import { pickLocalizedField } from "../../../shared/utils/i18n.js";
 import {
   getServiceNameFallback,
@@ -33,6 +34,7 @@ import { dispatchNotification } from "../../notification/notificationDispatcher.
 import {
   buildPagination,
   buildSort,
+  buildRegexFilter,
 } from "../../../shared/utils/apiFeatures.js";
 
 function getRoomTypeForService(serviceType) {
@@ -652,15 +654,19 @@ export async function listReservationsForUserService({
   };
 }
 
-export async function adminListReservationsByDateService({
-  date,
-  locationId,
-  status,
-  sort,
-  page = 1,
-  limit = 20,
-  lang,
-}) {
+export async function adminListReservationsByDateService(query = {}) {
+  const {
+    date,
+    locationId,
+    status,
+    sort,
+    q,
+    page = 1,
+    limit = 20,
+    lang,
+    ...rest
+  } = query;
+
   let cairoDateStart = null;
   let utcStart = null;
   let utcEnd = null;
@@ -691,6 +697,54 @@ export async function adminListReservationsByDateService({
       if (!filter.startsAt) filter.startsAt = { $lt: now };
     }
     // newest / oldest / raw fields → no time filter, show all
+  }
+
+  const extraFilter = buildRegexFilter(rest, []);
+  Object.assign(filter, extraFilter);
+
+  if (typeof q === "string" && q.trim()) {
+    const regex = { $regex: q.trim(), $options: "i" };
+
+    const orConditions = [
+      { serviceType: regex },
+      { serviceName_en: regex },
+      { serviceName_ar: regex },
+      { serviceOptionName_en: regex },
+      { serviceOptionName_ar: regex },
+      { status: regex },
+      { ownerName: regex },
+    ];
+
+    const [matchedLocations, matchedPets] = await Promise.all([
+      ServiceLocationModel.find({
+        $or: [{ name_en: regex }, { name_ar: regex }],
+      })
+        .select("_id")
+        .lean(),
+      PetModel.find({
+        $or: [{ name: regex }, { type: regex }],
+      })
+        .select("_id")
+        .lean(),
+    ]);
+
+    if (matchedLocations.length > 0) {
+      orConditions.push({
+        location: { $in: matchedLocations.map((l) => l._id) },
+      });
+    }
+
+    if (matchedPets.length > 0) {
+      orConditions.push({ pet: { $in: matchedPets.map((p) => p._id) } });
+    }
+
+    if (filter.$or) {
+      if (!filter.$and) filter.$and = [];
+      filter.$and.push({ $or: filter.$or }, { $or: orConditions });
+      delete filter.$or;
+    } else {
+      filter.$or = orConditions;
+    }
   }
 
   const sortOrder = buildSort({ sort: effectiveSort }, "startsAt");

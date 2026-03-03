@@ -58,6 +58,7 @@ const warehouseSchema = new Schema(
       },
       coordinates: {
         type: [[[Number]]], // [ [ [lng, lat], ... ] ]
+        default: undefined,
       },
     },
     defaultShippingPrice: {
@@ -80,7 +81,7 @@ const warehouseSchema = new Schema(
       default: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 warehouseSchema.index({ active: 1 });
