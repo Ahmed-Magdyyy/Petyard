@@ -425,7 +425,7 @@ function mapProductToCardDto(p, { lang, promotion, warehouseId } = {}) {
   };
 }
 
-function computeDetailPricingForProduct(product, promoPercent) {
+function computeDetailPricingForProduct(product, promoPercent, warehouseId) {
   if (
     product?.type === productTypeEnum.VARIANT &&
     Array.isArray(product.variants) &&
@@ -452,6 +452,25 @@ function computeDetailPricingForProduct(product, promoPercent) {
         }
       }
 
+      const rawStocks = Array.isArray(v.warehouseStocks)
+        ? v.warehouseStocks
+        : [];
+
+      let filteredStocks;
+      if (warehouseId) {
+        const wid = String(warehouseId);
+        filteredStocks = rawStocks.filter(
+          (ws) => String(ws?.warehouse) === wid,
+        );
+      } else {
+        filteredStocks = rawStocks;
+      }
+
+      const variantStock = filteredStocks.reduce(
+        (sum, ws) => sum + (typeof ws?.quantity === "number" ? ws.quantity : 0),
+        0,
+      );
+
       return {
         id: v._id || null,
         index,
@@ -466,12 +485,12 @@ function computeDetailPricingForProduct(product, promoPercent) {
               url: img.url,
             }))
           : [],
-        warehouseStocks: Array.isArray(v.warehouseStocks)
-          ? v.warehouseStocks.map((ws) => ({
-              warehouse: ws.warehouse,
-              quantity: ws.quantity,
-            }))
-          : [],
+        warehouseStocks: filteredStocks.map((ws) => ({
+          warehouse: ws.warehouse,
+          quantity: ws.quantity,
+        })),
+        stock: variantStock,
+        inStock: variantStock > 0,
         isDefault: !!v.isDefault,
       };
     });
@@ -516,12 +535,14 @@ function computeDetailPricingForProduct(product, promoPercent) {
 
 function mapProductToDetailDto(
   product,
-  { lang, promotion, includeAllLanguages } = {},
+  { lang, promotion, includeAllLanguages, warehouseId } = {},
 ) {
   const normalizedLang = normalizeLang(lang);
 
   const mainImage = pickMainImage(product.images);
-  const stock = computeProductStock(product);
+  const stock = warehouseId
+    ? computeProductStockForWarehouse(product, warehouseId)
+    : computeProductStock(product);
 
   const images = Array.isArray(product.images)
     ? product.images.map((img) => ({
@@ -541,16 +562,25 @@ function mapProductToDetailDto(
     finalDiscountedPrice,
     appliedPromotionForProduct,
     variants,
-  } = computeDetailPricingForProduct(product, promoPercent);
+  } = computeDetailPricingForProduct(product, promoPercent, warehouseId);
 
-  const warehouseStocks =
+  let warehouseStocks = [];
+  if (
     product.type === productTypeEnum.SIMPLE &&
     Array.isArray(product.warehouseStocks)
-      ? product.warehouseStocks.map((ws) => ({
-          warehouse: ws.warehouse,
-          quantity: ws.quantity,
-        }))
-      : [];
+  ) {
+    if (warehouseId) {
+      const wid = String(warehouseId);
+      warehouseStocks = product.warehouseStocks
+        .filter((ws) => String(ws?.warehouse) === wid)
+        .map((ws) => ({ warehouse: ws.warehouse, quantity: ws.quantity }));
+    } else {
+      warehouseStocks = product.warehouseStocks.map((ws) => ({
+        warehouse: ws.warehouse,
+        quantity: ws.quantity,
+      }));
+    }
+  }
 
   const category = mapLocalizedRef(product.category, normalizedLang);
   const subcategory = mapLocalizedRef(product.subcategory, normalizedLang);
@@ -867,7 +897,12 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
   };
 }
 
-async function getProductByIdService(id, lang = "en", user = null) {
+async function getProductByIdService(
+  id,
+  lang = "en",
+  user = null,
+  warehouseId = null,
+) {
   const normalizedLang = normalizeLang(lang);
   const includeAllLanguages =
     user &&
@@ -875,7 +910,8 @@ async function getProductByIdService(id, lang = "en", user = null) {
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.PRODUCTS)));
 
-  const cacheKey = `product:${id}:${normalizedLang}:${includeAllLanguages ? "all" : "localized"}`;
+  const whPart = warehouseId ? `:wh:${warehouseId}` : "";
+  const cacheKey = `product:${id}:${normalizedLang}:${includeAllLanguages ? "all" : "localized"}${whPart}`;
 
   return getOrSetCache(cacheKey, 60, async () => {
     await autoHideExpiredCollections();
@@ -899,6 +935,7 @@ async function getProductByIdService(id, lang = "en", user = null) {
       lang: normalizedLang,
       promotion,
       includeAllLanguages,
+      warehouseId,
     });
   });
 }

@@ -23,7 +23,12 @@ export const getProductsForAdmin = asyncHandler(async (req, res) => {
 });
 
 export const getProduct = asyncHandler(async (req, res) => {
-  const data = await getProductByIdService(req.params.id, req.lang, req.user || null);
+  const data = await getProductByIdService(
+    req.params.id,
+    req.lang,
+    req.user || null,
+    req.query.warehouse || null,
+  );
 
   res.status(200).json({ data });
 });

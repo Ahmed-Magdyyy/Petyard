@@ -14,3 +14,7 @@ src/shared/petyard-dev-firebase-adminsdk-fbsvc-2b99f13262.json
 shopify_products.csv
 scripts/migrateShopifyCsv.js
 scripts/patchDescriptions.js
+
+petyard-admin-ui
+scripts/generateExcelTemplate.js
+Petyard_Flat_Product_Template.xlsx

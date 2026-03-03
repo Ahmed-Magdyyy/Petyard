@@ -173,13 +173,13 @@ export const createProductValidator = [
         req.body.warehouseStocks.length > 0
       ) {
         throw new Error(
-          "warehouseStocks must be empty for VARIANT products; use variants[*].warehouseStocks instead"
+          "warehouseStocks must be empty for VARIANT products; use variants[*].warehouseStocks instead",
         );
       }
 
       if (req.body.price != null || req.body.discountedPrice != null) {
         throw new Error(
-          "price and discountedPrice must be omitted for VARIANT products; use variants[*].price instead"
+          "price and discountedPrice must be omitted for VARIANT products; use variants[*].price instead",
         );
       }
     }
@@ -293,6 +293,11 @@ export const updateProductValidator = [
 
 export const productIdParamValidator = [
   param("id").isMongoId().withMessage("Invalid product id"),
+
+  query("warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("warehouse must be a valid id"),
 
   validatorMiddleware,
 ];
