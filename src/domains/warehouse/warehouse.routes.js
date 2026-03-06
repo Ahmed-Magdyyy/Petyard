@@ -39,19 +39,7 @@ router
 
 router
   .route("/:id")
-  .get(
-    protect,
-    allowedTo(
-      roles.SUPER_ADMIN,
-      roles.ADMIN,
-      roles.MODERATOR,
-      roles.USER,
-      roles.GUEST,
-    ),
-    enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
-    warehouseIdParamValidator,
-    getWarehouse,
-  )
+  .get(warehouseIdParamValidator, getWarehouse)
   .patch(
     protect,
     allowedTo(roles.SUPER_ADMIN, roles.ADMIN),

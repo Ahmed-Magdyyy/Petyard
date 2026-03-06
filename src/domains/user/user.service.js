@@ -339,6 +339,7 @@ export async function deleteLoggedUserService({ userId }) {
   user.pendingPhoneVerificationExpires = undefined;
   user.pendingPhoneOtpLastSentAt = undefined;
   user.pendingPhoneOtpSendCountToday = 0;
+  user.account_status = accountStatus.DELETED;
 
   // Clear addresses from unified Address collection
   await AddressModel.deleteMany({ user: userId });
