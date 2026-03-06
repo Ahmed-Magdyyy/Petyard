@@ -66,6 +66,7 @@ export const enabledControls = Object.freeze({
   SERVICE_RESERVATIONS: "service_reservations",
   WALLET: "wallet",
   WAREHOUSES: "warehouses",
+  HOME_LAYOUT: "home_layout",
 });
 
 export const productTypeEnum = Object.freeze({
