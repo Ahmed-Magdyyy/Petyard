@@ -27,16 +27,15 @@ export async function getSubcategoriesService(
   if (category) {
     filter.category = category;
   }
-  if (parentId) {
-    filter.parent = parentId;
-  }
 
+  // Fetch all subcategories for the category (we need the full list to build the tree)
   const subcategories = await SubcategoryModel.find(filter)
     .populate("category", "_id slug name_en name_ar")
     .populate("parent", "_id slug name_en name_ar")
     .sort({ category: 1, slug: 1 });
 
-  return subcategories.map((s) => ({
+  // Format each subcategory
+  const formatSubcategory = (s) => ({
     id: s._id,
     category: s.category?._id || s.category,
     slug: s.slug,
@@ -54,7 +53,34 @@ export async function getSubcategoriesService(
         }),
     image: s.image?.url || null,
     parent: s.parent?._id || s.parent || null,
-  }));
+    children: [],
+  });
+
+  // Build a map of all formatted subcategories by ID
+  const formatted = subcategories.map(formatSubcategory);
+  const map = new Map();
+  for (const s of formatted) {
+    map.set(String(s.id), s);
+  }
+
+  // Nest children into their parents
+  const roots = [];
+  for (const s of formatted) {
+    const pid = s.parent ? String(s.parent) : null;
+    if (pid && map.has(pid)) {
+      map.get(pid).children.push(s);
+    } else {
+      roots.push(s);
+    }
+  }
+
+  // If a parent subcategory filter was provided, return only its direct branch
+  if (parentId) {
+    const parent = map.get(String(parentId));
+    return parent ? parent.children : [];
+  }
+
+  return roots;
 }
 
 export async function getSubcategoryByIdService(id, lang = "en", user = null) {
