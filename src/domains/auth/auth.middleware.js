@@ -36,9 +36,9 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw new ApiError("User no longer exists", 401);
   }
 
-  if (currentUser.account_status === accountStatus.PANNED) {
+  if (currentUser.account_status === accountStatus.BANNED) {
     throw new ApiError(
-      "Your account have been panned. please contact support",
+      "Your account have been banned. please contact support",
       403,
     );
   }

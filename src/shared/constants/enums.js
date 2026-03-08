@@ -9,7 +9,7 @@ export const roles = Object.freeze({
 export const accountStatus = Object.freeze({
   PENDING: "pending",
   CONFIRMED: "confirmed",
-  PANNED: "panned",
+  BANNED: "banned",
   DELETED: "deleted",
 });
 
