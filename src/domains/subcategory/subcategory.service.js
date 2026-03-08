@@ -15,7 +15,7 @@ export async function getSubcategoriesService(
   lang = "en",
   user = null,
 ) {
-  const { category } = query;
+  const { category, subcategory: parentId } = query;
   const normalizedLang = lang === "ar" ? "ar" : "en";
   const includeAllLanguages =
     user &&
@@ -26,6 +26,9 @@ export async function getSubcategoriesService(
   const filter = {};
   if (category) {
     filter.category = category;
+  }
+  if (parentId) {
+    filter.parent = parentId;
   }
 
   const subcategories = await SubcategoryModel.find(filter)

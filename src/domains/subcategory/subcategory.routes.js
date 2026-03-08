@@ -17,6 +17,7 @@ import {
   enabledControls as enabledControlsEnum,
 } from "../../shared/constants/enums.js";
 import {
+  getSubcategoriesValidator,
   createSubcategoryValidator,
   updateSubcategoryValidator,
   subcategoryIdParamValidator,
@@ -25,7 +26,7 @@ import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js"
 
 const router = Router();
 
-router.get("/", optionalProtect, getSubcategories);
+router.get("/", getSubcategoriesValidator, optionalProtect, getSubcategories);
 router.get("/:id", optionalProtect, subcategoryIdParamValidator, getSubcategory);
 
 // Admin-only routes

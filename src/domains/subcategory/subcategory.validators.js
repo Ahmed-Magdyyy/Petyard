@@ -1,5 +1,19 @@
-import { body, param } from "express-validator";
+import { body, param, query } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
+
+export const getSubcategoriesValidator = [
+  query("category")
+    .optional()
+    .isMongoId()
+    .withMessage("category must be a valid id"),
+
+  query("subcategory")
+    .optional()
+    .isMongoId()
+    .withMessage("subcategory must be a valid id"),
+
+  validatorMiddleware,
+];
 
 export const createSubcategoryValidator = [
   body("category")
