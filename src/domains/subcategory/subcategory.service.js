@@ -63,12 +63,32 @@ export async function getSubcategoriesService(
     map.set(String(s.id), s);
   }
 
-  // Nest children into their parents
+  // Nest children into their parents (with circular reference protection)
   const roots = [];
   for (const s of formatted) {
     const pid = s.parent ? String(s.parent) : null;
     if (pid && map.has(pid)) {
-      map.get(pid).children.push(s);
+      // Walk up the ancestor chain to detect cycles
+      let ancestor = pid;
+      let isCycle = false;
+      const visited = new Set();
+      while (ancestor) {
+        if (ancestor === String(s.id)) {
+          isCycle = true;
+          break;
+        }
+        if (visited.has(ancestor)) break;
+        visited.add(ancestor);
+        const parentNode = map.get(ancestor);
+        ancestor = parentNode?.parent ? String(parentNode.parent) : null;
+      }
+
+      if (isCycle) {
+        // Circular reference detected — treat as root
+        roots.push(s);
+      } else {
+        map.get(pid).children.push(s);
+      }
     } else {
       roots.push(s);
     }
