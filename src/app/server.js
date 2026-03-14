@@ -9,7 +9,6 @@ import helmet from "helmet";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import https from "https";
-import { ApiError } from "../shared/utils/ApiError.js";
 import { globalError } from "../shared/middlewares/errorMiddleware.js";
 import { unmatchedRouteHandler } from "../shared/middlewares/botFilterMiddleware.js";
 import { dbConnection } from "../config/database.js";
@@ -68,42 +67,42 @@ const server = app.listen(PORT, () =>
 getRedisClient();
 getFirebaseAdmin();
 
-// Ping the server immediately after starting the server
-pingServer();
+// // Ping the server immediately after starting the server
+// pingServer();
 
-// Ping the server every 14 minutes (14 * 60 * 1000 milliseconds)
-const pingInterval = 14 * 60 * 1000;
-if (!globalThis.__petyardPingIntervalId) {
-  globalThis.__petyardPingIntervalId = setInterval(pingServer, pingInterval);
-}
+// // Ping the server every 14 minutes (14 * 60 * 1000 milliseconds)
+// const pingInterval = 14 * 60 * 1000;
+// if (!globalThis.__petyardPingIntervalId) {
+//   globalThis.__petyardPingIntervalId = setInterval(pingServer, pingInterval);
+// }
 
-// Function to ping the server by hitting the specified API route
-function pingServer() {
-  const pingEndpoint =
-    "https://petyard.onrender.com/api/v1/locations/options?__internal_ping=1";
+// // Function to ping the server by hitting the specified API route
+// function pingServer() {
+//   const pingEndpoint =
+//     "https://petyard.onrender.com/api/v1/locations/options?__internal_ping=1";
 
-  // Send a GET request to the ping endpoint
-  const req = https
-    .request(
-      pingEndpoint,
-      {
-        method: "GET",
-        headers: {
-          "User-Agent": "petyard-internal-ping",
-          "X-Internal-Ping": "1",
-        },
-      },
-      (res) => {
-        console.log(`Ping sent to server: ${res.statusCode}`);
-        res.resume();
-      },
-    )
-    .on("error", (err) => {
-      console.error("Error while sending ping:", err);
-    });
+//   // Send a GET request to the ping endpoint
+//   const req = https
+//     .request(
+//       pingEndpoint,
+//       {
+//         method: "GET",
+//         headers: {
+//           "User-Agent": "petyard-internal-ping",
+//           "X-Internal-Ping": "1",
+//         },
+//       },
+//       (res) => {
+//         console.log(`Ping sent to server: ${res.statusCode}`);
+//         res.resume();
+//       },
+//     )
+//     .on("error", (err) => {
+//       console.error("Error while sending ping:", err);
+//     });
 
-  req.end();
-}
+//   req.end();
+// }
 
 // UnhandledRejections event handler (rejection outside express)
 process.on("unhandledRejection", (err) => {
