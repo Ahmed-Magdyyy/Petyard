@@ -1,5 +1,6 @@
 import { ApiError } from "./ApiError.js";
 import cloudinary from "./cloudinary.js";
+import sharp from "sharp";
 
 const DEFAULT_ALLOWED_MIME_TYPES = [
   "image/jpeg",
@@ -8,10 +9,16 @@ const DEFAULT_ALLOWED_MIME_TYPES = [
   "image/gif",
   "image/webp",
   "image/svg+xml",
-  "image/webp",
 ];
 
-const DEFAULT_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+const DEFAULT_MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB (raw input limit)
+
+const SHARP_OPTIONS = {
+  maxWidth: 1920,
+  maxHeight: 1080,
+  quality: 80,
+  format: "webp",
+};
 
 export function validateImageFile(
   file,
@@ -35,12 +42,33 @@ export function validateImageFile(
   }
 }
 
+/**
+ * Process image with sharp: resize + convert to webp for smaller file size.
+ * SVGs and GIFs are skipped (sharp doesn't handle them well).
+ */
+async function processImage(file) {
+  const skipTypes = ["image/svg+xml", "image/gif"];
+  if (skipTypes.includes(file.mimetype)) {
+    return { buffer: file.buffer, mimetype: file.mimetype };
+  }
+
+  const processed = await sharp(file.buffer)
+    .resize(SHARP_OPTIONS.maxWidth, SHARP_OPTIONS.maxHeight, {
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: SHARP_OPTIONS.quality })
+    .toBuffer();
+
+  return { buffer: processed, mimetype: "image/webp" };
+}
+
 export async function uploadImageToCloudinary(file, { folder, publicId } = {}) {
   if (!file) return null;
 
-  const dataUri = `data:${file.mimetype};base64,${file.buffer.toString(
-    "base64",
-  )}`;
+  // Process image with sharp before uploading
+  const { buffer, mimetype } = await processImage(file);
+  const dataUri = `data:${mimetype};base64,${buffer.toString("base64")}`;
 
   try {
     const options = { folder };
