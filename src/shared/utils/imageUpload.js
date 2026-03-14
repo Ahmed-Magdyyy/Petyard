@@ -67,16 +67,23 @@ export async function uploadImageToCloudinary(file, { folder, publicId } = {}) {
   if (!file) return null;
 
   // Process image with sharp before uploading
-  const { buffer, mimetype } = await processImage(file);
-  const dataUri = `data:${mimetype};base64,${buffer.toString("base64")}`;
+  const { buffer } = await processImage(file);
 
   try {
-    const options = { folder };
+    const options = { folder, resource_type: "image" };
     if (publicId) {
       options.public_id = publicId;
     }
 
-    const result = await cloudinary.uploader.upload(dataUri, options);
+    // Stream upload — avoids base64 doubling the payload size
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(options, (err, res) => {
+        if (err) return reject(err);
+        resolve(res);
+      });
+      stream.end(buffer);
+    });
+
     return {
       public_id: result.public_id,
       url: result.secure_url || result.url,
