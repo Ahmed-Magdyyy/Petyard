@@ -5,6 +5,7 @@ import {
   createCategoryService,
   updateCategoryService,
   deleteCategoryService,
+  updateCategoryPositionsService,
 } from "./category.service.js";
 
 // GET /categories
@@ -35,4 +36,10 @@ export const updateCategory = asyncHandler(async (req, res) => {
 export const deleteCategory = asyncHandler(async (req, res) => {
   await deleteCategoryService(req.params.id);
   res.status(200).json({ message: "Category deleted successfully" });
+});
+
+// PATCH /categories/positions
+export const updateCategoryPositions = asyncHandler(async (req, res) => {
+  const result = await updateCategoryPositionsService(req.body.positions);
+  res.status(200).json({ data: result });
 });

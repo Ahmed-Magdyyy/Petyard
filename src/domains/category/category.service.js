@@ -17,7 +17,7 @@ export async function getCategoriesService(lang = "en", user = null) {
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.CATEGORIES)));
 
-  const categories = await CategoryModel.find({}).sort({ slug: 1 });
+  const categories = await CategoryModel.find({}).sort({ position: 1 });
 
   return categories.map((c) => ({
     id: c._id,
@@ -35,6 +35,7 @@ export async function getCategoriesService(lang = "en", user = null) {
           desc: pickLocalizedField(c, "desc", normalizedLang),
         }),
     image: c.image || null,
+    position: typeof c.position === "number" ? c.position : 0,
   }));
 }
 
@@ -67,11 +68,12 @@ export async function getCategoryByIdService(id, lang = "en", user = null) {
           desc: pickLocalizedField(category, "desc", normalizedLang),
         }),
     image: category.image.url || null,
+    position: typeof category.position === "number" ? category.position : 0,
   };
 }
 
 export async function createCategoryService(payload, file) {
-  const { name_en, name_ar, desc_en, desc_ar } = payload;
+  const { name_en, name_ar, desc_en, desc_ar, position } = payload;
 
   const normalizedSlug = slugify(String(name_en), {
     lower: true,
@@ -85,7 +87,10 @@ export async function createCategoryService(payload, file) {
 
   const existing = await CategoryModel.findOne({ slug: normalizedSlug });
   if (existing) {
-    throw new ApiError(`Category with slug '${normalizedSlug}' already exists`, 409);
+    throw new ApiError(
+      `Category with slug '${normalizedSlug}' already exists`,
+      409,
+    );
   }
 
   let image;
@@ -107,6 +112,7 @@ export async function createCategoryService(payload, file) {
       name_ar,
       desc_en,
       desc_ar,
+      ...(position != null && { position: Number(position) || 0 }),
       ...(image && { image }),
     });
 
@@ -125,12 +131,13 @@ export async function updateCategoryService(id, payload, file) {
     throw new ApiError(`No category found for this id: ${id}`, 404);
   }
 
-  const { name_en, name_ar, desc_en, desc_ar } = payload;
+  const { name_en, name_ar, desc_en, desc_ar, position } = payload;
 
   if (name_en !== undefined) category.name_en = name_en;
   if (name_ar !== undefined) category.name_ar = name_ar;
   if (desc_en !== undefined) category.desc_en = desc_en;
   if (desc_ar !== undefined) category.desc_ar = desc_ar;
+  if (position !== undefined) category.position = Number(position) || 0;
 
   let newImage;
   let oldPublicId;
@@ -172,4 +179,20 @@ export async function deleteCategoryService(id) {
   }
 
   await CategoryModel.deleteOne({ _id: id });
+}
+
+export async function updateCategoryPositionsService(positions) {
+  const ops = positions.map(({ id, position }) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: { $set: { position: Number(position) } },
+    },
+  }));
+
+  const result = await CategoryModel.bulkWrite(ops, { ordered: false });
+  return {
+    requested: positions.length,
+    matched: result.matchedCount,
+    modified: result.modifiedCount,
+  };
 }

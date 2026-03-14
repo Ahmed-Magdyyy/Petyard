@@ -5,6 +5,7 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  updateCategoryPositions,
 } from "./category.controller.js";
 import {
   protect,
@@ -20,6 +21,7 @@ import {
   createCategoryValidator,
   updateCategoryValidator,
   categoryIdParamValidator,
+  updateCategoryPositionsValidator,
 } from "./category.validators.js";
 import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
 
@@ -40,6 +42,12 @@ router.post(
   uploadSingleImage("image"),
   createCategoryValidator,
   createCategory
+);
+
+router.patch(
+  "/positions",
+  updateCategoryPositionsValidator,
+  updateCategoryPositions
 );
 
 router.patch(

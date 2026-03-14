@@ -32,8 +32,14 @@ const categorySchema = new Schema(
       public_id: { type: String },
       url: { type: String },
     },
+    position: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );
+
+categorySchema.index({ position: 1 });
 
 export const CategoryModel = model("Category", categorySchema);
