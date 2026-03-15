@@ -40,6 +40,8 @@ export async function getUsersService(queryParams) {
     filter.role = { $ne: roles.SUPER_ADMIN };
   }
 
+  filter.account_status = { $ne: accountStatus.DELETED };
+
   // Normalize phone filter if provided
   if (query.phone) {
     try {

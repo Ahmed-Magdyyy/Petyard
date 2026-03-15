@@ -1,6 +1,10 @@
 import { Router } from "express";
-import { protect, allowedTo } from "../../auth/auth.middleware.js";
-import { roles } from "../../../shared/constants/enums.js";
+import {
+  protect,
+  allowedTo,
+  enabledControls as enabledControlsMiddleware,
+} from "../../auth/auth.middleware.js";
+import { roles, enabledControls as enabledControlsEnum } from "../../../shared/constants/enums.js";
 import {
   adminListReservationsByDate,
   adminUpdateReservationStatus,
@@ -36,7 +40,12 @@ router.patch(
   cancelReservationForGuest,
 );
 
-router.use("/admin", protect, allowedTo(roles.SUPER_ADMIN, roles.ADMIN));
+router.use(
+  "/admin",
+  protect,
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+  enabledControlsMiddleware(enabledControlsEnum.SERVICE_RESERVATIONS),
+);
 
 router.get(
   "/admin",
