@@ -1071,11 +1071,13 @@ async function uploadProductImages(files, slug, mainImageIndex) {
     return { images: [], uploadedPublicIds: [] };
   }
 
+  const shortSlug = slug.length > 60 ? slug.slice(0, 60) : slug;
+
   const uploadPromises = files.map((file, index) => {
     validateImageFile(file);
     return uploadImageToCloudinary(file, {
-      folder: `petyard/products/${slug}`,
-      publicId: `product_${slug}_${index}_${Date.now()}`,
+      folder: `petyard/products/${shortSlug}`,
+      publicId: `product_${shortSlug}_${index}_${Date.now()}`,
     });
   });
 
