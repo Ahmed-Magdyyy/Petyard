@@ -816,11 +816,16 @@ export async function oauthVerifyPhoneService({ userId, phone, otp }) {
   user.pendingPhoneVerificationExpires = undefined;
   user.pendingPhoneOtpLastSentAt = undefined;
   user.pendingPhoneOtpSendCountToday = 0;
-  await user.save();
+
+  const { accessToken, refreshToken, accessTokenExpires } =
+    await issueSessionTokensForUser(user);
 
   return {
     ...buildAuthUserResponse(user),
     phoneVerified: user.phoneVerified,
+    accessToken,
+    refreshToken,
+    accessTokenExpires,
   };
 }
 

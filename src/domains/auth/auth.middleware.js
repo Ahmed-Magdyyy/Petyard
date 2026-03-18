@@ -57,6 +57,21 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw new ApiError("Account is not active. Contact customer support", 401);
   }
 
+  // Block unverified-phone users from all routes except phone verification
+  if (!currentUser.phoneVerified) {
+    const path = req.originalUrl || req.url;
+    const isPhoneVerificationRoute =
+      path.includes("/auth/phone/send-otp") ||
+      path.includes("/auth/phone/verify");
+
+    if (!isPhoneVerificationRoute) {
+      throw new ApiError(
+        "No verified phone found. Please verify your phone first",
+        403,
+      );
+    }
+  }
+
   req.user = currentUser;
   next();
 });

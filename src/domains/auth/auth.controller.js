@@ -195,6 +195,7 @@ export const oauthGoogleLogin = asyncHandler(async (req, res) => {
     accessToken,
     refreshToken,
     accessTokenExpires,
+    ...(!user.phoneVerified ? { requiresPhoneVerification: true } : {}),
   });
 });
 
@@ -209,6 +210,7 @@ export const oauthAppleLogin = asyncHandler(async (req, res) => {
     accessToken,
     refreshToken,
     accessTokenExpires,
+    ...(!user.phoneVerified ? { requiresPhoneVerification: true } : {}),
   });
 });
 
