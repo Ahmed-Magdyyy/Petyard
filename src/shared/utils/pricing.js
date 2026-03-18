@@ -40,7 +40,7 @@ export function computeFinalDiscountedPrice({ price, discountedPrice, promoPerce
       : null;
 
   const candidates = [basePrice];
-  if (typeof baseDiscounted === "number") {
+  if (typeof baseDiscounted === "number" && baseDiscounted > 0) {
     candidates.push(baseDiscounted);
   }
   if (typeof promoPrice === "number") {

@@ -333,7 +333,7 @@ async function finalizeActiveCartAndSave(cart, warehouseId) {
   computeTotalCartPrice(cart);
   cart.lastActivityAt = new Date();
   cart.status = cartStatusEnum.ACTIVE;
-  cart.abandonedAt = undefined
+  cart.abandonedAt = undefined;
   await cart.save();
   return cart;
 }
@@ -514,7 +514,10 @@ export async function setCartAddressFromUserService({
     await import("../address/address.service.js");
   const address = await findAddressByIdForUser(userAddressId, userId);
   if (!address) {
-    throw new ApiError("User address not found or belongs to someone else", 404);
+    throw new ApiError(
+      "User address not found or belongs to someone else",
+      404,
+    );
   }
 
   if (!address.warehouse) {
@@ -574,7 +577,10 @@ export async function setCartAddressForGuestService({
     await import("../address/address.service.js");
   const address = await findAddressByIdForGuest(guestAddressId, guestId);
   if (!address) {
-    throw new ApiError("Guest address not found or belongs to another guest", 404);
+    throw new ApiError(
+      "Guest address not found or belongs to another guest",
+      404,
+    );
   }
 
   if (!address.warehouse) {
@@ -632,6 +638,16 @@ export async function upsertCartItemService({
   quantity,
   lang = "en",
 }) {
+  console.log("upsertCartItemService", {
+    userId,
+    guestId,
+    warehouseId,
+    productId,
+    productType,
+    variantId,
+    quantity,
+    lang,
+  });
   if (quantity == null || quantity <= 0) {
     throw new ApiError("quantity must be greater than 0", 400);
   }
@@ -703,10 +719,11 @@ export async function upsertCartItemService({
 
     const price = typeof product.price === "number" ? product.price : 0;
     const discounted =
-      typeof product.discountedPrice === "number"
+      typeof product.discountedPrice === "number" && product.discountedPrice > 0
         ? product.discountedPrice
         : undefined;
-    itemPrice = typeof discounted === "number" ? discounted : price;
+    itemPrice =
+      typeof discounted === "number" && discounted > 0 ? discounted : price;
 
     productImageUrl = pickMainImageUrl(product.images);
   } else {
@@ -731,10 +748,11 @@ export async function upsertCartItemService({
 
     const price = typeof variant.price === "number" ? variant.price : 0;
     const discounted =
-      typeof variant.discountedPrice === "number"
+      typeof variant.discountedPrice === "number" && variant.discountedPrice > 0
         ? variant.discountedPrice
         : undefined;
-    itemPrice = typeof discounted === "number" ? discounted : price;
+    itemPrice =
+      typeof discounted === "number" && discounted > 0 ? discounted : price;
 
     variantOptionsSnapshot = Array.isArray(variant.options)
       ? variant.options.map((o) => ({
@@ -934,7 +952,10 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     ),
   ];
 
-  const products = await findProductsByIds(productIds);
+  const products = await findProductsByIdsWithOptions(productIds, {
+    select: "_id type price discountedPrice name_en name_ar images warehouseStocks variants",
+    lean: true,
+  });
   const productById = new Map(products.map((p) => [String(p._id), p]));
 
   const userItemByKey = new Map();
