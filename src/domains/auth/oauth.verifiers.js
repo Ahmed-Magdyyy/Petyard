@@ -24,10 +24,17 @@ export async function verifyGoogleIdTokenOrThrow(idToken) {
     throw new ApiError("Google OAuth client id is not configured", 500);
   }
 
+  console.log(
+    "[Google OAuth] idToken received:",
+    idToken?.substring(0, 30) + "...",
+  );
+  console.log("[Google OAuth] audiences configured:", audiences);
+
   let ticket;
   try {
     ticket = await googleClient.verifyIdToken({ idToken, audience: audiences });
-  } catch {
+  } catch (err) {
+    console.error("[Google OAuth] verifyIdToken error:", err.message);
     throw new ApiError("Invalid Google token", 401);
   }
 
@@ -42,11 +49,13 @@ export async function verifyGoogleIdTokenOrThrow(idToken) {
     email: payload.email ? String(payload.email).toLowerCase() : undefined,
     emailVerified: Boolean(payload.email_verified),
     name: payload.name ? String(payload.name) : undefined,
-    picture: payload.picture ? String(payload.picture) : undefined
+    picture: payload.picture ? String(payload.picture) : undefined,
   };
 }
 
-const appleJwks = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys"));
+const appleJwks = createRemoteJWKSet(
+  new URL("https://appleid.apple.com/auth/keys"),
+);
 
 function sha256Base64Url(input) {
   const hash = crypto.createHash("sha256").update(String(input)).digest();
@@ -57,7 +66,10 @@ function sha256Base64Url(input) {
     .replace(/=+$/g, "");
 }
 
-export async function verifyAppleIdentityTokenOrThrow({ identityToken, nonce }) {
+export async function verifyAppleIdentityTokenOrThrow({
+  identityToken,
+  nonce,
+}) {
   const audience =
     process.env.APPLE_CLIENT_ID ||
     process.env.APPLE_SERVICE_ID ||
@@ -93,6 +105,7 @@ export async function verifyAppleIdentityTokenOrThrow({ identityToken, nonce }) 
   return {
     providerUserId: String(payload.sub),
     email: payload.email ? String(payload.email).toLowerCase() : undefined,
-    emailVerified: payload.email_verified === "true" || payload.email_verified === true,
+    emailVerified:
+      payload.email_verified === "true" || payload.email_verified === true,
   };
 }
