@@ -202,6 +202,8 @@ export const oauthGoogleLogin = asyncHandler(async (req, res) => {
 // POST /auth/oauth/apple
 // Body: { identityToken, nonce?, name? }
 export const oauthAppleLogin = asyncHandler(async (req, res) => {
+  console.log("[Apple OAuth] req.body:", JSON.stringify(req.body, null, 2));
+
   const { user, accessToken, refreshToken, accessTokenExpires } =
     await oauthAppleLoginService(req.body);
 
