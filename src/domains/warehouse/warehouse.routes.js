@@ -31,7 +31,7 @@ router
   .route("/")
   .get(
     protect,
-    allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+    allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
     enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
     getWarehouses,
   )
