@@ -68,8 +68,10 @@ function mapCollectionToPublicDto(c, lang, { includeAllLanguages = false } = {})
     slug: c.slug,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(c, "name", lang),
           name_en: c.name_en,
           name_ar: c.name_ar,
+          desc: pickLocalizedField(c, "desc", lang),
           desc_en: c.desc_en,
           desc_ar: c.desc_ar,
           isVisible: c.isVisible,

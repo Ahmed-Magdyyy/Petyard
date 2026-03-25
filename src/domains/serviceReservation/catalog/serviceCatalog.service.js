@@ -37,6 +37,7 @@ export async function getServiceCatalogService(lang = "en", user = null) {
     type: svc.type,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(svc, "name", normalizedLang),
           name_en: svc.name_en,
           name_ar: svc.name_ar,
         }
@@ -48,6 +49,7 @@ export async function getServiceCatalogService(lang = "en", user = null) {
       key: opt.key,
       ...(includeAllLanguages
         ? {
+            name: pickLocalizedField(opt, "name", normalizedLang),
             name_en: opt.name_en,
             name_ar: opt.name_ar,
           }
@@ -151,6 +153,7 @@ export async function getServiceByTypeService(type, lang = "en", user = null) {
     type: svc.type,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(svc, "name", normalizedLang),
           name_en: svc.name_en,
           name_ar: svc.name_ar,
         }
@@ -163,6 +166,7 @@ export async function getServiceByTypeService(type, lang = "en", user = null) {
       key: opt.key,
       ...(includeAllLanguages
         ? {
+            name: pickLocalizedField(opt, "name", normalizedLang),
             name_en: opt.name_en,
             name_ar: opt.name_ar,
           }

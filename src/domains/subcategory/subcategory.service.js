@@ -42,8 +42,10 @@ export async function getSubcategoriesService(
     updatedAt: s.updatedAt,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(s, "name", normalizedLang),
           name_en: s.name_en,
           name_ar: s.name_ar,
+          desc: pickLocalizedField(s, "desc", normalizedLang),
           desc_en: s.desc_en,
           desc_ar: s.desc_ar,
         }
@@ -125,8 +127,10 @@ export async function getSubcategoryByIdService(id, lang = "en", user = null) {
     updatedAt: subcategory.updatedAt,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(subcategory, "name", normalizedLang),
           name_en: subcategory.name_en,
           name_ar: subcategory.name_ar,
+          desc: pickLocalizedField(subcategory, "desc", normalizedLang),
           desc_en: subcategory.desc_en,
           desc_ar: subcategory.desc_ar,
         }

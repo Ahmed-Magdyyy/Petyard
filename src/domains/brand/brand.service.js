@@ -25,8 +25,10 @@ export async function getBrandsService(lang = "en", user = null) {
     updatedAt: b.updatedAt,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(b, "name", normalizedLang),
           name_en: b.name_en,
           name_ar: b.name_ar,
+          desc: pickLocalizedField(b, "desc", normalizedLang),
           desc_en: b.desc_en,
           desc_ar: b.desc_ar,
         }
@@ -57,8 +59,10 @@ export async function getBrandByIdService(id, lang = "en", user = null) {
     updatedAt: brand.updatedAt,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(brand, "name", normalizedLang),
           name_en: brand.name_en,
           name_ar: brand.name_ar,
+          desc: pickLocalizedField(brand, "desc", normalizedLang),
           desc_en: brand.desc_en,
           desc_ar: brand.desc_ar,
         }

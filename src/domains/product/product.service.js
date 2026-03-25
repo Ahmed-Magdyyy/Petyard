@@ -595,8 +595,10 @@ function mapProductToDetailDto(
     brand,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(product, "name", normalizedLang),
           name_en: product.name_en,
           name_ar: product.name_ar,
+          desc: pickLocalizedField(product, "desc", normalizedLang),
           desc_en: product.desc_en,
           desc_ar: product.desc_ar,
         }

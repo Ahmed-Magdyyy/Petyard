@@ -25,8 +25,10 @@ export async function getCategoriesService(lang = "en", user = null) {
     updatedAt: c.updatedAt,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(c, "name", normalizedLang),
           name_en: c.name_en,
           name_ar: c.name_ar,
+          desc: pickLocalizedField(c, "desc", normalizedLang),
           desc_en: c.desc_en,
           desc_ar: c.desc_ar,
         }
@@ -58,8 +60,10 @@ export async function getCategoryByIdService(id, lang = "en", user = null) {
     updatedAt: category.updatedAt,
     ...(includeAllLanguages
       ? {
+          name: pickLocalizedField(category, "name", normalizedLang),
           name_en: category.name_en,
           name_ar: category.name_ar,
+          desc: pickLocalizedField(category, "desc", normalizedLang),
           desc_en: category.desc_en,
           desc_ar: category.desc_ar,
         }

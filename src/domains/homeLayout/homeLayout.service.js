@@ -66,7 +66,7 @@ export async function getHomeLayoutService(lang = "en", user = null) {
   const sections = sorted.map((s) => ({
     key: s.key,
     ...(includeAllLanguages
-      ? { name_en: s.name_en, name_ar: s.name_ar }
+      ? { name: lang === "ar" ? s.name_ar : s.name_en, name_en: s.name_en, name_ar: s.name_ar }
       : { name: lang === "ar" ? s.name_ar : s.name_en }),
     position: s.position,
     // isVisible: s.isVisible,
