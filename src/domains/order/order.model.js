@@ -141,6 +141,9 @@ const orderSchema = new Schema(
       governorate: { type: String },
       area: { type: String },
       phone: { type: String },
+      building: { type: String },
+      floor: { type: String },
+      apartment: { type: String },
       location: {
         lat: { type: Number },
         lng: { type: Number },
