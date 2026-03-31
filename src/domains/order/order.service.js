@@ -980,11 +980,16 @@ async function initializeCardPayment(order, savedCardToken = null) {
 
   const amountCents = Math.round(order.total * 100);
 
-  const items = (order.items || []).map((item) => ({
-    name: item.productName || "Product",
-    amountCents: Math.round(item.lineTotal * 100),
-    quantity: item.quantity,
-  }));
+  // Paymob requires sum(item.amount) === total amount exactly.
+  // Shipping, discounts, and wallet make per-item amounts diverge from the total,
+  // so we send a single consolidated line item to guarantee the match.
+  const items = [
+    {
+      name: `Order ${order.orderNumber}`,
+      amountCents,
+      quantity: 1,
+    },
+  ];
 
   const billingData = {
     firstName:
