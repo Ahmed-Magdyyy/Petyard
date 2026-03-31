@@ -129,10 +129,15 @@ export function verifyWebhookHmac(transactionObj, receivedHmac) {
     return value != null ? String(value) : "";
   }).join("");
 
+  console.log("[Paymob HMAC] concatenated:", concatenated);
+
   const computed = crypto
     .createHmac("sha512", config.hmacSecret)
     .update(concatenated)
     .digest("hex");
+
+  console.log("[Paymob HMAC] computed :", computed);
+  console.log("[Paymob HMAC] received :", receivedHmac);
 
   return computed === receivedHmac;
 }
@@ -140,7 +145,8 @@ export function verifyWebhookHmac(transactionObj, receivedHmac) {
 // ─── Webhook Payload Extraction ─────────────────────────────────────────────
 
 export function extractTransactionData(webhookBody) {
-  const obj = webhookBody?.obj || webhookBody;
+  const obj =
+    webhookBody?.transaction || webhookBody?.obj || webhookBody;
 
   return {
     transactionId: obj.id != null ? String(obj.id) : "",
@@ -156,5 +162,38 @@ export function extractTransactionData(webhookBody) {
       subType: obj.source_data?.sub_type || null,
     },
     cardToken: obj.data?.token || null,
+  };
+}
+
+// ─── Build transaction object from GET query params ─────────────────────────
+
+export function buildTransactionFromQuery(query) {
+  return {
+    id: query.id,
+    pending: query.pending === "true",
+    amount_cents: query.amount_cents,
+    success: query.success === "true",
+    is_auth: query.is_auth === "true",
+    is_capture: query.is_capture === "true",
+    is_standalone_payment: query.is_standalone_payment === "true",
+    is_voided: query.is_voided === "true",
+    is_refunded: query.is_refunded === "true",
+    is_3d_secure: query.is_3d_secure === "true",
+    integration_id: query.integration_id,
+    has_parent_transaction: query.has_parent_transaction === "true",
+    order: { id: query.order },
+    created_at: query.created_at,
+    currency: query.currency,
+    error_occured: query.error_occured === "true",
+    owner: query.owner,
+    source_data: {
+      type: query["source_data.type"],
+      pan: query["source_data.pan"],
+      sub_type: query["source_data.sub_type"],
+    },
+    merchant_order_id: query.merchant_order_id || null,
+    data: {
+      message: query["data.message"],
+    },
   };
 }

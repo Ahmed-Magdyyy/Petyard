@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
-  handlePaymobWebhook,
+  handlePaymobWebhookPost,
+  handlePaymobWebhookGet,
   getUserSavedCards,
   deleteUserSavedCard,
 } from "./payment.controller.js";
@@ -9,8 +10,9 @@ import { savedCardIdValidator } from "./payment.validators.js";
 
 const router = Router();
 
-// Paymob webhook — no auth required, verified via HMAC
-router.post("/webhook", handlePaymobWebhook);
+// Paymob webhooks — no auth required, verified via HMAC
+router.post("/webhook", handlePaymobWebhookPost); // server-to-server callback
+router.get("/webhook", handlePaymobWebhookGet);   // browser redirect callback
 
 // Saved cards — authenticated users only
 router.use("/cards", protect);

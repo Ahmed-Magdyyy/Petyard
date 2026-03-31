@@ -1,5 +1,9 @@
 import asyncHandler from "express-async-handler";
-import { verifyWebhookHmac, extractTransactionData } from "./paymob.service.js";
+import {
+  verifyWebhookHmac,
+  extractTransactionData,
+  buildTransactionFromQuery,
+} from "./paymob.service.js";
 import {
   confirmOrderPaymentService,
   failOrderPaymentService,
@@ -11,48 +15,44 @@ import {
 } from "./savedCard.service.js";
 import { OrderModel } from "../order/order.model.js";
 
-// ─── Paymob Webhook ─────────────────────────────────────────────────────────
+// ─── Shared webhook processing logic ────────────────────────────────────────
 
-export const handlePaymobWebhook = asyncHandler(async (req, res) => {
-  const receivedHmac = req.body.hmac;
-  const transactionObj = req.body.transaction;
-
+async function processWebhook(transactionObj, receivedHmac, fullBody) {
   if (!receivedHmac || !transactionObj) {
     console.warn("[Paymob Webhook] Missing HMAC or transaction object");
-    return res.status(400).json({ message: "Invalid webhook payload" });
+    return { status: 400, message: "Invalid webhook payload" };
   }
 
   const isValid = verifyWebhookHmac(transactionObj, receivedHmac);
   if (!isValid) {
     console.warn("[Paymob Webhook] HMAC verification failed");
-    return res.status(401).json({ message: "HMAC verification failed" });
+    return { status: 401, message: "HMAC verification failed" };
   }
 
-  const txData = extractTransactionData(req.body);
+  const txData = extractTransactionData(fullBody);
 
   console.log(
-    `[Paymob Webhook] txn=${txData.transactionId} success=${txData.success} pending=${txData.pending} order=${txData.merchantOrderId}`,
+    `[Paymob Webhook] txn=${txData.transactionId} success=${txData.success} pending=${txData.pending} merchantOrder=${txData.merchantOrderId} paymobOrder=${txData.paymobOrderId}`,
   );
 
-  // Acknowledge pending transactions without further processing
   if (txData.pending) {
-    return res
-      .status(200)
-      .json({ message: "Pending transaction acknowledged" });
+    return { status: 200, message: "Pending transaction acknowledged" };
   }
 
-  if (!txData.merchantOrderId) {
-    console.warn("[Paymob Webhook] No merchant_order_id in transaction");
-    return res.status(200).json({ message: "No merchant order ID" });
+  // Look up our order: try merchantOrderId (orderNumber) first, then paymobOrderId
+  let order = null;
+  if (txData.merchantOrderId) {
+    order = await OrderModel.findOne({ orderNumber: txData.merchantOrderId });
   }
-
-  const order = await OrderModel.findOne({
-    orderNumber: txData.merchantOrderId,
-  });
+  if (!order && txData.paymobOrderId) {
+    order = await OrderModel.findOne({ paymobOrderId: txData.paymobOrderId });
+  }
 
   if (!order) {
-    console.warn(`[Paymob Webhook] Order not found: ${txData.merchantOrderId}`);
-    return res.status(200).json({ message: "Order not found" });
+    console.warn(
+      `[Paymob Webhook] Order not found: merchant=${txData.merchantOrderId} paymob=${txData.paymobOrderId}`,
+    );
+    return { status: 200, message: "Order not found" };
   }
 
   if (txData.success) {
@@ -72,7 +72,39 @@ export const handlePaymobWebhook = asyncHandler(async (req, res) => {
     await failOrderPaymentService(order._id);
   }
 
-  res.status(200).json({ message: "Webhook processed" });
+  return { status: 200, message: "Webhook processed" };
+}
+
+// ─── POST webhook (server-to-server callback) ──────────────────────────────
+
+export const handlePaymobWebhookPost = asyncHandler(async (req, res) => {
+  const receivedHmac = req.body.hmac || req.query.hmac;
+  const transactionObj = req.body.transaction || req.body.obj || req.body;
+
+  const result = await processWebhook(transactionObj, receivedHmac, req.body);
+  res.status(result.status).json({ message: result.message });
+});
+
+// ─── GET webhook (browser redirect callback) ────────────────────────────────
+
+export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
+  const receivedHmac = req.query.hmac;
+  const transactionObj = buildTransactionFromQuery(req.query);
+
+  const result = await processWebhook(
+    transactionObj,
+    receivedHmac,
+    { transaction: transactionObj },
+  );
+
+  // For GET (browser redirect), return a simple HTML page instead of JSON
+  if (result.status === 200 && result.message === "Webhook processed") {
+    return res.status(200).send(
+      "<html><body><h2>Payment processed successfully</h2><p>You can close this page.</p></body></html>",
+    );
+  }
+
+  res.status(result.status).json({ message: result.message });
 });
 
 // ─── Saved Cards ─────────────────────────────────────────────────────────────
