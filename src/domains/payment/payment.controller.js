@@ -1,8 +1,5 @@
 import asyncHandler from "express-async-handler";
-import {
-  verifyWebhookHmac,
-  extractTransactionData,
-} from "./paymob.service.js";
+import { verifyWebhookHmac, extractTransactionData } from "./paymob.service.js";
 import {
   confirmOrderPaymentService,
   failOrderPaymentService,
@@ -17,8 +14,8 @@ import { OrderModel } from "../order/order.model.js";
 // ─── Paymob Webhook ─────────────────────────────────────────────────────────
 
 export const handlePaymobWebhook = asyncHandler(async (req, res) => {
-  const receivedHmac = req.query.hmac;
-  const transactionObj = req.body?.obj || req.body;
+  const receivedHmac = req.body.hmac;
+  const transactionObj = req.body.transaction;
 
   if (!receivedHmac || !transactionObj) {
     console.warn("[Paymob Webhook] Missing HMAC or transaction object");
@@ -39,7 +36,9 @@ export const handlePaymobWebhook = asyncHandler(async (req, res) => {
 
   // Acknowledge pending transactions without further processing
   if (txData.pending) {
-    return res.status(200).json({ message: "Pending transaction acknowledged" });
+    return res
+      .status(200)
+      .json({ message: "Pending transaction acknowledged" });
   }
 
   if (!txData.merchantOrderId) {
@@ -52,9 +51,7 @@ export const handlePaymobWebhook = asyncHandler(async (req, res) => {
   });
 
   if (!order) {
-    console.warn(
-      `[Paymob Webhook] Order not found: ${txData.merchantOrderId}`,
-    );
+    console.warn(`[Paymob Webhook] Order not found: ${txData.merchantOrderId}`);
     return res.status(200).json({ message: "Order not found" });
   }
 

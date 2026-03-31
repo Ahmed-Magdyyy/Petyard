@@ -54,7 +54,7 @@ export async function applyCouponAtCheckoutService({
   if (hasPromotionalItems) {
     throw new ApiError(
       "Coupons cannot be applied when the cart contains promotional items",
-      400
+      400,
     );
   }
 
@@ -74,19 +74,20 @@ export async function applyCouponAtCheckoutService({
 
   const coupon = await findActiveCouponByCodeService(trimmedCode);
 
-  const allowedUserIds =
-    Array.isArray(coupon.allowedUserIds) ? coupon.allowedUserIds : [];
+  const allowedUserIds = Array.isArray(coupon.allowedUserIds)
+    ? coupon.allowedUserIds
+    : [];
 
   if (allowedUserIds.length > 0) {
     if (!userId) {
       throw new ApiError(
         "This coupon is only available to specific users",
-        403
+        403,
       );
     }
 
     const isAllowed = allowedUserIds.some(
-      (id) => String(id) === String(userId)
+      (id) => String(id) === String(userId),
     );
 
     if (!isAllowed) {
@@ -101,7 +102,7 @@ export async function applyCouponAtCheckoutService({
   ) {
     throw new ApiError(
       `This coupon requires a minimum order total of ${coupon.minOrderTotal}`,
-      400
+      400,
     );
   }
 
@@ -112,7 +113,7 @@ export async function applyCouponAtCheckoutService({
   ) {
     throw new ApiError(
       `This coupon can only be applied to orders up to ${coupon.maxOrderTotal}`,
-      400
+      400,
     );
   }
 
@@ -135,7 +136,7 @@ export async function applyCouponAtCheckoutService({
       if (userUsage >= coupon.maxUsagePerUser) {
         throw new ApiError(
           "You have already used this coupon the maximum number of times",
-          400
+          400,
         );
       }
     }
@@ -227,7 +228,7 @@ export async function getCheckoutSummaryService({
     if (hasPromotionalItems) {
       throw new ApiError(
         "Coupons cannot be applied when the cart contains promotional items",
-        400
+        400,
       );
     }
 
@@ -238,19 +239,20 @@ export async function getCheckoutSummaryService({
 
     const couponDoc = await findActiveCouponByCodeService(trimmedCode);
 
-    const allowedUserIds =
-      Array.isArray(couponDoc.allowedUserIds) ? couponDoc.allowedUserIds : [];
+    const allowedUserIds = Array.isArray(couponDoc.allowedUserIds)
+      ? couponDoc.allowedUserIds
+      : [];
 
     if (allowedUserIds.length > 0) {
       if (!userId) {
         throw new ApiError(
           "This coupon is only available to specific users",
-          403
+          403,
         );
       }
 
       const isAllowed = allowedUserIds.some(
-        (id) => String(id) === String(userId)
+        (id) => String(id) === String(userId),
       );
 
       if (!isAllowed) {
@@ -265,7 +267,7 @@ export async function getCheckoutSummaryService({
     ) {
       throw new ApiError(
         `This coupon requires a minimum order total of ${couponDoc.minOrderTotal}`,
-        400
+        400,
       );
     }
 
@@ -276,7 +278,7 @@ export async function getCheckoutSummaryService({
     ) {
       throw new ApiError(
         `This coupon can only be applied to orders up to ${couponDoc.maxOrderTotal}`,
-        400
+        400,
       );
     }
 
@@ -286,7 +288,10 @@ export async function getCheckoutSummaryService({
       typeof couponDoc.usageCount === "number" &&
       couponDoc.usageCount >= couponDoc.maxUsageTotal
     ) {
-      throw new ApiError("This coupon has reached its maximum usage limit", 400);
+      throw new ApiError(
+        "This coupon has reached its maximum usage limit",
+        400,
+      );
     }
 
     if (userId && typeof couponDoc.maxUsagePerUser === "number") {
@@ -299,7 +304,7 @@ export async function getCheckoutSummaryService({
         if (userUsage >= couponDoc.maxUsagePerUser) {
           throw new ApiError(
             "You have already used this coupon the maximum number of times",
-            400
+            400,
           );
         }
       }
@@ -315,16 +320,22 @@ export async function getCheckoutSummaryService({
       code: couponDoc.code,
       discountType: couponDoc.discountType || null,
       discountValue:
-        typeof couponDoc.discountValue === "number" ? couponDoc.discountValue : null,
+        typeof couponDoc.discountValue === "number"
+          ? couponDoc.discountValue
+          : null,
       maxDiscountAmount:
         typeof couponDoc.maxDiscountAmount === "number"
           ? couponDoc.maxDiscountAmount
           : null,
       freeShipping: !!couponDoc.freeShipping,
       minOrderTotal:
-        typeof couponDoc.minOrderTotal === "number" ? couponDoc.minOrderTotal : null,
+        typeof couponDoc.minOrderTotal === "number"
+          ? couponDoc.minOrderTotal
+          : null,
       maxOrderTotal:
-        typeof couponDoc.maxOrderTotal === "number" ? couponDoc.maxOrderTotal : null,
+        typeof couponDoc.maxOrderTotal === "number"
+          ? couponDoc.maxOrderTotal
+          : null,
     };
 
     pricing = {
@@ -360,19 +371,24 @@ export async function getCheckoutSummaryService({
   if (userId) {
     // Calculate net subtotal for wallet and loyalty points
     const netSubtotal = Math.max(0, pricing.subtotal - pricing.discountAmount);
-    
+
     const user = await UserModel.findById(userId).select("walletBalance");
-    if (user && typeof user.walletBalance === "number" && user.walletBalance > 0) {
+    if (
+      user &&
+      typeof user.walletBalance === "number" &&
+      user.walletBalance > 0
+    ) {
       walletBalance = user.walletBalance;
-      
+
       // Wallet applies only to items after discount (not shipping)
       walletUsed = Math.min(walletBalance, netSubtotal);
-      
+
       // Final total = (netSubtotal - walletUsed) + shipping
       const remainingSubtotal = netSubtotal - walletUsed;
-      finalTotal = remainingSubtotal + (pricing.shippingFee - pricing.shippingDiscount);
+      finalTotal =
+        remainingSubtotal + (pricing.shippingFee - pricing.shippingDiscount);
     }
-    
+
     // Calculate estimated loyalty points (awarded on delivery)
     // Points on items only (subtotal - discounts), excluding shipping
     estimatedLoyaltyPoints = await calculateLoyaltyPointsForOrder(netSubtotal);
@@ -380,16 +396,23 @@ export async function getCheckoutSummaryService({
 
   // Validate delivery address completeness before returning summary
   const addr = cartResponse.deliveryAddress;
-  console.log("addr", addr);
   if (!addr) {
     throw new ApiError("Delivery address is not set for this cart", 400);
   }
-  const requiredFields = ["name", "governorate", "phone", "building", "floor", "apartment", "details"];
+  const requiredFields = [
+    "name",
+    "governorate",
+    "phone",
+    "building",
+    "floor",
+    "apartment",
+    "details",
+  ];
   const missingFields = requiredFields.filter((f) => !addr[f]);
   if (missingFields.length > 0) {
     throw new ApiError(
       `Delivery address is missing required fields: ${missingFields.join(", ")}`,
-      400
+      400,
     );
   }
   if (
