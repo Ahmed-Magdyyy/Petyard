@@ -20,6 +20,7 @@ export const authProviderEnum = Object.freeze({
 });
 
 export const orderStatusEnum = Object.freeze({
+  AWAITING_PAYMENT: "awaiting_payment",
   PENDING: "pending",
   ACCEPTED: "accepted",
   SHIPPED: "shipped",

@@ -9,6 +9,7 @@ docs/
 src/shared/petyard-dev-firebase-adminsdk-fbsvc-2b99f13262.json
 
 .windsurf
+.claude
 
 .agents
 shopify_products.csv

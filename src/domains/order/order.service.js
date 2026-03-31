@@ -35,6 +35,11 @@ import {
   buildSort,
   buildRegexFilter,
 } from "../../shared/utils/apiFeatures.js";
+import {
+  createPaymentIntention,
+  getPublicKey,
+} from "../payment/paymob.service.js";
+import { getSavedCardTokenService } from "../payment/savedCard.service.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -81,6 +86,10 @@ async function invalidateProductCaches(productIds) {
 }
 
 const allowedStatusTransitions = {
+  [orderStatusEnum.AWAITING_PAYMENT]: [
+    orderStatusEnum.PENDING,
+    orderStatusEnum.CANCELLED,
+  ],
   [orderStatusEnum.PENDING]: [
     orderStatusEnum.ACCEPTED,
     orderStatusEnum.CANCELLED,
@@ -895,7 +904,10 @@ async function processOrderCreationWithCart({
     walletUsed: walletResult.walletUsed,
     total: finalTotal,
     couponCode: couponResult.couponCode,
-    status: orderStatusEnum.PENDING,
+    status:
+      pm === paymentMethodEnum.CARD
+        ? orderStatusEnum.AWAITING_PAYMENT
+        : orderStatusEnum.PENDING,
     paymentMethod: pm,
     paymentStatus: paymentStatusEnum.PENDING,
     history: [historyEntry],
@@ -959,11 +971,58 @@ async function processOrderCreationWithCart({
   return createdOrder;
 }
 
+// ─── Card Payment Initialization ────────────────────────────────────────────
+
+async function initializeCardPayment(order, savedCardToken = null) {
+  const user = order.user
+    ? await UserModel.findById(order.user).select("name email phone")
+    : null;
+
+  const amountCents = Math.round(order.total * 100);
+
+  const items = (order.items || []).map((item) => ({
+    name: item.productName || "Product",
+    amountCents: Math.round(item.lineTotal * 100),
+    quantity: item.quantity,
+  }));
+
+  const billingData = {
+    firstName:
+      user?.name?.split(" ")[0] || order.deliveryAddress?.name || "N/A",
+    lastName: user?.name?.split(" ").slice(1).join(" ") || "N/A",
+    email: user?.email || "na@na.com",
+    phone: order.deliveryAddress?.phone || user?.phone || "N/A",
+  };
+
+  const intention = await createPaymentIntention({
+    merchantOrderId: order.orderNumber,
+    amountCents,
+    currency: order.currency || "EGP",
+    billingData,
+    items,
+    savedCardToken,
+  });
+
+  // Persist Paymob reference on the order (non-transactional, safe)
+  await OrderModel.updateOne(
+    { _id: order._id },
+    { paymobOrderId: intention.paymobOrderId || null },
+  );
+
+  return {
+    clientSecret: intention.clientSecret,
+    publicKey: getPublicKey(),
+  };
+}
+
+// ─── Order Creation ─────────────────────────────────────────────────────────
+
 export async function createOrderForUserService({
   userId,
   couponCode,
   paymentMethod,
   notes,
+  savedCardId,
   lang = "en",
 }) {
   if (!userId) {
@@ -1006,23 +1065,46 @@ export async function createOrderForUserService({
     session.endSession();
   }
 
-  if (createdOrder) {
-    const productIds = Array.isArray(createdOrder.items)
-      ? createdOrder.items.map((i) => i.product)
-      : [];
+  if (!createdOrder) return { order: null };
 
-    await invalidateProductCaches(productIds);
+  const productIds = Array.isArray(createdOrder.items)
+    ? createdOrder.items.map((i) => i.product)
+    : [];
 
-    // Fire-and-forget notification; catch errors so they appear in logs
-    sendOrderStatusChangedNotification(createdOrder).catch((err) =>
-      console.error(
-        "[Order] Failed to send order created notification:",
-        err.message,
-      ),
-    );
+  await invalidateProductCaches(productIds);
+
+  // ── Card payment: initialize Paymob intention ──
+  if (createdOrder.paymentMethod === paymentMethodEnum.CARD) {
+    let savedCardToken = null;
+    if (savedCardId) {
+      savedCardToken = await getSavedCardTokenService(userId, savedCardId);
+    }
+
+    try {
+      const payment = await initializeCardPayment(createdOrder, savedCardToken);
+      return { order: createdOrder, payment };
+    } catch (err) {
+      console.error("[Order] Card payment init failed:", err.message);
+      // Rollback: restore stock, wallet, coupon
+      await failOrderPaymentService(createdOrder._id);
+      throw new ApiError(
+        lang === "en"
+          ? "Payment initialization failed. Please try again."
+          : "فشل تهيئة الدفع. يرجى المحاولة مرة أخرى.",
+        502,
+      );
+    }
   }
 
-  return createdOrder;
+  // ── COD: send notification immediately ──
+  sendOrderStatusChangedNotification(createdOrder).catch((err) =>
+    console.error(
+      "[Order] Failed to send order created notification:",
+      err.message,
+    ),
+  );
+
+  return { order: createdOrder };
 }
 
 export async function createOrderForGuestService({
@@ -1073,15 +1155,32 @@ export async function createOrderForGuestService({
     session.endSession();
   }
 
-  if (createdOrder) {
-    const productIds = Array.isArray(createdOrder.items)
-      ? createdOrder.items.map((i) => i.product)
-      : [];
+  if (!createdOrder) return { order: null };
 
-    await invalidateProductCaches(productIds);
+  const productIds = Array.isArray(createdOrder.items)
+    ? createdOrder.items.map((i) => i.product)
+    : [];
+
+  await invalidateProductCaches(productIds);
+
+  // ── Card payment: initialize Paymob intention (no saved cards for guests) ──
+  if (createdOrder.paymentMethod === paymentMethodEnum.CARD) {
+    try {
+      const payment = await initializeCardPayment(createdOrder);
+      return { order: createdOrder, payment };
+    } catch (err) {
+      console.error("[Order] Guest card payment init failed:", err.message);
+      await failOrderPaymentService(createdOrder._id);
+      throw new ApiError(
+        lang === "en"
+          ? "Payment initialization failed. Please try again."
+          : "فشل تهيئة الدفع. يرجى المحاولة مرة أخرى.",
+        502,
+      );
+    }
   }
 
-  return createdOrder;
+  return { order: createdOrder };
 }
 
 export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
@@ -1599,4 +1698,150 @@ export async function updateOrderStatusService({
   }
 
   return updated;
+}
+
+// ─── Payment Confirmation / Failure ─────────────────────────────────────────
+
+export async function confirmOrderPaymentService({
+  orderId,
+  paymobTransactionId,
+  paymobOrderId,
+}) {
+  const order = await OrderModel.findById(orderId);
+  if (!order) return;
+
+  // Idempotency: skip if already confirmed or no longer awaiting payment
+  if (order.status !== orderStatusEnum.AWAITING_PAYMENT) return;
+  if (order.paymentStatus === paymentStatusEnum.PAID) return;
+
+  order.status = orderStatusEnum.PENDING;
+  order.paymentStatus = paymentStatusEnum.PAID;
+  order.paymobTransactionId = paymobTransactionId || undefined;
+  if (paymobOrderId) order.paymobOrderId = paymobOrderId;
+
+  order.history = Array.isArray(order.history) ? order.history : [];
+  order.history.push({
+    at: new Date(),
+    description: "Payment confirmed",
+    visibleToUser: true,
+  });
+
+  await order.save();
+
+  // Notify user that payment succeeded
+  sendOrderStatusChangedNotification(order).catch((err) =>
+    console.error(
+      "[Order] Failed to send payment confirmed notification:",
+      err.message,
+    ),
+  );
+}
+
+export async function failOrderPaymentService(orderId) {
+  const session = await mongoose.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      const order = await OrderModel.findById(orderId).session(session);
+      if (!order) return;
+
+      // Only fail orders that are still awaiting payment
+      if (order.status !== orderStatusEnum.AWAITING_PAYMENT) return;
+
+      // Restore stock
+      await restoreStockForOrder({ session, order });
+
+      // Refund wallet
+      if (
+        order.user &&
+        typeof order.walletUsed === "number" &&
+        order.walletUsed > 0
+      ) {
+        await UserModel.updateOne(
+          { _id: order.user },
+          { $inc: { walletBalance: order.walletUsed } },
+          { session },
+        );
+
+        const userAfterRefund = await UserModel.findById(order.user)
+          .session(session)
+          .select("walletBalance");
+
+        await WalletTransactionModel.create(
+          [
+            {
+              user: order.user,
+              amount: order.walletUsed,
+              type: "ORDER_REFUND",
+              referenceType: "ORDER",
+              referenceId: order._id,
+              balanceAfter: userAfterRefund?.walletBalance ?? 0,
+              note: `Payment failed - refund for order ${order.orderNumber}`,
+            },
+          ],
+          { session },
+        );
+      }
+
+      // Reverse coupon usage
+      if (order.couponCode) {
+        await CouponModel.updateOne(
+          { code: order.couponCode, usageCount: { $gt: 0 } },
+          { $inc: { usageCount: -1 } },
+          { session },
+        );
+      }
+
+      order.status = orderStatusEnum.CANCELLED;
+      order.paymentStatus = paymentStatusEnum.FAILED;
+
+      order.history = Array.isArray(order.history) ? order.history : [];
+      order.history.push({
+        at: new Date(),
+        description: "Payment failed - order cancelled",
+        visibleToUser: true,
+      });
+
+      await order.save({ session });
+    });
+  } finally {
+    session.endSession();
+  }
+
+  // Invalidate product caches after stock restoration
+  const order = await OrderModel.findById(orderId).lean();
+  if (order) {
+    const productIds = (order.items || []).map((i) => i.product);
+    await invalidateProductCaches(productIds);
+  }
+}
+
+// ─── Abandoned Payment Cleanup ──────────────────────────────────────────────
+
+export async function cancelAbandonedCardOrdersService(timeoutMinutes = 30) {
+  const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+
+  const abandonedOrders = await OrderModel.find({
+    status: orderStatusEnum.AWAITING_PAYMENT,
+    paymentMethod: paymentMethodEnum.CARD,
+    paymentStatus: paymentStatusEnum.PENDING,
+    createdAt: { $lte: cutoff },
+  }).select("_id orderNumber");
+
+  let cancelledCount = 0;
+
+  for (const order of abandonedOrders) {
+    try {
+      await failOrderPaymentService(order._id);
+      cancelledCount++;
+      console.log(`[AbandonedPayments] Cancelled order ${order.orderNumber}`);
+    } catch (err) {
+      console.error(
+        `[AbandonedPayments] Failed to cancel order ${order.orderNumber}:`,
+        err.message,
+      );
+    }
+  }
+
+  return { cancelledCount };
 }

@@ -1,0 +1,160 @@
+import crypto from "crypto";
+import { ApiError } from "../../shared/utils/ApiError.js";
+
+const PAYMOB_BASE_URL = "https://accept.paymob.com";
+
+// ─── Configuration ──────────────────────────────────────────────────────────
+
+function getConfig() {
+  return {
+    secretKey: process.env.PAYMOB_SECRET_KEY,
+    publicKey: process.env.PAYMOB_PUBLIC_KEY,
+    integrationId: Number(process.env.PAYMOB_INTEGRATION_ID),
+    hmacSecret: process.env.PAYMOB_HMAC,
+    webhookUrl: process.env.PAYMOB_WEBHOOK_URL || null,
+  };
+}
+
+export function getPublicKey() {
+  return getConfig().publicKey;
+}
+
+// ─── Create Payment Intention (v2 API) ──────────────────────────────────────
+
+export async function createPaymentIntention({
+  merchantOrderId,
+  amountCents,
+  currency = "EGP",
+  billingData,
+  items = [],
+  savedCardToken = null,
+}) {
+  const config = getConfig();
+
+  if (!config.secretKey || !config.integrationId) {
+    throw new ApiError("Payment gateway is not configured", 500);
+  }
+
+  const body = {
+    amount: amountCents,
+    currency,
+    payment_methods: [config.integrationId],
+    billing_data: {
+      first_name: billingData.firstName || "N/A",
+      last_name: billingData.lastName || "N/A",
+      email: billingData.email || "na@na.com",
+      phone_number: billingData.phone || "N/A",
+    },
+    items: items.map((item) => ({
+      name: item.name || "Product",
+      amount: item.amountCents,
+      quantity: item.quantity || 1,
+    })),
+    merchant_order_id: merchantOrderId,
+    ...(config.webhookUrl && { notification_url: config.webhookUrl }),
+    ...(savedCardToken && { token: savedCardToken }),
+  };
+
+  const response = await fetch(`${PAYMOB_BASE_URL}/v1/intention/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${config.secretKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("[Paymob] Intention API error:", response.status, errorBody);
+    throw new ApiError("Failed to initialize payment", 502);
+  }
+
+  const data = await response.json();
+
+  return {
+    intentionId: data.intention_id || data.id,
+    clientSecret: data.client_secret,
+    paymobOrderId: data.intention_order_id
+      ? String(data.intention_order_id)
+      : null,
+  };
+}
+
+// ─── Webhook HMAC Verification ──────────────────────────────────────────────
+
+/**
+ * Fields used to compute the HMAC digest, in the exact order
+ * required by Paymob's transaction callback specification.
+ */
+const HMAC_FIELDS = [
+  "amount_cents",
+  "created_at",
+  "currency",
+  "error_occured",
+  "has_parent_transaction",
+  "id",
+  "integration_id",
+  "is_3d_secure",
+  "is_auth",
+  "is_capture",
+  "is_refunded",
+  "is_standalone_payment",
+  "is_voided",
+  "order.id",
+  "owner",
+  "pending",
+  "source_data.pan",
+  "source_data.sub_type",
+  "source_data.type",
+  "success",
+];
+
+function getNestedValue(obj, path) {
+  return path
+    .split(".")
+    .reduce((curr, key) => (curr != null ? curr[key] : undefined), obj);
+}
+
+export function verifyWebhookHmac(transactionObj, receivedHmac) {
+  const config = getConfig();
+
+  if (!config.hmacSecret) {
+    console.error("[Paymob] HMAC secret not configured");
+    return false;
+  }
+
+  const concatenated = HMAC_FIELDS.map((field) => {
+    const value = getNestedValue(transactionObj, field);
+    return value != null ? String(value) : "";
+  }).join("");
+
+  const computed = crypto
+    .createHmac("sha512", config.hmacSecret)
+    .update(concatenated)
+    .digest("hex");
+
+  return computed === receivedHmac;
+}
+
+// ─── Webhook Payload Extraction ─────────────────────────────────────────────
+
+export function extractTransactionData(webhookBody) {
+  const obj = webhookBody?.obj || webhookBody;
+
+  return {
+    transactionId: obj.id != null ? String(obj.id) : "",
+    merchantOrderId: obj.merchant_order_id || null,
+    paymobOrderId: obj.order?.id ? String(obj.order.id) : null,
+    success: obj.success === true,
+    pending: obj.pending === true,
+    amountCents: obj.amount_cents,
+    currency: obj.currency,
+    sourceData: {
+      type: obj.source_data?.type || null,
+      pan: obj.source_data?.pan || null,
+      subType: obj.source_data?.sub_type || null,
+    },
+    cardToken: obj.data?.token || null,
+  };
+}

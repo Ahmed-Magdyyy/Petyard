@@ -180,6 +180,8 @@ const orderSchema = new Schema(
       enum: Object.values(paymentStatusEnum),
       default: paymentStatusEnum.PENDING,
     },
+    paymobOrderId: { type: String },
+    paymobTransactionId: { type: String },
     history: {
       type: [historyEntrySchema],
       default: [],
@@ -193,5 +195,6 @@ orderSchema.index({ user: 1, createdAt: -1 });
 orderSchema.index({ guestId: 1, createdAt: -1 });
 orderSchema.index({ warehouse: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ paymentMethod: 1, paymentStatus: 1, status: 1, createdAt: 1 });
 
 export const OrderModel = model("Order", orderSchema);

@@ -16,6 +16,7 @@ import { mountRoutes } from "./routes.js";
 import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
 import { startAbandonedCartsJob } from "../shared/jobs/abandonedCarts.job.js";
 import { startNotificationJobs } from "../shared/jobs/notification.jobs.js";
+import { startAbandonedPaymentsJob } from "../shared/jobs/abandonedPayments.job.js";
 import { getRedisClient } from "../config/redis.js";
 import { getFirebaseAdmin } from "../config/firebase.js";
 import cors from "cors";
@@ -50,6 +51,7 @@ mountRoutes(app);
 // Background jobs
 startAbandonedCartsJob();
 startNotificationJobs();
+startAbandonedPaymentsJob();
 
 app.get("/", (req, res) => {
   res.send("Petyard API is running.");

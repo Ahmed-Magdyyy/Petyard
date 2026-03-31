@@ -28,7 +28,7 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
 
   const { couponCode, paymentMethod, notes } = req.body;
 
-  const order = await createOrderForGuestService({
+  const { order, payment } = await createOrderForGuestService({
     guestId,
     couponCode,
     paymentMethod,
@@ -36,21 +36,32 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
     lang: req.lang,
   });
 
-  res.status(201).json({ data: order });
+  const response = { data: order };
+  if (payment) {
+    response.payment = payment;
+  }
+
+  res.status(201).json(response);
 });
 
 export const createOrderForUser = asyncHandler(async (req, res) => {
-  const { couponCode, paymentMethod, notes } = req.body;
+  const { couponCode, paymentMethod, notes, savedCardId } = req.body;
 
-  const order = await createOrderForUserService({
+  const { order, payment } = await createOrderForUserService({
     userId: req.user._id,
     couponCode,
     paymentMethod,
     notes,
+    savedCardId,
     lang: req.lang,
   });
 
-  res.status(201).json({ data: order });
+  const response = { data: order };
+  if (payment) {
+    response.payment = payment;
+  }
+
+  res.status(201).json(response);
 });
 
 export const getMyOrders = asyncHandler(async (req, res) => {
