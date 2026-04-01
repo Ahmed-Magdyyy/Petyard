@@ -371,7 +371,15 @@ export function computeCouponEffect(coupon, { orderSubtotal, shippingFee }) {
     const value =
       typeof coupon.discountValue === "number" ? coupon.discountValue : 0;
     if (value > 0) {
-      discountAmount = Math.max(0, Math.min(subtotal, value));
+      let raw = value;
+      const maxCap =
+        typeof coupon.maxDiscountAmount === "number"
+          ? coupon.maxDiscountAmount
+          : null;
+      if (maxCap != null && maxCap >= 0) {
+        raw = Math.min(raw, maxCap);
+      }
+      discountAmount = Math.max(0, Math.min(subtotal, raw));
     }
   }
 
