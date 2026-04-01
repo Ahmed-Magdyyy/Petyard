@@ -1,11 +1,12 @@
 import cron from "node-cron";
 import { cancelAbandonedCardOrdersService } from "../../domains/order/order.service.js";
 
-const TIMEOUT_MINUTES = 30;
+const TIMEOUT_MINUTES = 10;
 
 export function startAbandonedPaymentsJob() {
   // Run every 10 minutes
-  cron.schedule("*/10 * * * *", async () => {
+  // Run every 2 minutes (abandoned timeout is 10 min, so worst case ~12 min)
+  cron.schedule("*/2 * * * *", async () => {
     try {
       const { cancelledCount } = await cancelAbandonedCardOrdersService(
         TIMEOUT_MINUTES,

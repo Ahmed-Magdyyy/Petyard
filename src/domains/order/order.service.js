@@ -377,7 +377,11 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
       const stock = stocks.find(
         (ws) => String(ws.warehouse) === String(cart.warehouse),
       );
-      if (!stock || typeof stock.quantity !== "number" || stock.quantity < quantity) {
+      if (
+        !stock ||
+        typeof stock.quantity !== "number" ||
+        stock.quantity < quantity
+      ) {
         throw new ApiError(
           lang === "en"
             ? `Insufficient stock for ${item.productName || "a product"}`
@@ -404,7 +408,11 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
       const vStock = vStocks.find(
         (ws) => String(ws.warehouse) === String(cart.warehouse),
       );
-      if (!vStock || typeof vStock.quantity !== "number" || vStock.quantity < quantity) {
+      if (
+        !vStock ||
+        typeof vStock.quantity !== "number" ||
+        vStock.quantity < quantity
+      ) {
         throw new ApiError(
           lang === "en"
             ? `Insufficient stock for ${item.productName || "a product"}`
@@ -964,7 +972,9 @@ async function processOrderCreationWithCart({
 
   const historyEntry = {
     at: new Date(),
-    description: isCard ? "Skeleton order created — awaiting payment" : "Order created",
+    description: isCard
+      ? "Skeleton order created — awaiting payment"
+      : "Order created",
     byUserId: historyByUserId,
     visibleToUser: true,
   };
@@ -1084,7 +1094,7 @@ async function initializeCardPayment(order, savedCardToken = null) {
   const billingData = {
     firstName:
       user?.name?.split(" ")[0] || order.deliveryAddress?.name || "N/A",
-    lastName: user?.name?.split(" ").slice(1).join(" ") || "N/A",
+    lastName: user?.name?.split(" ").slice(1).join(" ") || "",
     email: user?.email || "na@na.com",
     phone: order.deliveryAddress?.phone || user?.phone || "N/A",
   };
@@ -1131,20 +1141,37 @@ export async function createOrderForUserService({
 
   // ── Card: check for concurrent pending payment ──
   if (pm === paymentMethodEnum.CARD) {
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
     const existingPending = await OrderModel.findOne({
       user: userId,
       status: orderStatusEnum.AWAITING_PAYMENT,
       sideEffectsCommitted: false,
-      createdAt: { $gte: thirtyMinutesAgo },
     });
     if (existingPending) {
-      throw new ApiError(
-        lang === "en"
-          ? "You already have a payment in progress"
-          : "لديك عملية دفع قيد التنفيذ بالفعل",
-        409,
-      );
+      const ageMs = Date.now() - existingPending.createdAt.getTime();
+      const twoMinutes = 2 * 60 * 1000;
+
+      if (ageMs < twoMinutes) {
+        // Genuinely recent — payment is likely still in progress
+        throw new ApiError(
+          lang === "en"
+            ? "You already have a payment in progress"
+            : "لديك عملية دفع قيد التنفيذ بالفعل",
+          409,
+        );
+      }
+
+      // Stale skeleton order — auto-cancel it so user can retry
+      try {
+        await failOrderPaymentService(existingPending._id);
+        console.log(
+          `[createOrder] Auto-cancelled stale skeleton order ${existingPending.orderNumber}`,
+        );
+      } catch (cancelErr) {
+        console.error(
+          `[createOrder] Failed to auto-cancel ${existingPending.orderNumber}:`,
+          cancelErr.message,
+        );
+      }
     }
   }
 
@@ -1203,7 +1230,10 @@ export async function createOrderForUserService({
       // Skeleton order: no side effects to rollback, just cancel
       await OrderModel.updateOne(
         { _id: createdOrder._id },
-        { status: orderStatusEnum.CANCELLED, paymentStatus: paymentStatusEnum.FAILED },
+        {
+          status: orderStatusEnum.CANCELLED,
+          paymentStatus: paymentStatusEnum.FAILED,
+        },
       );
       throw new ApiError(
         lang === "en"
@@ -1248,20 +1278,36 @@ export async function createOrderForGuestService({
 
   // ── Card: check for concurrent pending payment ──
   if (pm === paymentMethodEnum.CARD) {
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
     const existingPending = await OrderModel.findOne({
       guestId,
       status: orderStatusEnum.AWAITING_PAYMENT,
       sideEffectsCommitted: false,
-      createdAt: { $gte: thirtyMinutesAgo },
     });
     if (existingPending) {
-      throw new ApiError(
-        lang === "en"
-          ? "You already have a payment in progress"
-          : "لديك عملية دفع قيد التنفيذ بالفعل",
-        409,
-      );
+      const ageMs = Date.now() - existingPending.createdAt.getTime();
+      const twoMinutes = 2 * 60 * 1000;
+
+      if (ageMs < twoMinutes) {
+        throw new ApiError(
+          lang === "en"
+            ? "You already have a payment in progress"
+            : "لديك عملية دفع قيد التنفيذ بالفعل",
+          409,
+        );
+      }
+
+      // Stale skeleton order — auto-cancel it so user can retry
+      try {
+        await failOrderPaymentService(existingPending._id);
+        console.log(
+          `[createOrder] Auto-cancelled stale guest skeleton order ${existingPending.orderNumber}`,
+        );
+      } catch (cancelErr) {
+        console.error(
+          `[createOrder] Failed to auto-cancel ${existingPending.orderNumber}:`,
+          cancelErr.message,
+        );
+      }
     }
   }
 
@@ -1315,7 +1361,10 @@ export async function createOrderForGuestService({
       console.error("[Order] Guest card payment init failed:", err.message);
       await OrderModel.updateOne(
         { _id: createdOrder._id },
-        { status: orderStatusEnum.CANCELLED, paymentStatus: paymentStatusEnum.FAILED },
+        {
+          status: orderStatusEnum.CANCELLED,
+          paymentStatus: paymentStatusEnum.FAILED,
+        },
       );
       throw new ApiError(
         lang === "en"
@@ -1678,7 +1727,8 @@ export async function updateOrderStatusService({
         oldStatus !== orderStatusEnum.CANCELLED;
 
       // Only restore stock/wallet if side effects were committed
-      const shouldRestoreStock = isCancelling && order.sideEffectsCommitted !== false;
+      const shouldRestoreStock =
+        isCancelling && order.sideEffectsCommitted !== false;
 
       if (shouldRestoreStock) {
         await restoreStockForOrder({ session, order });
@@ -1859,7 +1909,10 @@ export async function updateOrderStatusService({
 
 // ─── Commit Side Effects (skeleton order → fully committed) ────────────────
 
-async function commitOrderSideEffects(order, { paymobTransactionId, paymobOrderId }) {
+async function commitOrderSideEffects(
+  order,
+  { paymobTransactionId, paymobOrderId },
+) {
   const session = await mongoose.startSession();
 
   try {
@@ -1947,7 +2000,9 @@ async function commitOrderSideEffects(order, { paymobTransactionId, paymobOrderI
       freshOrder.paymobTransactionId = paymobTransactionId || undefined;
       if (paymobOrderId) freshOrder.paymobOrderId = paymobOrderId;
 
-      freshOrder.history = Array.isArray(freshOrder.history) ? freshOrder.history : [];
+      freshOrder.history = Array.isArray(freshOrder.history)
+        ? freshOrder.history
+        : [];
       freshOrder.history.push({
         at: new Date(),
         description: "Payment confirmed — side effects committed",
@@ -1993,7 +2048,10 @@ export async function confirmOrderPaymentService({
   if (order.sideEffectsCommitted === false) {
     // New skeleton order flow: commit side effects now
     try {
-      await commitOrderSideEffects(order, { paymobTransactionId, paymobOrderId });
+      await commitOrderSideEffects(order, {
+        paymobTransactionId,
+        paymobOrderId,
+      });
     } catch (err) {
       // Side effects failed (stock exhausted, wallet insufficient, etc.)
       // Cancel the order and log for manual Paymob refund
@@ -2113,7 +2171,9 @@ export async function failOrderPaymentService(orderId) {
       freshOrder.status = orderStatusEnum.CANCELLED;
       freshOrder.paymentStatus = paymentStatusEnum.FAILED;
 
-      freshOrder.history = Array.isArray(freshOrder.history) ? freshOrder.history : [];
+      freshOrder.history = Array.isArray(freshOrder.history)
+        ? freshOrder.history
+        : [];
       freshOrder.history.push({
         at: new Date(),
         description: "Payment failed - order cancelled",
