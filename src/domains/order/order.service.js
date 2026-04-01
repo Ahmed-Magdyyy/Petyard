@@ -336,6 +336,86 @@ function mapCartDeliveryAddressToOrder(cart, user) {
   };
 }
 
+async function validateStockReadOnly({ session, cart, lang = "en" }) {
+  const items = Array.isArray(cart.items) ? cart.items : [];
+  if (!items.length) {
+    throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
+  }
+
+  const productIds = [
+    ...new Set(
+      items
+        .map((item) => (item.product ? String(item.product) : null))
+        .filter(Boolean),
+    ),
+  ];
+
+  const products = await ProductModel.find({
+    _id: { $in: productIds },
+  }).session(session);
+  const productById = new Map(products.map((p) => [String(p._id), p]));
+
+  for (const item of items) {
+    const product = productById.get(String(item.product));
+    if (!product) {
+      throw new ApiError(
+        lang === "en" ? "Product no longer exists" : "المنتج غير موجود",
+        400,
+      );
+    }
+
+    const quantity =
+      typeof item.quantity === "number" && item.quantity > 0
+        ? item.quantity
+        : 0;
+    if (quantity <= 0) continue;
+
+    if (product.type === "SIMPLE") {
+      const stocks = Array.isArray(product.warehouseStocks)
+        ? product.warehouseStocks
+        : [];
+      const stock = stocks.find(
+        (ws) => String(ws.warehouse) === String(cart.warehouse),
+      );
+      if (!stock || typeof stock.quantity !== "number" || stock.quantity < quantity) {
+        throw new ApiError(
+          lang === "en"
+            ? `Insufficient stock for ${item.productName || "a product"}`
+            : "المخزون غير كافٍ",
+          400,
+        );
+      }
+    } else {
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const variant = variants.find(
+        (v) => String(v._id) === String(item.variantId),
+      );
+      if (!variant) {
+        throw new ApiError(
+          lang === "en"
+            ? "Variant not found on this product"
+            : "المتغير غير موجود فى هذا المنتج",
+          404,
+        );
+      }
+      const vStocks = Array.isArray(variant.warehouseStocks)
+        ? variant.warehouseStocks
+        : [];
+      const vStock = vStocks.find(
+        (ws) => String(ws.warehouse) === String(cart.warehouse),
+      );
+      if (!vStock || typeof vStock.quantity !== "number" || vStock.quantity < quantity) {
+        throw new ApiError(
+          lang === "en"
+            ? `Insufficient stock for ${item.productName || "a product"}`
+            : "المخزون غير كافٍ",
+          400,
+        );
+      }
+    }
+  }
+}
+
 async function ensureSufficientStockAndDecrement({
   session,
   cart,
@@ -873,17 +953,18 @@ async function processOrderCreationWithCart({
     );
   }
 
-  await ensureSufficientStockAndDecrement({ session, cart, lang });
-
   const orderNumber = generateOrderNumber();
-
-  const normalizedLang = normalizeLang(lang);
   const pm = normalizePaymentMethod(paymentMethod);
-  void normalizedLang;
+  const isCard = pm === paymentMethodEnum.CARD;
+
+  // ── Stock: read-only check for card, decrement deferred to webhook ──
+  if (isCard) {
+    await validateStockReadOnly({ session, cart, lang });
+  }
 
   const historyEntry = {
     at: new Date(),
-    description: "Order created",
+    description: isCard ? "Skeleton order created — awaiting payment" : "Order created",
     byUserId: historyByUserId,
     visibleToUser: true,
   };
@@ -904,15 +985,24 @@ async function processOrderCreationWithCart({
     walletUsed: walletResult.walletUsed,
     total: finalTotal,
     couponCode: couponResult.couponCode,
-    status:
-      pm === paymentMethodEnum.CARD
-        ? orderStatusEnum.AWAITING_PAYMENT
-        : orderStatusEnum.PENDING,
+    status: isCard ? orderStatusEnum.AWAITING_PAYMENT : orderStatusEnum.PENDING,
     paymentMethod: pm,
     paymentStatus: paymentStatusEnum.PENDING,
+    sideEffectsCommitted: !isCard,
     history: [historyEntry],
     notes: notes || undefined,
   };
+
+  // ── Card: create skeleton order only (no side effects) ──
+  if (isCard) {
+    const createdOrder = await OrderModel.create([orderDoc], { session }).then(
+      (res) => res[0],
+    );
+    return createdOrder;
+  }
+
+  // ── COD: validate stock, apply all side effects immediately ──
+  await ensureSufficientStockAndDecrement({ session, cart, lang });
 
   const createdOrder = await OrderModel.create([orderDoc], { session }).then(
     (res) => res[0],
@@ -1037,6 +1127,27 @@ export async function createOrderForUserService({
     );
   }
 
+  const pm = normalizePaymentMethod(paymentMethod);
+
+  // ── Card: check for concurrent pending payment ──
+  if (pm === paymentMethodEnum.CARD) {
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const existingPending = await OrderModel.findOne({
+      user: userId,
+      status: orderStatusEnum.AWAITING_PAYMENT,
+      sideEffectsCommitted: false,
+      createdAt: { $gte: thirtyMinutesAgo },
+    });
+    if (existingPending) {
+      throw new ApiError(
+        lang === "en"
+          ? "You already have a payment in progress"
+          : "لديك عملية دفع قيد التنفيذ بالفعل",
+        409,
+      );
+    }
+  }
+
   const session = await mongoose.startSession();
   let createdOrder = null;
 
@@ -1072,12 +1183,6 @@ export async function createOrderForUserService({
 
   if (!createdOrder) return { order: null };
 
-  const productIds = Array.isArray(createdOrder.items)
-    ? createdOrder.items.map((i) => i.product)
-    : [];
-
-  await invalidateProductCaches(productIds);
-
   // ── Card payment: initialize Paymob intention ──
   if (createdOrder.paymentMethod === paymentMethodEnum.CARD) {
     let savedCardToken = null;
@@ -1087,11 +1192,19 @@ export async function createOrderForUserService({
 
     try {
       const payment = await initializeCardPayment(createdOrder, savedCardToken);
-      return { order: createdOrder, payment };
+      return {
+        order: createdOrder,
+        action: "requires_payment",
+        clientSecret: payment.clientSecret,
+        publicKey: payment.publicKey,
+      };
     } catch (err) {
       console.error("[Order] Card payment init failed:", err.message);
-      // Rollback: restore stock, wallet, coupon
-      await failOrderPaymentService(createdOrder._id);
+      // Skeleton order: no side effects to rollback, just cancel
+      await OrderModel.updateOne(
+        { _id: createdOrder._id },
+        { status: orderStatusEnum.CANCELLED, paymentStatus: paymentStatusEnum.FAILED },
+      );
       throw new ApiError(
         lang === "en"
           ? "Payment initialization failed. Please try again."
@@ -1101,7 +1214,12 @@ export async function createOrderForUserService({
     }
   }
 
-  // ── COD: send notification immediately ──
+  // ── COD: invalidate caches and send notification ──
+  const productIds = Array.isArray(createdOrder.items)
+    ? createdOrder.items.map((i) => i.product)
+    : [];
+  await invalidateProductCaches(productIds);
+
   sendOrderStatusChangedNotification(createdOrder).catch((err) =>
     console.error(
       "[Order] Failed to send order created notification:",
@@ -1124,6 +1242,27 @@ export async function createOrderForGuestService({
       lang === "en" ? "guestId is required" : "معرف الضيف مطلوب",
       400,
     );
+  }
+
+  const pm = normalizePaymentMethod(paymentMethod);
+
+  // ── Card: check for concurrent pending payment ──
+  if (pm === paymentMethodEnum.CARD) {
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const existingPending = await OrderModel.findOne({
+      guestId,
+      status: orderStatusEnum.AWAITING_PAYMENT,
+      sideEffectsCommitted: false,
+      createdAt: { $gte: thirtyMinutesAgo },
+    });
+    if (existingPending) {
+      throw new ApiError(
+        lang === "en"
+          ? "You already have a payment in progress"
+          : "لديك عملية دفع قيد التنفيذ بالفعل",
+        409,
+      );
+    }
   }
 
   const session = await mongoose.startSession();
@@ -1162,20 +1301,22 @@ export async function createOrderForGuestService({
 
   if (!createdOrder) return { order: null };
 
-  const productIds = Array.isArray(createdOrder.items)
-    ? createdOrder.items.map((i) => i.product)
-    : [];
-
-  await invalidateProductCaches(productIds);
-
   // ── Card payment: initialize Paymob intention (no saved cards for guests) ──
   if (createdOrder.paymentMethod === paymentMethodEnum.CARD) {
     try {
       const payment = await initializeCardPayment(createdOrder);
-      return { order: createdOrder, payment };
+      return {
+        order: createdOrder,
+        action: "requires_payment",
+        clientSecret: payment.clientSecret,
+        publicKey: payment.publicKey,
+      };
     } catch (err) {
       console.error("[Order] Guest card payment init failed:", err.message);
-      await failOrderPaymentService(createdOrder._id);
+      await OrderModel.updateOne(
+        { _id: createdOrder._id },
+        { status: orderStatusEnum.CANCELLED, paymentStatus: paymentStatusEnum.FAILED },
+      );
       throw new ApiError(
         lang === "en"
           ? "Payment initialization failed. Please try again."
@@ -1184,6 +1325,12 @@ export async function createOrderForGuestService({
       );
     }
   }
+
+  // ── COD: invalidate caches ──
+  const productIds = Array.isArray(createdOrder.items)
+    ? createdOrder.items.map((i) => i.product)
+    : [];
+  await invalidateProductCaches(productIds);
 
   return { order: createdOrder };
 }
@@ -1526,17 +1673,20 @@ export async function updateOrderStatusService({
         );
       }
 
-      const shouldRestoreStock =
+      const isCancelling =
         newStatus === orderStatusEnum.CANCELLED &&
         oldStatus !== orderStatusEnum.CANCELLED;
+
+      // Only restore stock/wallet if side effects were committed
+      const shouldRestoreStock = isCancelling && order.sideEffectsCommitted !== false;
 
       if (shouldRestoreStock) {
         await restoreStockForOrder({ session, order });
       }
 
       const shouldRefundWallet =
-        newStatus === orderStatusEnum.CANCELLED &&
-        oldStatus !== orderStatusEnum.CANCELLED &&
+        isCancelling &&
+        order.sideEffectsCommitted !== false &&
         order.user &&
         typeof order.walletUsed === "number" &&
         order.walletUsed > 0;
@@ -1707,6 +1857,127 @@ export async function updateOrderStatusService({
 
 // ─── Payment Confirmation / Failure ─────────────────────────────────────────
 
+// ─── Commit Side Effects (skeleton order → fully committed) ────────────────
+
+async function commitOrderSideEffects(order, { paymobTransactionId, paymobOrderId }) {
+  const session = await mongoose.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      // Re-fetch inside transaction for consistency
+      const freshOrder = await OrderModel.findById(order._id).session(session);
+      if (!freshOrder || freshOrder.sideEffectsCommitted) return;
+
+      // 1. Decrement stock
+      await ensureSufficientStockAndDecrement({
+        session,
+        cart: {
+          items: freshOrder.items,
+          warehouse: freshOrder.warehouse,
+        },
+        lang: "en",
+      });
+
+      // 2. Deduct wallet (atomic $gte check)
+      if (
+        freshOrder.user &&
+        typeof freshOrder.walletUsed === "number" &&
+        freshOrder.walletUsed > 0
+      ) {
+        const updateResult = await UserModel.updateOne(
+          {
+            _id: freshOrder.user,
+            walletBalance: { $gte: freshOrder.walletUsed },
+          },
+          { $inc: { walletBalance: -freshOrder.walletUsed } },
+          { session },
+        );
+
+        if (updateResult.matchedCount === 0) {
+          throw new ApiError("Insufficient wallet balance at commit time", 400);
+        }
+
+        const userAfterDebit = await UserModel.findById(freshOrder.user)
+          .session(session)
+          .select("walletBalance");
+
+        await WalletTransactionModel.create(
+          [
+            {
+              user: freshOrder.user,
+              amount: -freshOrder.walletUsed,
+              type: "ORDER_DEBIT",
+              referenceType: "ORDER",
+              referenceId: freshOrder._id,
+              balanceAfter: userAfterDebit?.walletBalance ?? 0,
+            },
+          ],
+          { session },
+        );
+      }
+
+      // 3. Increment coupon usage
+      if (freshOrder.couponCode) {
+        await CouponModel.updateOne(
+          { code: freshOrder.couponCode },
+          { $inc: { usageCount: 1 } },
+          { session },
+        );
+      }
+
+      // 4. Clear cart
+      const cartFilter = freshOrder.user
+        ? { user: freshOrder.user }
+        : { guestId: freshOrder.guestId };
+      await CartModel.updateOne(
+        cartFilter,
+        {
+          items: [],
+          totalCartPrice: 0,
+          lastActivityAt: new Date(),
+          status: "ACTIVE",
+        },
+        { session },
+      );
+
+      // 5. Update order status
+      freshOrder.sideEffectsCommitted = true;
+      freshOrder.status = orderStatusEnum.PENDING;
+      freshOrder.paymentStatus = paymentStatusEnum.PAID;
+      freshOrder.paymobTransactionId = paymobTransactionId || undefined;
+      if (paymobOrderId) freshOrder.paymobOrderId = paymobOrderId;
+
+      freshOrder.history = Array.isArray(freshOrder.history) ? freshOrder.history : [];
+      freshOrder.history.push({
+        at: new Date(),
+        description: "Payment confirmed — side effects committed",
+        visibleToUser: true,
+      });
+
+      await freshOrder.save({ session });
+    });
+  } finally {
+    session.endSession();
+  }
+
+  // Invalidate product caches after stock decrement
+  const productIds = (order.items || []).map((i) => i.product);
+  await invalidateProductCaches(productIds);
+
+  // Notify user
+  const updatedOrder = await OrderModel.findById(order._id);
+  if (updatedOrder) {
+    sendOrderStatusChangedNotification(updatedOrder).catch((err) =>
+      console.error(
+        "[Order] Failed to send payment confirmed notification:",
+        err.message,
+      ),
+    );
+  }
+}
+
+// ─── Payment Confirmation / Failure (dispatches skeleton vs legacy) ────────
+
 export async function confirmOrderPaymentService({
   orderId,
   paymobTransactionId,
@@ -1719,6 +1990,31 @@ export async function confirmOrderPaymentService({
   if (order.status !== orderStatusEnum.AWAITING_PAYMENT) return;
   if (order.paymentStatus === paymentStatusEnum.PAID) return;
 
+  if (order.sideEffectsCommitted === false) {
+    // New skeleton order flow: commit side effects now
+    try {
+      await commitOrderSideEffects(order, { paymobTransactionId, paymobOrderId });
+    } catch (err) {
+      // Side effects failed (stock exhausted, wallet insufficient, etc.)
+      // Cancel the order and log for manual Paymob refund
+      console.error(
+        `[Order] commitOrderSideEffects failed for ${order.orderNumber}: ${err.message}. Manual Paymob refund required.`,
+      );
+
+      order.status = orderStatusEnum.CANCELLED;
+      order.paymentStatus = paymentStatusEnum.PAID;
+      order.history = Array.isArray(order.history) ? order.history : [];
+      order.history.push({
+        at: new Date(),
+        description: `SECURITY: Side effects failed after payment — manual refund required. Reason: ${err.message}`,
+        visibleToUser: false,
+      });
+      await order.save();
+    }
+    return;
+  }
+
+  // Legacy flow: order already has side effects applied, just confirm payment
   order.status = orderStatusEnum.PENDING;
   order.paymentStatus = paymentStatusEnum.PAID;
   order.paymobTransactionId = paymobTransactionId || undefined;
@@ -1733,7 +2029,6 @@ export async function confirmOrderPaymentService({
 
   await order.save();
 
-  // Notify user that payment succeeded
   sendOrderStatusChangedNotification(order).catch((err) =>
     console.error(
       "[Order] Failed to send payment confirmed notification:",
@@ -1743,80 +2038,97 @@ export async function confirmOrderPaymentService({
 }
 
 export async function failOrderPaymentService(orderId) {
+  const order = await OrderModel.findById(orderId);
+  if (!order) return;
+
+  // Only fail orders that are still awaiting payment
+  if (order.status !== orderStatusEnum.AWAITING_PAYMENT) return;
+
+  if (order.sideEffectsCommitted === false) {
+    // New skeleton order: nothing to rollback, just cancel
+    order.status = orderStatusEnum.CANCELLED;
+    order.paymentStatus = paymentStatusEnum.FAILED;
+
+    order.history = Array.isArray(order.history) ? order.history : [];
+    order.history.push({
+      at: new Date(),
+      description: "Payment failed — order cancelled",
+      visibleToUser: true,
+    });
+
+    await order.save();
+    return;
+  }
+
+  // Legacy flow: restore stock, wallet, coupon
   const session = await mongoose.startSession();
 
   try {
     await session.withTransaction(async () => {
-      const order = await OrderModel.findById(orderId).session(session);
-      if (!order) return;
+      const freshOrder = await OrderModel.findById(orderId).session(session);
+      if (!freshOrder) return;
+      if (freshOrder.status !== orderStatusEnum.AWAITING_PAYMENT) return;
 
-      // Only fail orders that are still awaiting payment
-      if (order.status !== orderStatusEnum.AWAITING_PAYMENT) return;
+      await restoreStockForOrder({ session, order: freshOrder });
 
-      // Restore stock
-      await restoreStockForOrder({ session, order });
-
-      // Refund wallet
       if (
-        order.user &&
-        typeof order.walletUsed === "number" &&
-        order.walletUsed > 0
+        freshOrder.user &&
+        typeof freshOrder.walletUsed === "number" &&
+        freshOrder.walletUsed > 0
       ) {
         await UserModel.updateOne(
-          { _id: order.user },
-          { $inc: { walletBalance: order.walletUsed } },
+          { _id: freshOrder.user },
+          { $inc: { walletBalance: freshOrder.walletUsed } },
           { session },
         );
 
-        const userAfterRefund = await UserModel.findById(order.user)
+        const userAfterRefund = await UserModel.findById(freshOrder.user)
           .session(session)
           .select("walletBalance");
 
         await WalletTransactionModel.create(
           [
             {
-              user: order.user,
-              amount: order.walletUsed,
+              user: freshOrder.user,
+              amount: freshOrder.walletUsed,
               type: "ORDER_REFUND",
               referenceType: "ORDER",
-              referenceId: order._id,
+              referenceId: freshOrder._id,
               balanceAfter: userAfterRefund?.walletBalance ?? 0,
-              note: `Payment failed - refund for order ${order.orderNumber}`,
+              note: `Payment failed - refund for order ${freshOrder.orderNumber}`,
             },
           ],
           { session },
         );
       }
 
-      // Reverse coupon usage
-      if (order.couponCode) {
+      if (freshOrder.couponCode) {
         await CouponModel.updateOne(
-          { code: order.couponCode, usageCount: { $gt: 0 } },
+          { code: freshOrder.couponCode, usageCount: { $gt: 0 } },
           { $inc: { usageCount: -1 } },
           { session },
         );
       }
 
-      order.status = orderStatusEnum.CANCELLED;
-      order.paymentStatus = paymentStatusEnum.FAILED;
+      freshOrder.status = orderStatusEnum.CANCELLED;
+      freshOrder.paymentStatus = paymentStatusEnum.FAILED;
 
-      order.history = Array.isArray(order.history) ? order.history : [];
-      order.history.push({
+      freshOrder.history = Array.isArray(freshOrder.history) ? freshOrder.history : [];
+      freshOrder.history.push({
         at: new Date(),
         description: "Payment failed - order cancelled",
         visibleToUser: true,
       });
 
-      await order.save({ session });
+      await freshOrder.save({ session });
     });
   } finally {
     session.endSession();
   }
 
-  // Invalidate product caches after stock restoration
-  const order = await OrderModel.findById(orderId).lean();
-  if (order) {
-    const productIds = (order.items || []).map((i) => i.product);
+  const freshOrder = await OrderModel.findById(orderId).lean();
+  if (freshOrder) {
+    const productIds = (freshOrder.items || []).map((i) => i.product);
     await invalidateProductCaches(productIds);
   }
 }

@@ -28,7 +28,7 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
 
   const { couponCode, paymentMethod, notes } = req.body;
 
-  const { order, payment } = await createOrderForGuestService({
+  const result = await createOrderForGuestService({
     guestId,
     couponCode,
     paymentMethod,
@@ -36,18 +36,22 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
     lang: req.lang,
   });
 
-  const response = { data: order };
-  if (payment) {
-    response.payment = payment;
+  if (result.action === "requires_payment") {
+    return res.status(200).json({
+      data: result.order,
+      action: "requires_payment",
+      clientSecret: result.clientSecret,
+      publicKey: result.publicKey,
+    });
   }
 
-  res.status(201).json(response);
+  res.status(201).json({ data: result.order });
 });
 
 export const createOrderForUser = asyncHandler(async (req, res) => {
   const { couponCode, paymentMethod, notes, savedCardId } = req.body;
 
-  const { order, payment } = await createOrderForUserService({
+  const result = await createOrderForUserService({
     userId: req.user._id,
     couponCode,
     paymentMethod,
@@ -56,12 +60,16 @@ export const createOrderForUser = asyncHandler(async (req, res) => {
     lang: req.lang,
   });
 
-  const response = { data: order };
-  if (payment) {
-    response.payment = payment;
+  if (result.action === "requires_payment") {
+    return res.status(200).json({
+      data: result.order,
+      action: "requires_payment",
+      clientSecret: result.clientSecret,
+      publicKey: result.publicKey,
+    });
   }
 
-  res.status(201).json(response);
+  res.status(201).json({ data: result.order });
 });
 
 export const getMyOrders = asyncHandler(async (req, res) => {

@@ -129,17 +129,19 @@ export function verifyWebhookHmac(transactionObj, receivedHmac) {
     return value != null ? String(value) : "";
   }).join("");
 
-  console.log("[Paymob HMAC] concatenated:", concatenated);
-
   const computed = crypto
     .createHmac("sha512", config.hmacSecret)
     .update(concatenated)
     .digest("hex");
 
-  console.log("[Paymob HMAC] computed :", computed);
-  console.log("[Paymob HMAC] received :", receivedHmac);
-
-  return computed === receivedHmac;
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(computed, "hex"),
+      Buffer.from(receivedHmac, "hex"),
+    );
+  } catch {
+    return false;
+  }
 }
 
 // ─── Webhook Payload Extraction ─────────────────────────────────────────────
@@ -163,6 +165,12 @@ export function extractTransactionData(webhookBody) {
     },
     cardToken: obj.data?.token || null,
   };
+}
+
+// ─── Amount Verification ───────────────────────────────────────────────────
+
+export function verifyPaymentAmount(webhookAmountCents, expectedAmountCents) {
+  return Number(webhookAmountCents) === Number(expectedAmountCents);
 }
 
 // ─── Build transaction object from GET query params ─────────────────────────

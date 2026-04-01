@@ -185,6 +185,10 @@ const orderSchema = new Schema(
     },
     paymobOrderId: { type: String },
     paymobTransactionId: { type: String },
+    sideEffectsCommitted: {
+      type: Boolean,
+      default: true,
+    },
     history: {
       type: [historyEntrySchema],
       default: [],

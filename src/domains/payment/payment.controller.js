@@ -3,6 +3,7 @@ import {
   verifyWebhookHmac,
   extractTransactionData,
   buildTransactionFromQuery,
+  verifyPaymentAmount,
 } from "./paymob.service.js";
 import {
   confirmOrderPaymentService,
@@ -53,6 +54,24 @@ async function processWebhook(transactionObj, receivedHmac, fullBody) {
       `[Paymob Webhook] Order not found: merchant=${txData.merchantOrderId} paymob=${txData.paymobOrderId}`,
     );
     return { status: 200, message: "Order not found" };
+  }
+
+  // ── Amount verification ──
+  const expectedAmountCents = Math.round(order.total * 100);
+  if (!verifyPaymentAmount(txData.amountCents, expectedAmountCents)) {
+    console.error(
+      `[Paymob Webhook] SECURITY: Amount mismatch for order ${order.orderNumber} — expected ${expectedAmountCents}, received ${txData.amountCents}. Full payload: ${JSON.stringify(txData)}`,
+    );
+
+    order.history = Array.isArray(order.history) ? order.history : [];
+    order.history.push({
+      at: new Date(),
+      description: `SECURITY: Amount mismatch — expected ${expectedAmountCents}, received ${txData.amountCents}`,
+      visibleToUser: false,
+    });
+    await order.save();
+
+    return { status: 200, message: "Amount mismatch — flagged for review" };
   }
 
   if (txData.success) {
