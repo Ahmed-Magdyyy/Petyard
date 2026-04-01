@@ -152,7 +152,10 @@ export function extractTransactionData(webhookBody) {
 
   return {
     transactionId: obj.id != null ? String(obj.id) : "",
-    merchantOrderId: obj.merchant_order_id || null,
+    merchantOrderId:
+      obj.merchant_order_id ||
+      obj.order?.merchant_order_id ||
+      null,
     paymobOrderId: obj.order?.id ? String(obj.order.id) : null,
     success: obj.success === true,
     pending: obj.pending === true,
@@ -199,7 +202,8 @@ export function buildTransactionFromQuery(query) {
       pan: query["source_data.pan"],
       sub_type: query["source_data.sub_type"],
     },
-    merchant_order_id: query.merchant_order_id || null,
+    merchant_order_id:
+      query.merchant_order_id || query["order.merchant_order_id"] || null,
     data: {
       message: query["data.message"],
     },
