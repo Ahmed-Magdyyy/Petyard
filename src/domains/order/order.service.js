@@ -972,9 +972,7 @@ async function processOrderCreationWithCart({
 
   const historyEntry = {
     at: new Date(),
-    description: isCard
-      ? "Skeleton order created — awaiting payment"
-      : "Order created",
+    description: isCard ? "Order created — awaiting payment" : "Order created",
     byUserId: historyByUserId,
     visibleToUser: true,
   };
@@ -2005,7 +2003,7 @@ async function commitOrderSideEffects(
         : [];
       freshOrder.history.push({
         at: new Date(),
-        description: "Payment confirmed — side effects committed",
+        description: "Payment confirmed — Order is pending",
         visibleToUser: true,
       });
 
