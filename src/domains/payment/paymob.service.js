@@ -51,6 +51,8 @@ export async function createPaymentIntention({
       quantity: item.quantity || 1,
     })),
     merchant_order_id: merchantOrderId,
+    special_reference: merchantOrderId,
+    extras: { merchant_order_id: merchantOrderId },
     ...(config.webhookUrl && { notification_url: config.webhookUrl }),
     ...(savedCardToken && { token: savedCardToken }),
   };
@@ -155,6 +157,8 @@ export function extractTransactionData(webhookBody) {
     merchantOrderId:
       obj.merchant_order_id ||
       obj.order?.merchant_order_id ||
+      obj.special_reference ||
+      obj.payment_key_claims?.extra?.merchant_order_id ||
       null,
     paymobOrderId: obj.order?.id ? String(obj.order.id) : null,
     success: obj.success === true,
