@@ -638,16 +638,6 @@ export async function upsertCartItemService({
   quantity,
   lang = "en",
 }) {
-  console.log("upsertCartItemService", {
-    userId,
-    guestId,
-    warehouseId,
-    productId,
-    productType,
-    variantId,
-    quantity,
-    lang,
-  });
   if (quantity == null || quantity <= 0) {
     throw new ApiError("quantity must be greater than 0", 400);
   }
@@ -953,7 +943,8 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
   ];
 
   const products = await findProductsByIdsWithOptions(productIds, {
-    select: "_id type price discountedPrice name_en name_ar images warehouseStocks variants",
+    select:
+      "_id type price discountedPrice name_en name_ar images warehouseStocks variants",
     lean: true,
   });
   const productById = new Map(products.map((p) => [String(p._id), p]));
