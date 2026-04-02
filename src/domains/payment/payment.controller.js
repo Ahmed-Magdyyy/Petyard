@@ -97,6 +97,17 @@ async function processWebhook(transactionObj, receivedHmac, fullBody) {
 // ─── POST webhook (server-to-server callback) ──────────────────────────────
 
 export const handlePaymobWebhookPost = asyncHandler(async (req, res) => {
+  // Paymob sends several webhook types (TRANSACTION, ORDER, TOKEN, etc.)
+  // We only care about TRANSACTION — the others have different payload
+  // structures and their HMAC fields don't match ours.
+  const webhookType = req.body.type;
+  if (webhookType && webhookType !== "TRANSACTION") {
+    console.log(
+      `[Paymob Webhook] Ignoring non-TRANSACTION webhook type: ${webhookType}`,
+    );
+    return res.status(200).json({ message: `${webhookType} acknowledged` });
+  }
+
   const receivedHmac = req.body.hmac || req.query.hmac;
   const transactionObj = req.body.transaction || req.body.obj || req.body;
 
