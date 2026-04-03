@@ -1440,7 +1440,7 @@ export async function getGuestOrdersService({
 
   const totalCount = await OrderModel.countDocuments(filter);
   const orders = await OrderModel.find(filter)
-    .select("-user sideEffectsCommitted")
+    .select("-user -sideEffectsCommitted")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
@@ -1463,7 +1463,7 @@ export async function getGuestOrderByIdService({
   lang = "en",
 }) {
   const order = await OrderModel.findById(orderId)
-    .select("-user sideEffectsCommitted")
+    .select("-user -sideEffectsCommitted")
     .populate({
       path: "history.byUserId",
       select: "role name",
