@@ -119,7 +119,7 @@ function computeTotalCartPrice(cart) {
   }, 0);
 }
 
-function mapCartToResponse(cart) {
+function mapCartToResponse(cart, { shippingFee = 0 } = {}) {
   const removedItems =
     Array.isArray(cart._removedItems) && cart._removedItems.length > 0
       ? cart._removedItems.map((item) => ({
@@ -163,6 +163,7 @@ function mapCartToResponse(cart) {
     warehouseId: cart.warehouse,
     currency: cart.currency,
     totalCartPrice: cart.totalCartPrice,
+    shippingFee,
     deliveryAddress,
     items: Array.isArray(cart.items)
       ? cart.items.map((item) => ({
@@ -498,11 +499,23 @@ export async function getCartService({
   warehouseId,
   lang = "en",
 }) {
-  await assertWarehouseExists(warehouseId);
+  if (!warehouseId) {
+    throw new ApiError("Warehouse ID is required", 400);
+  }
+  const warehouse = await WarehouseModel.findById(warehouseId)
+    .select("defaultShippingPrice")
+    .lean();
+  if (!warehouse) {
+    throw new ApiError(`No warehouse found for this id: ${warehouseId}`, 400);
+  }
+
+  const rawShipping = warehouse.defaultShippingPrice;
+  const shippingFee =
+    typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
 
   const baseCart = await getOrCreateCart({ userId, guestId, warehouseId });
   const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
-  return mapCartToResponse(cart);
+  return mapCartToResponse(cart, { shippingFee });
 }
 
 export async function setCartAddressFromUserService({
