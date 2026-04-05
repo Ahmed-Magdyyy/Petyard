@@ -17,7 +17,10 @@ export async function applyCouponAtCheckoutService({
   lang = "en",
 }) {
   if (!couponCode || typeof couponCode !== "string" || !couponCode.trim()) {
-    throw new ApiError("couponCode is required", 400);
+    throw new ApiError(
+      lang === "en" ? "couponCode is required" : "كود الكوبون مطلوب",
+      400,
+    );
   }
 
   if (!userId && !guestId) {
@@ -53,7 +56,9 @@ export async function applyCouponAtCheckoutService({
   const hasPromotionalItems = items.some((it) => !!it.promotion);
   if (hasPromotionalItems) {
     throw new ApiError(
-      "Coupons cannot be applied when the cart contains promotional items",
+      lang === "en"
+        ? "Coupons cannot be applied when the cart contains promotional items"
+        : "لا يمكن تطبيق الكوبونات عندما تحتوي السلة على منتجات عليها خصومات",
       400,
     );
   }
@@ -64,7 +69,12 @@ export async function applyCouponAtCheckoutService({
       : 0;
 
   if (subtotal <= 0) {
-    throw new ApiError("Cart total must be greater than 0", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Cart total must be greater than 0"
+        : "إجمالي السلة يجب أن يكون أكبر من 0",
+      400,
+    );
   }
 
   const warehouse = await getWarehouseByIdService(warehouseId);
@@ -81,7 +91,9 @@ export async function applyCouponAtCheckoutService({
   if (allowedUserIds.length > 0) {
     if (!userId) {
       throw new ApiError(
-        "This coupon is only available to specific users",
+        lang === "en"
+          ? "This coupon is only available to specific users"
+          : "هذا الكوبون متاح لمستخدمين محددين فقط",
         403,
       );
     }
@@ -91,7 +103,12 @@ export async function applyCouponAtCheckoutService({
     );
 
     if (!isAllowed) {
-      throw new ApiError("This coupon is not valid for this user", 403);
+      throw new ApiError(
+        lang === "en"
+          ? "This coupon is not valid for this user"
+          : "هذا الكوبون غير صالح لهذا المستخدم",
+        403,
+      );
     }
   }
 
@@ -101,7 +118,9 @@ export async function applyCouponAtCheckoutService({
     subtotal < coupon.minOrderTotal
   ) {
     throw new ApiError(
-      `This coupon requires a minimum order total of ${coupon.minOrderTotal}`,
+      lang === "en"
+        ? `This coupon requires a minimum order total of ${coupon.minOrderTotal}`
+        : `هذا الكوبون يتطلب حد أدنى للطلب بقيمة ${coupon.minOrderTotal}`,
       400,
     );
   }
@@ -112,7 +131,9 @@ export async function applyCouponAtCheckoutService({
     subtotal > coupon.maxOrderTotal
   ) {
     throw new ApiError(
-      `This coupon can only be applied to orders up to ${coupon.maxOrderTotal}`,
+      lang === "en"
+        ? `This coupon can only be applied to orders up to ${coupon.maxOrderTotal} max`
+        : `هذا الكوبون يمكن تطبيقه فقط على الطلبات التي تصل إلى ${coupon.maxOrderTotal} كحد أقصى`,
       400,
     );
   }
@@ -123,7 +144,12 @@ export async function applyCouponAtCheckoutService({
     typeof coupon.usageCount === "number" &&
     coupon.usageCount >= coupon.maxUsageTotal
   ) {
-    throw new ApiError("This coupon has reached its maximum usage limit", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "This coupon has reached its maximum usage limit"
+        : "هذا الكوبون قد وصل إلى الحد الأقصى للاستخدام",
+      400,
+    );
   }
 
   if (userId && typeof coupon.maxUsagePerUser === "number") {
@@ -135,7 +161,9 @@ export async function applyCouponAtCheckoutService({
 
       if (userUsage >= coupon.maxUsagePerUser) {
         throw new ApiError(
-          "You have already used this coupon the maximum number of times",
+          lang === "en"
+            ? "You have already used this coupon the maximum number of times"
+            : "لقد استخدمت هذا الكوبون بالفعل الحد الأقصى من المرات",
           400,
         );
       }
@@ -185,7 +213,7 @@ export async function getCheckoutSummaryService({
 
   const identityFilter = userId ? { user: userId } : { guestId };
 
-  const baseCart = await findCart(identityFilter).select("_id warehouse");
+  const baseCart = await findCart(identityFilter).select("_id warehouse items");
 
   if (!baseCart) {
     throw new ApiError("Cart not found", 404);
@@ -193,6 +221,10 @@ export async function getCheckoutSummaryService({
 
   if (!baseCart.warehouse) {
     throw new ApiError("Cart warehouse is not set", 400);
+  }
+
+  if (baseCart.items.length === 0) {
+    throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
   }
 
   const warehouseId = baseCart.warehouse;
@@ -211,7 +243,12 @@ export async function getCheckoutSummaryService({
       : 0;
 
   if (subtotal <= 0) {
-    throw new ApiError("Cart total must be greater than 0", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Cart total must be greater than 0"
+        : "إجمالي السلة يجب أن يكون أكبر من 0",
+      400,
+    );
   }
 
   const trimmedCode =
@@ -227,7 +264,9 @@ export async function getCheckoutSummaryService({
     const hasPromotionalItems = items.some((it) => !!it.promotion);
     if (hasPromotionalItems) {
       throw new ApiError(
-        "Coupons cannot be applied when the cart contains promotional items",
+        lang === "en"
+          ? "Coupons cannot be applied when the cart contains promotional items"
+          : "لا يمكن تطبيق الكوبونات عندما تحتوي السلة على منتجات عليها خصومات",
         400,
       );
     }
@@ -246,7 +285,9 @@ export async function getCheckoutSummaryService({
     if (allowedUserIds.length > 0) {
       if (!userId) {
         throw new ApiError(
-          "This coupon is only available to specific users",
+          lang === "en"
+            ? "This coupon is only available to specific users"
+            : "هذا الكوبون متاح لمستخدمين محددين فقط",
           403,
         );
       }
@@ -256,7 +297,12 @@ export async function getCheckoutSummaryService({
       );
 
       if (!isAllowed) {
-        throw new ApiError("This coupon is not valid for this user", 403);
+        throw new ApiError(
+          lang === "en"
+            ? "This coupon is not valid for this user"
+            : "هذا الكوبون غير صالح لهذا المستخدم",
+          403,
+        );
       }
     }
 
@@ -266,7 +312,9 @@ export async function getCheckoutSummaryService({
       subtotal < couponDoc.minOrderTotal
     ) {
       throw new ApiError(
-        `This coupon requires a minimum order total of ${couponDoc.minOrderTotal}`,
+        lang === "en"
+          ? `This coupon requires a minimum order total of ${couponDoc.minOrderTotal}`
+          : `هذا الكوبون يتطلب حد أدنى للطلب بقيمة ${couponDoc.minOrderTotal}`,
         400,
       );
     }
@@ -277,7 +325,9 @@ export async function getCheckoutSummaryService({
       subtotal > couponDoc.maxOrderTotal
     ) {
       throw new ApiError(
-        `This coupon can only be applied to orders up to ${couponDoc.maxOrderTotal}`,
+        lang === "en"
+          ? `This coupon can only be applied to orders up to ${couponDoc.maxOrderTotal} max`
+          : `هذا الكوبون يمكن تطبيقه فقط على الطلبات التي تصل إلى ${couponDoc.maxOrderTotal} كحد أقصى`,
         400,
       );
     }
@@ -289,7 +339,9 @@ export async function getCheckoutSummaryService({
       couponDoc.usageCount >= couponDoc.maxUsageTotal
     ) {
       throw new ApiError(
-        "This coupon has reached its maximum usage limit",
+        lang === "en"
+          ? "This coupon has reached its maximum usage limit"
+          : "هذا الكوبون قد وصل إلى الحد الأقصى للاستخدام",
         400,
       );
     }
@@ -303,7 +355,9 @@ export async function getCheckoutSummaryService({
 
         if (userUsage >= couponDoc.maxUsagePerUser) {
           throw new ApiError(
-            "You have already used this coupon the maximum number of times",
+            lang === "en"
+              ? "You have already used this coupon the maximum number of times"
+              : "لقد استخدمت هذا الكوبون بالفعل الحد الأقصى من المرات",
             400,
           );
         }
@@ -397,7 +451,12 @@ export async function getCheckoutSummaryService({
   // Validate delivery address completeness before returning summary
   const addr = cartResponse.deliveryAddress;
   if (!addr) {
-    throw new ApiError("Delivery address is not set for this cart", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Delivery address is not set for this cart"
+        : "لم يتم تعيين عنوان التوصيل لهذا السلة",
+      400,
+    );
   }
   const requiredFields = [
     "name",
@@ -411,7 +470,9 @@ export async function getCheckoutSummaryService({
   const missingFields = requiredFields.filter((f) => !addr[f]);
   if (missingFields.length > 0) {
     throw new ApiError(
-      `Delivery address is missing required fields: ${missingFields.join(", ")}`,
+      lang === "en"
+        ? `Delivery address is missing required fields: ${missingFields.join(", ")}`
+        : `عنوان التوصيل يفتقد الحقول المطلوبة: ${missingFields.join(", ")}`,
       400,
     );
   }
@@ -420,7 +481,12 @@ export async function getCheckoutSummaryService({
     typeof addr.location.lat !== "number" ||
     typeof addr.location.lng !== "number"
   ) {
-    throw new ApiError("Delivery address is missing location (lat, lng)", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Delivery address is missing location (lat, lng)"
+        : "عنوان التوصيل يفتقد الموقع",
+      400,
+    );
   }
 
   return {

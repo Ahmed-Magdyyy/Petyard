@@ -158,7 +158,7 @@ function computeAgeYears(birthDate) {
   return Math.max(years, 0);
 }
 
-async function resolvePetSnapshot({ userId, petId, payload }) {
+async function resolvePetSnapshot({ userId, petId, payload, lang }) {
   const { ownerName, ownerPhone, petType, petName, age, gender, comment } =
     payload;
 
@@ -226,7 +226,9 @@ async function resolvePetSnapshot({ userId, petId, payload }) {
   if (missing.length) {
     console.log("Missing required reservation fields:", missing);
     throw new ApiError(
-      `Missing required reservation fields: ${missing.join(", ")}`,
+      lang === "en"
+        ? `Missing required reservation fields: ${missing.join(", ")}`
+        : `الحقول المطلوبة للحجز غير موجودة: ${missing.join(", ")}`,
       400,
     );
   }
@@ -294,16 +296,24 @@ async function buildReservationDto(reservation, location, lang) {
   };
 }
 
-function assertWithinBookingWindowOrThrow(cairoDateStart) {
+function assertWithinBookingWindowOrThrow(cairoDateStart, lang) {
   const now = getNowCairo().startOf("day");
   const diffDays = cairoDateStart.diff(now, "days").days;
 
   if (diffDays < 0) {
-    throw new ApiError("Cannot book in the past", 400);
+    throw new ApiError(
+      lang === "en" ? "Cannot book in the past" : "لا يمكن الحجز في الماضي",
+      400,
+    );
   }
 
   if (diffDays > 15) {
-    throw new ApiError("Cannot book more than 15 days ahead", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Cannot book more than 15 days ahead"
+        : "لا يمكن الحجز أكثر من 15 يومًا مقدمًا",
+      400,
+    );
   }
 }
 
@@ -452,13 +462,17 @@ export async function createReservationService({
     millisecond: 0,
   });
   if (cairoSlot < startOfCurrentHourCairo()) {
-    throw new ApiError("Cannot book in the past", 400);
+    throw new ApiError(
+      lang === "en" ? "Cannot book in the past" : "لا يمكن الحجز في الماضي",
+      400,
+    );
   }
 
   const snapshot = await resolvePetSnapshot({
     userId: identity.userId,
     petId: payload.petId,
     payload,
+    lang: lang || "en",
   });
 
   // Pre-check: Fail fast if any slot is at capacity (before expensive transaction)
@@ -482,7 +496,9 @@ export async function createReservationService({
     if (existingSlot && existingSlot.bookedCount >= capacity) {
       const slotLabel = formatSlotLabelFromUtc(slotStartsAt);
       throw new ApiError(
-        `Selected time ${slotLabel.text} is fully booked`,
+        lang === "en"
+          ? `Selected time ${slotLabel.text} is fully booked`
+          : `الوقت المختار ${slotLabel.text} محجوز بالكامل`,
         409,
       );
     }
@@ -507,7 +523,9 @@ export async function createReservationService({
       if (existingAny) {
         const slotLabel = formatSlotLabelFromUtc(existingAny.startsAt);
         throw new ApiError(
-          `You already have a reservation at ${slotLabel.text}`,
+          lang === "en"
+            ? `You already have a reservation at ${slotLabel.text}`
+            : `لديك بالفعل حجز في ${slotLabel.text}`,
           409,
         );
       }
@@ -590,7 +608,10 @@ export async function createReservationService({
   }
 
   if (!created) {
-    throw new ApiError("Failed to create reservation", 500);
+    throw new ApiError(
+      lang === "en" ? "Failed to create reservation" : "فشل إنشاء الحجز",
+      500,
+    );
   }
 
   if (Array.isArray(created)) {
@@ -884,7 +905,9 @@ export async function cancelReservationService({ id, userId, guestId, lang }) {
       );
       if (nowUtc > cutoff) {
         throw new ApiError(
-          "Cancellation is only allowed up to 24 hours before the reservation time",
+          lang === "en"
+            ? "Cancellation is only allowed up to 24 hours before the reservation time"
+            : "الإلغاء مسموح فقط قبل موعد الحجز بـ 24 ساعة",
           400,
         );
       }
@@ -911,7 +934,10 @@ export async function cancelReservationService({ id, userId, guestId, lang }) {
   }
 
   if (!cancelled) {
-    throw new ApiError("Failed to cancel reservation", 500);
+    throw new ApiError(
+      lang === "en" ? "Failed to cancel reservation" : "فشل إلغاء الحجز",
+      500,
+    );
   }
 
   const location = await getServiceLocationByIdService(cancelled.location);
@@ -998,7 +1024,12 @@ export async function adminUpdateReservationStatusService({
   }
 
   if (!updated) {
-    throw new ApiError("Failed to update reservation status", 500);
+    throw new ApiError(
+      lang === "en"
+        ? "Failed to update reservation status"
+        : "فشل تحديث حالة الحجز",
+      500,
+    );
   }
 
   // Send notification to user about status change (only for registered users)

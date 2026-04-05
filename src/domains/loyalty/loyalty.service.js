@@ -211,6 +211,7 @@ export async function redeemLoyaltyPointsService({ userId }) {
 
   const session = await mongoose.startSession();
   let updatedUser;
+  const redemptionId = new mongoose.Types.ObjectId();
 
   try {
     await session.withTransaction(async () => {
@@ -246,7 +247,7 @@ export async function redeemLoyaltyPointsService({ userId }) {
             amount: walletCredit,
             type: "POINTS_REDEEM_CREDIT",
             referenceType: "LOYALTY_REDEMPTION",
-            referenceId: userId,
+            referenceId: redemptionId,
             balanceAfter: updatedUser?.walletBalance ?? 0,
             description: `Redeemed ${pointsToDeduct} loyalty points for ${walletCredit} EGP`,
           },
@@ -261,7 +262,7 @@ export async function redeemLoyaltyPointsService({ userId }) {
             points: -pointsToDeduct,
             type: "REDEEMED",
             referenceType: "REDEMPTION",
-            referenceId: userId,
+            referenceId: redemptionId,
             balanceAfter: updatedUser?.loyaltyPoints ?? 0,
             description: `Redeemed ${pointsToDeduct} points for ${walletCredit} EGP wallet credit`,
           },

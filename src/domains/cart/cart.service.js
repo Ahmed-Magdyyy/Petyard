@@ -4,7 +4,6 @@ import {
   findProductsByIdsWithOptions,
 } from "../product/product.repository.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
-import { UserModel } from "../user/user.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
@@ -652,7 +651,12 @@ export async function upsertCartItemService({
   lang = "en",
 }) {
   if (quantity == null || quantity <= 0) {
-    throw new ApiError("quantity must be greater than 0", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "quantity must be greater than 0"
+        : "الكمية يجب أن تكون أكبر من 0",
+      400,
+    );
   }
 
   await assertWarehouseExists(warehouseId);
@@ -709,13 +713,17 @@ export async function upsertCartItemService({
     const stock = findSimpleWarehouseStock(product, warehouseId);
     if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
       throw new ApiError(
-        "This product is not available in the selected warehouse",
+        lang === "en"
+          ? "This product is not available in the selected warehouse"
+          : "هذا المنتج غير متوفر في المخزن التابع لمنطقتك",
         400,
       );
     }
     if (requestedTotalQuantity > stock.quantity) {
       throw new ApiError(
-        `Requested quantity exceeds available stock (${stock.quantity})`,
+        lang === "en"
+          ? `Requested quantity exceeds available stock (${stock.quantity})`
+          : `الكمية المطلوبة تتجاوز المخزون المتاح (${stock.quantity})`,
         400,
       );
     }
@@ -738,13 +746,17 @@ export async function upsertCartItemService({
     const stock = findVariantWarehouseStock(variant, warehouseId);
     if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
       throw new ApiError(
-        "This product variant is out of stock or not available in the selected warehouse",
+        lang === "en"
+          ? "This product variant is out of stock or not available in the selected warehouse"
+          : "هذا الإختيار غير متوفر في المخزن التابع لمنطقتك",
         400,
       );
     }
     if (requestedTotalQuantity > stock.quantity) {
       throw new ApiError(
-        `Requested quantity exceeds available stock (${stock.quantity})`,
+        lang === "en"
+          ? `Requested quantity exceeds available stock (${stock.quantity})`
+          : `الكمية المطلوبة تتجاوز المخزون المتاح (${stock.quantity})`,
         400,
       );
     }
@@ -806,55 +818,84 @@ export async function updateCartItemQuantityService({
   lang = "en",
 }) {
   if (quantity == null || quantity <= 0) {
-    throw new ApiError("quantity must be greater than 0", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "quantity must be greater than 0"
+        : "الكمية يجب أن تكون أكبر من 0",
+      400,
+    );
   }
 
   const cart = await getExistingCartOrThrow({ userId, guestId, warehouseId });
 
   const item = cart.items.id(itemId);
   if (!item) {
-    throw new ApiError("Cart item not found", 404);
+    throw new ApiError(
+      lang === "en" ? "Cart item not found" : "العنصر غير موجود في السلة",
+      404,
+    );
   }
 
   const product = await findProductById(item.product);
   if (!product) {
-    throw new ApiError("Product no longer exists", 400);
+    throw new ApiError(
+      lang === "en" ? "Product no longer exists" : "المنتج لم يعد موجود",
+      400,
+    );
   }
 
   if (product.type !== item.productType) {
-    throw new ApiError("Product type mismatch for cart item", 400);
+    throw new ApiError(
+      lang === "en"
+        ? "Product type mismatch for cart item"
+        : "نوع المنتج غير متطابق مع العنصر في السلة",
+      400,
+    );
   }
 
   if (product.type === "SIMPLE") {
     const stock = findSimpleWarehouseStock(product, warehouseId);
     if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
       throw new ApiError(
-        "This product is not available in the selected warehouse",
+        lang === "en"
+          ? "This product is not available in the selected warehouse"
+          : "هذا المنتج غير متوفر في المخزن التابع لمنطقتك",
         400,
       );
     }
     if (quantity > stock.quantity) {
       throw new ApiError(
-        `Requested quantity exceeds available stock (${stock.quantity})`,
+        lang === "en"
+          ? `Requested quantity exceeds available stock (${stock.quantity})`
+          : `الكمية المطلوبة تتجاوز المخزون المتاح (${stock.quantity})`,
         400,
       );
     }
   } else if (product.type === "VARIANT") {
     const variant = findVariantById(product, item.variantId);
     if (!variant) {
-      throw new ApiError("Variant not found on this product", 404);
+      throw new ApiError(
+        lang === "en"
+          ? "Variant not found on this product"
+          : "الإختيار غير موجود في هذا المنتج",
+        404,
+      );
     }
 
     const stock = findVariantWarehouseStock(variant, warehouseId);
     if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
       throw new ApiError(
-        "This product variant is not available in the selected warehouse",
+        lang === "en"
+          ? "This product variant is not available in the selected warehouse"
+          : "هذا الإختيار غير متوفر في المخزن التابع لمنطقتك",
         400,
       );
     }
     if (quantity > stock.quantity) {
       throw new ApiError(
-        `Requested quantity exceeds available stock (${stock.quantity})`,
+        lang === "en"
+          ? `Requested quantity exceeds available stock (${stock.quantity})`
+          : `الكمية المطلوبة تتجاوز المخزون المتاح (${stock.quantity})`,
         400,
       );
     }
@@ -877,7 +918,10 @@ export async function removeCartItemService({
 
   const item = cart.items.id(itemId);
   if (!item) {
-    throw new ApiError("Cart item not found", 404);
+    throw new ApiError(
+      lang === "en" ? "Cart item not found" : "العنصر غير موجود في السلة",
+      404,
+    );
   }
 
   item.deleteOne();
