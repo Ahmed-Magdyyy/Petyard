@@ -1777,67 +1777,13 @@ export async function updateOrderStatusService({
         order.paymentStatus = paymentStatusEnum.PAID;
       }
 
-      // Award loyalty points when order is delivered
-      if (newStatus === orderStatusEnum.DELIVERED && order.user) {
-        // Points on items only (subtotal - discounts), excluding shipping
-        const itemsValue = Math.max(
-          0,
-          (order.subtotal || 0) - (order.discountAmount || 0),
-        );
-        const pointsToAward = await calculateLoyaltyPointsForOrder(itemsValue);
-
-        if (pointsToAward > 0) {
-          const userAfterPoints = await UserModel.findOneAndUpdate(
-            { _id: order.user },
-            { $inc: { loyaltyPoints: pointsToAward } },
-            { session, new: true, select: "loyaltyPoints" },
-          );
-
-          order.loyaltyPointsAwarded = pointsToAward;
-
-          await LoyaltyTransactionModel.create(
-            [
-              {
-                user: order.user,
-                points: pointsToAward,
-                type: "EARNED",
-                referenceType: "ORDER",
-                referenceId: order._id,
-                balanceAfter: userAfterPoints?.loyaltyPoints ?? pointsToAward,
-                description: `Earned ${pointsToAward} points from order ${order.orderNumber}`,
-              },
-            ],
-            { session },
-          );
-
-          // Notify user about points earned
-          dispatchNotification({
-            userId: order.user,
-            notification: {
-              title_en: "Points Earned!",
-              title_ar: "لقد ربحت نقاط!",
-              body_en: `You earned ${pointsToAward} loyalty points from your order.`,
-              body_ar: `لقد ربحت ${pointsToAward} نقطة ولاء من طلبك.`,
-            },
-            icon: "loyalty",
-            action: {
-              type: "screen",
-              screen: "LoyaltyScreen",
-              params: {},
-            },
-            source: {
-              domain: "loyalty",
-              event: "points_earned",
-              referenceId: String(order._id),
-            },
-            channels: { push: true, inApp: true },
-          }).catch((err) => {
-            console.error(
-              "[Order] Failed to dispatch loyalty points notification:",
-              err.message,
-            );
-          });
-        }
+      // Award loyalty points when payment becomes PAID (unified for COD + Card)
+      if (
+        order.paymentStatus === paymentStatusEnum.PAID &&
+        order.user &&
+        !order.loyaltyPointsAwarded
+      ) {
+        await awardLoyaltyPointsForOrder(order, session);
       }
 
       // Deduct loyalty points if order is cancelled/returned after points were awarded
@@ -1901,6 +1847,70 @@ export async function updateOrderStatusService({
   }
 
   return updated;
+}
+
+
+// ─── Shared: Award Loyalty Points on Payment ────────────────────────────────
+
+async function awardLoyaltyPointsForOrder(order, session) {
+  if (!order.user || order.loyaltyPointsAwarded) return;
+
+  // Points on items only (subtotal - discounts), excluding shipping
+  const itemsValue = Math.max(
+    0,
+    (order.subtotal || 0) - (order.discountAmount || 0),
+  );
+  const pointsToAward = await calculateLoyaltyPointsForOrder(itemsValue);
+
+  if (pointsToAward <= 0) return;
+
+  const userAfterPoints = await UserModel.findOneAndUpdate(
+    { _id: order.user },
+    { $inc: { loyaltyPoints: pointsToAward } },
+    { session, new: true, select: "loyaltyPoints" },
+  );
+
+  order.loyaltyPointsAwarded = pointsToAward;
+
+  await LoyaltyTransactionModel.create(
+    [
+      {
+        user: order.user,
+        points: pointsToAward,
+        type: "EARNED",
+        referenceType: "ORDER",
+        referenceId: order._id,
+        balanceAfter: userAfterPoints?.loyaltyPoints ?? pointsToAward,
+        description: `Earned ${pointsToAward} points from order ${order.orderNumber}`,
+      },
+    ],
+    { session },
+  );
+
+  // Fire-and-forget notification
+  dispatchNotification({
+    userId: order.user,
+    notification: {
+      title_en: "Points Earned!",
+      title_ar: "لقد ربحت نقاط!",
+      body_en: `You earned ${pointsToAward} loyalty points from your order.`,
+      body_ar: `لقد ربحت ${pointsToAward} نقطة ولاء من طلبك.`,
+    },
+    icon: "loyalty",
+    action: {
+      type: "screen",
+      screen: "LoyaltyScreen",
+      params: {},
+    },
+    source: {
+      domain: "loyalty",
+      event: "points_earned",
+      referenceId: String(order._id),
+    },
+    channels: { push: true, inApp: true },
+  }).catch((err) =>
+    console.error("[Order] Failed to dispatch loyalty points notification:", err.message),
+  );
 }
 
 // ─── Payment Confirmation / Failure ─────────────────────────────────────────
@@ -2006,6 +2016,9 @@ async function commitOrderSideEffects(
         description: "Payment confirmed — Order is pending",
         visibleToUser: true,
       });
+
+      // 6. Award loyalty points (card payment confirmed = paid)
+      await awardLoyaltyPointsForOrder(freshOrder, session);
 
       await freshOrder.save({ session });
     });
