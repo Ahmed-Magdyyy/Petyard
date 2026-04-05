@@ -182,18 +182,22 @@ export async function redeemLoyaltyPointsService({ userId }) {
     throw new ApiError("User ID is required", 400);
   }
 
-  const settings = await getLoyaltySettingsService();
+  // ── Parallel pre-transaction reads ──
+  const [settings, user] = await Promise.all([
+    getLoyaltySettingsService(),
+    UserModel.findById(userId).select("loyaltyPoints walletBalance").lean(),
+  ]);
   
   if (!settings.isActive) {
     throw new ApiError("Loyalty points system is currently disabled", 400);
   }
 
-  const user = await UserModel.findById(userId).select("loyaltyPoints walletBalance");
   if (!user) {
     throw new ApiError("User not found", 404);
   }
 
   const currentPoints = typeof user.loyaltyPoints === "number" ? user.loyaltyPoints : 0;
+  const currentWallet = typeof user.walletBalance === "number" ? user.walletBalance : 0;
 
   if (currentPoints < settings.minPointsToRedeem) {
     throw new ApiError(
@@ -209,9 +213,12 @@ export async function redeemLoyaltyPointsService({ userId }) {
     throw new ApiError("Insufficient points for redemption", 400);
   }
 
-  const session = await mongoose.startSession();
-  let updatedUser;
+  // Pre-compute post-update balances (avoids an extra read inside the txn)
+  const newPoints = currentPoints - pointsToDeduct;
+  const newWallet = currentWallet + walletCredit;
   const redemptionId = new mongoose.Types.ObjectId();
+
+  const session = await mongoose.startSession();
 
   try {
     await session.withTransaction(async () => {
@@ -236,39 +243,37 @@ export async function redeemLoyaltyPointsService({ userId }) {
         );
       }
 
-      updatedUser = await UserModel.findById(userId)
-        .select("loyaltyPoints walletBalance")
-        .session(session);
-      
-      await WalletTransactionModel.create(
-        [
-          {
-            user: userId,
-            amount: walletCredit,
-            type: "POINTS_REDEEM_CREDIT",
-            referenceType: "LOYALTY_REDEMPTION",
-            referenceId: redemptionId,
-            balanceAfter: updatedUser?.walletBalance ?? 0,
-            description: `Redeemed ${pointsToDeduct} loyalty points for ${walletCredit} EGP`,
-          },
-        ],
-        { session }
-      );
-      
-      await LoyaltyTransactionModel.create(
-        [
-          {
-            user: userId,
-            points: -pointsToDeduct,
-            type: "REDEEMED",
-            referenceType: "REDEMPTION",
-            referenceId: redemptionId,
-            balanceAfter: updatedUser?.loyaltyPoints ?? 0,
-            description: `Redeemed ${pointsToDeduct} points for ${walletCredit} EGP wallet credit`,
-          },
-        ],
-        { session }
-      );
+      // Parallel creates inside the transaction
+      await Promise.all([
+        WalletTransactionModel.create(
+          [
+            {
+              user: userId,
+              amount: walletCredit,
+              type: "POINTS_REDEEM_CREDIT",
+              referenceType: "LOYALTY_REDEMPTION",
+              referenceId: redemptionId,
+              balanceAfter: newWallet,
+              description: `Redeemed ${pointsToDeduct} loyalty points for ${walletCredit} EGP`,
+            },
+          ],
+          { session }
+        ),
+        LoyaltyTransactionModel.create(
+          [
+            {
+              user: userId,
+              points: -pointsToDeduct,
+              type: "REDEEMED",
+              referenceType: "REDEMPTION",
+              referenceId: redemptionId,
+              balanceAfter: newPoints,
+              description: `Redeemed ${pointsToDeduct} points for ${walletCredit} EGP wallet credit`,
+            },
+          ],
+          { session }
+        ),
+      ]);
     });
   } finally {
     session.endSession();
@@ -302,7 +307,7 @@ export async function redeemLoyaltyPointsService({ userId }) {
   return {
     pointsRedeemed: pointsToDeduct,
     walletCredited: walletCredit,
-    remainingPoints: updatedUser?.loyaltyPoints || 0,
-    newWalletBalance: updatedUser?.walletBalance || 0,
+    remainingPoints: newPoints,
+    newWalletBalance: newWallet,
   };
 }
