@@ -153,6 +153,12 @@ const userSchema = new Schema(
         delete ret.pendingPhoneVerificationExpires;
         delete ret.pendingPhoneOtpLastSentAt;
         delete ret.pendingPhoneOtpSendCountToday;
+        delete ret.refreshTokens;
+
+        // Flatten image to URL string for FE
+        if (ret.image && typeof ret.image === "object") {
+          ret.image = ret.image.url || null;
+        }
 
         if (Array.isArray(ret.authProviders)) {
           ret.authProviders = ret.authProviders.map((p) => ({
