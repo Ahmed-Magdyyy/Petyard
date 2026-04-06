@@ -384,8 +384,8 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
       ) {
         throw new ApiError(
           lang === "en"
-            ? `Insufficient stock for ${item.productName || "a product"}`
-            : "المخزون غير كافٍ",
+            ? `product ${item.productName} is out of stock`
+            : `المنتج ${item.productName} غير متوفر في المخزون`,
           400,
         );
       }
@@ -415,8 +415,8 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
       ) {
         throw new ApiError(
           lang === "en"
-            ? `Insufficient stock for ${item.productName || "a product"}`
-            : "المخزون غير كافٍ",
+            ? `product ${item.productName} is out of stock`
+            : `المنتج ${item.productName} غير متوفر في المخزون`,
           400,
         );
       }
@@ -2109,11 +2109,9 @@ export async function confirmOrderPaymentService({
         // Fire-and-forget notification
         dispatchNotification({
           userId: order.user,
-          title: {
+          notification: {
             title_en: "Order could not be completed",
             title_ar: "لم يتم إتمام الطلب",
-          },
-          body: {
             body_en: `An item in your order became unavailable. ${order.total} EGP has been added to your wallet.`,
             body_ar: `أحد المنتجات في طلبك أصبح غير متاح. تم إضافة ${order.total} جنيه إلى محفظتك.`,
           },
