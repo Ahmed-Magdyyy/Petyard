@@ -46,7 +46,26 @@ export async function createReturnRequestService({
   }
 
   const existingReturn = await ReturnRequestModel.findOne({ order: orderId });
-  if (existingReturn) {
+
+  if (existingReturn && existingReturn.status === returnStatusEnum.APPROVED) {
+    throw new ApiError(
+      lang === "ar"
+        ? "تم قبول طلب الإرجاع لهذا الطلب من قبل"
+        : "Return request had been accepted for this order before",
+      400,
+    );
+  }
+
+  if (existingReturn && existingReturn.status === returnStatusEnum.REJECTED) {
+    throw new ApiError(
+      lang === "ar"
+        ? "تم رفض طلب الإرجاع لهذا الطلب من قبل"
+        : "Return request had been rejected for this order before",
+      400,
+    );
+  }
+
+  if (existingReturn && existingReturn.status === returnStatusEnum.PENDING) {
     throw new ApiError(
       lang === "ar"
         ? "تم إنشاء طلب إرجاع لهذا الطلب من قبل"
