@@ -2076,7 +2076,7 @@ export async function confirmOrderPaymentService({
         `[Order] commitOrderSideEffects failed for ${order.orderNumber}: ${err.message}`,
       );
 
-      order.status = orderStatusEnum.CANCELLED;
+      order.status = orderStatusEnum.FAILED;
       order.paymentStatus = paymentStatusEnum.REFUNDED;
       order.history = Array.isArray(order.history) ? order.history : [];
       order.history.push({

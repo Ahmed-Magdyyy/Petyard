@@ -26,6 +26,7 @@ export const orderStatusEnum = Object.freeze({
   SHIPPED: "shipped",
   DELIVERED: "delivered",
   CANCELLED: "cancelled",
+  FAILED: "failed",
   RETURNED: "returned",
 });
 
