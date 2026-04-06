@@ -141,7 +141,7 @@ export async function detachDevicesForUserService({ userId, token } = {}) {
   if (normalizedToken) {
     const result = await NotificationDeviceModel.updateOne(
       { user: userId, token: normalizedToken },
-      { $unset: { user: 1 } }
+      { $unset: { user: 1 } },
     );
 
     return {
@@ -153,7 +153,7 @@ export async function detachDevicesForUserService({ userId, token } = {}) {
 
   const result = await NotificationDeviceModel.updateMany(
     { user: userId },
-    { $unset: { user: 1 } }
+    { $unset: { user: 1 } },
   );
 
   return {
@@ -183,8 +183,8 @@ async function sendPushToTokens({ tokens, notification, data }) {
     new Set(
       (Array.isArray(tokens) ? tokens : [])
         .map((t) => (typeof t === "string" ? t.trim() : ""))
-        .filter(Boolean)
-    )
+        .filter(Boolean),
+    ),
   );
 
   if (!uniqueTokens.length) {
@@ -223,7 +223,7 @@ async function sendPushToTokens({ tokens, notification, data }) {
           error: r.error
             ? { code: r.error.code, message: r.error.message }
             : null,
-        }))
+        })),
       );
 
       totalSuccess += response.successCount;
@@ -311,7 +311,7 @@ export async function sendOrderStatusChangedNotification(order) {
   } catch (err) {
     console.error(
       "[Notification] Failed to send order status notification:",
-      err.message
+      err.message,
     );
     return { skipped: true };
   }
@@ -329,11 +329,12 @@ export async function sendReturnStatusChangedNotification(returnRequest) {
   let body_en;
   let body_ar;
   if (statusText === "approved") {
-    body_en = "Your return request has been approved. Refund will be credited to your wallet.";
+    body_en =
+      "Your return request has been approved. Refund will be credited to your wallet.";
     body_ar = "تم الموافقة على طلب الإرجاع. سيتم إضافة المبلغ إلى محفظتك.";
   } else if (statusText === "rejected") {
-    body_en = "Your return request has been rejected.";
-    body_ar = "تم رفض طلب الإرجاع.";
+    body_en = `Your return request has been rejected. reason: ${returnRequest.rejectionReason}`;
+    body_ar = `تم رفض طلب الإرجاع. السبب: ${returnRequest.rejectionReason}`;
   } else {
     body_en = `Your return request status: ${statusText}`;
     body_ar = `حالة طلب الإرجاع: ${statusText}`;
@@ -372,7 +373,7 @@ export async function sendReturnStatusChangedNotification(returnRequest) {
   } catch (err) {
     console.error(
       "[Notification] Failed to send return status notification:",
-      err.message
+      err.message,
     );
     return { skipped: true };
   }
@@ -403,7 +404,10 @@ export async function sendAdminCustomNotificationToUsers({
   };
 }
 
-export async function sendBroadcastNotificationToAllDevices({ notification, data }) {
+export async function sendBroadcastNotificationToAllDevices({
+  notification,
+  data,
+}) {
   const devices = await NotificationDeviceModel.find({});
   const tokens = devices.map((d) => d.token).filter(Boolean);
 

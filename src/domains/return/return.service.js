@@ -5,7 +5,11 @@ import { OrderModel } from "../order/order.model.js";
 import { UserModel } from "../user/user.model.js";
 import { WalletTransactionModel } from "../wallet/walletTransaction.model.js";
 import { LoyaltyTransactionModel } from "../loyalty/loyaltyTransaction.model.js";
-import { orderStatusEnum, returnStatusEnum, paymentStatusEnum } from "../../shared/constants/enums.js";
+import {
+  orderStatusEnum,
+  returnStatusEnum,
+  paymentStatusEnum,
+} from "../../shared/constants/enums.js";
 import { restoreStockForOrder } from "../order/order.service.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
 import { sendReturnStatusChangedNotification } from "../notification/notification.service.js";
@@ -13,7 +17,12 @@ import { deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.j
 
 const RETURN_WINDOW_DAYS = 14;
 
-export async function createReturnRequestService({ userId, orderId, reason }) {
+export async function createReturnRequestService({
+  userId,
+  orderId,
+  reason,
+  lang = "en",
+}) {
   if (!orderId || !reason || !reason.trim()) {
     throw new ApiError("Order ID and reason are required", 400);
   }
@@ -28,16 +37,26 @@ export async function createReturnRequestService({ userId, orderId, reason }) {
   }
 
   if (order.status !== orderStatusEnum.DELIVERED) {
-    throw new ApiError("Only delivered orders can be returned", 400);
+    throw new ApiError(
+      lang === "ar"
+        ? "لا يمكن إرجاع إلا الطلبات التي تم تسليمها"
+        : "Only delivered orders can be returned",
+      400,
+    );
   }
 
   const existingReturn = await ReturnRequestModel.findOne({ order: orderId });
   if (existingReturn) {
-    throw new ApiError("Return request already exists for this order", 400);
+    throw new ApiError(
+      lang === "ar"
+        ? "تم إنشاء طلب إرجاع لهذا الطلب من قبل"
+        : "Return request had been placed for this order before",
+      400,
+    );
   }
 
   const deliveredHistoryEntry = order.history.find(
-    (h) => h.description && h.description.includes("DELIVERED")
+    (h) => h.description && h.description.includes("DELIVERED"),
   );
 
   const deliveredDate = deliveredHistoryEntry
@@ -45,20 +64,22 @@ export async function createReturnRequestService({ userId, orderId, reason }) {
     : order.updatedAt;
 
   const daysSinceDelivery = Math.floor(
-    (Date.now() - new Date(deliveredDate).getTime()) / (1000 * 60 * 60 * 24)
+    (Date.now() - new Date(deliveredDate).getTime()) / (1000 * 60 * 60 * 24),
   );
 
   if (daysSinceDelivery > RETURN_WINDOW_DAYS) {
     throw new ApiError(
-      `Return only available within ${RETURN_WINDOW_DAYS} days from delivery date`,
-      400
+      lang === "ar"
+        ? `يمكن الإرجاع خلال ${RETURN_WINDOW_DAYS} أيام من تاريخ التسليم`
+        : `Return only available within ${RETURN_WINDOW_DAYS} days from delivery date`,
+      400,
     );
   }
 
-
   const subtotal = typeof order.subtotal === "number" ? order.subtotal : 0;
-  const discountAmount = typeof order.discountAmount === "number" ? order.discountAmount : 0;
-  
+  const discountAmount =
+    typeof order.discountAmount === "number" ? order.discountAmount : 0;
+
   const refundToWallet = Math.max(0, subtotal - discountAmount);
 
   const returnRequest = await ReturnRequestModel.create({
@@ -74,7 +95,12 @@ export async function createReturnRequestService({ userId, orderId, reason }) {
   return returnRequest;
 }
 
-export async function listReturnRequestsService({ userId, status, page = 1, limit = 20 }) {
+export async function listReturnRequestsService({
+  userId,
+  status,
+  page = 1,
+  limit = 20,
+}) {
   const filter = {};
 
   if (userId) {
@@ -83,7 +109,13 @@ export async function listReturnRequestsService({ userId, status, page = 1, limi
 
   if (status) {
     const normalizedStatus = String(status).trim().toLowerCase();
-    if ([returnStatusEnum.PENDING, returnStatusEnum.APPROVED, returnStatusEnum.REJECTED].includes(normalizedStatus)) {
+    if (
+      [
+        returnStatusEnum.PENDING,
+        returnStatusEnum.APPROVED,
+        returnStatusEnum.REJECTED,
+      ].includes(normalizedStatus)
+    ) {
       filter.status = normalizedStatus;
     }
   }
@@ -133,11 +165,14 @@ export async function processReturnRequestService({
   adminUserId,
   rejectionReason,
 }) {
-  const normalizedAction = typeof action === "string" 
-    ? action.trim().toLowerCase() 
-    : "";
+  const normalizedAction =
+    typeof action === "string" ? action.trim().toLowerCase() : "";
 
-  if (![returnStatusEnum.APPROVED, returnStatusEnum.REJECTED].includes(normalizedAction)) {
+  if (
+    ![returnStatusEnum.APPROVED, returnStatusEnum.REJECTED].includes(
+      normalizedAction,
+    )
+  ) {
     throw new ApiError("Action must be approved or rejected", 400);
   }
 
@@ -150,9 +185,8 @@ export async function processReturnRequestService({
 
   try {
     await session.withTransaction(async () => {
-      const returnRequest = await ReturnRequestModel.findById(returnId).session(
-        session
-      );
+      const returnRequest =
+        await ReturnRequestModel.findById(returnId).session(session);
 
       if (!returnRequest) {
         throw new ApiError("Return request not found", 404);
@@ -161,18 +195,20 @@ export async function processReturnRequestService({
       if (returnRequest.status !== returnStatusEnum.PENDING) {
         throw new ApiError(
           `Return request is already ${returnRequest.status.toLowerCase()}`,
-          400
+          400,
         );
       }
 
-      const order = await OrderModel.findById(returnRequest.order).session(session);
+      const order = await OrderModel.findById(returnRequest.order).session(
+        session,
+      );
       if (!order) {
         throw new ApiError("Associated order not found", 404);
       }
 
       if (normalizedAction === returnStatusEnum.APPROVED) {
         let walletDeductedForPoints = 0;
-        
+
         // Deduct loyalty points if order had awarded points
         if (returnRequest.user && order.loyaltyPointsAwarded > 0) {
           const deductionResult = await deductLoyaltyPointsOnReturnService({
@@ -180,10 +216,12 @@ export async function processReturnRequestService({
             pointsToDeduct: order.loyaltyPointsAwarded,
             session,
           });
-          
+
           walletDeductedForPoints = deductionResult.walletDeducted;
-          
-          const userAfterDeduction = await UserModel.findById(returnRequest.user)
+
+          const userAfterDeduction = await UserModel.findById(
+            returnRequest.user,
+          )
             .select("loyaltyPoints")
             .session(session);
 
@@ -191,32 +229,37 @@ export async function processReturnRequestService({
             [
               {
                 user: returnRequest.user,
-                points: -(deductionResult.pointsDeducted),
+                points: -deductionResult.pointsDeducted,
                 type: "DEDUCTED",
                 referenceType: "ORDER",
                 referenceId: order._id,
                 balanceAfter: userAfterDeduction?.loyaltyPoints ?? 0,
-                description_en: walletDeductedForPoints > 0
-                  ? `Deducted ${deductionResult.pointsDeducted} points and ${walletDeductedForPoints} EGP from wallet for returned order ${order.orderNumber}`
-                  : `Deducted ${order.loyaltyPointsAwarded} points due to returned order ${order.orderNumber}`,
-                description_ar: walletDeductedForPoints > 0
-                  ? `خصم ${deductionResult.pointsDeducted} نقطة و ${walletDeductedForPoints} جنيه من المحفظة للطلب المرتجع ${order.orderNumber}`
-                  : `خصم ${order.loyaltyPointsAwarded} نقطة بسبب الطلب المرتجع ${order.orderNumber}`,
+                description_en:
+                  walletDeductedForPoints > 0
+                    ? `Deducted ${deductionResult.pointsDeducted} points and ${walletDeductedForPoints} EGP from wallet for returned order ${order.orderNumber}`
+                    : `Deducted ${order.loyaltyPointsAwarded} points due to returned order ${order.orderNumber}`,
+                description_ar:
+                  walletDeductedForPoints > 0
+                    ? `خصم ${deductionResult.pointsDeducted} نقطة و ${walletDeductedForPoints} جنيه من المحفظة للطلب المرتجع ${order.orderNumber}`
+                    : `خصم ${order.loyaltyPointsAwarded} نقطة بسبب الطلب المرتجع ${order.orderNumber}`,
               },
             ],
-            { session }
+            { session },
           );
         }
 
         // Wallet refund (minus any wallet deducted for points)
         if (returnRequest.walletRefund > 0 && returnRequest.user) {
-          const netRefund = Math.max(0, returnRequest.walletRefund - walletDeductedForPoints);
-          
+          const netRefund = Math.max(
+            0,
+            returnRequest.walletRefund - walletDeductedForPoints,
+          );
+
           if (netRefund > 0) {
             await UserModel.updateOne(
               { _id: returnRequest.user },
               { $inc: { walletBalance: netRefund } },
-              { session }
+              { session },
             );
           }
 
@@ -233,12 +276,13 @@ export async function processReturnRequestService({
                 referenceType: "ORDER",
                 referenceId: order._id,
                 balanceAfter: userAfterRefund?.walletBalance ?? 0,
-                description: walletDeductedForPoints > 0
-                  ? `Refund for returned order ${order.orderNumber} (${returnRequest.walletRefund} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
-                  : `Refund for returned order ${order.orderNumber}`,
+                description:
+                  walletDeductedForPoints > 0
+                    ? `Refund for returned order ${order.orderNumber} (${returnRequest.walletRefund} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
+                    : `Refund for returned order ${order.orderNumber}`,
               },
             ],
-            { session }
+            { session },
           );
         }
 

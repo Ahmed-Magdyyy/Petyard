@@ -10,11 +10,12 @@ export const createReturnRequest = asyncHandler(async (req, res) => {
   const userId = req.user?._id;
   const { orderId } = req.params;
   const { reason } = req.body;
-
+  const lang = req.lang;
   const returnRequest = await createReturnRequestService({
     userId,
     orderId,
     reason,
+    lang,
   });
 
   res.status(201).json({ data: returnRequest });
