@@ -27,14 +27,12 @@ function getEgyptOffsetMinutes(date) {
  */
 function toEgyptISO(date) {
   const offsetMin = getEgyptOffsetMinutes(date);
-  const absH = Math.floor(Math.abs(offsetMin) / 60);
-  const absM = Math.abs(offsetMin) % 60;
-  const sign = offsetMin >= 0 ? "+" : "-";
-  const tz = `${sign}${String(absH).padStart(2, "0")}:${String(absM).padStart(2, "0")}`;
 
   // Shift the date by the offset so toISOString() prints Egypt local time
   const shifted = new Date(date.getTime() + offsetMin * 60_000);
-  return shifted.toISOString().replace("Z", tz);
+
+  // Strip the trailing "Z" so clients treat it as bare local time
+  return shifted.toISOString().replace("Z", "");
 }
 
 /**
