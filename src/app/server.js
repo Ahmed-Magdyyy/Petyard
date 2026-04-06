@@ -20,6 +20,7 @@ import { startAbandonedPaymentsJob } from "../shared/jobs/abandonedPayments.job.
 import { getRedisClient } from "../config/redis.js";
 import { getFirebaseAdmin } from "../config/firebase.js";
 import cors from "cors";
+import { egyptTimezoneReplacer } from "../shared/utils/egyptTimezone.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +28,7 @@ config({ path: path.resolve(__dirname, "../../.env") });
 
 // middlewares
 app.set("trust proxy", 1);
+app.set("json replacer", egyptTimezoneReplacer);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "uploads")));
