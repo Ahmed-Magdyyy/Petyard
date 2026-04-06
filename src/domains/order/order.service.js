@@ -1146,14 +1146,14 @@ export async function createOrderForUserService({
     });
     if (existingPending) {
       const ageMs = Date.now() - existingPending.createdAt.getTime();
-      const twoMinutes = 2 * 60 * 1000;
+      const oneMinute = 60 * 1000;
 
-      if (ageMs < twoMinutes) {
-        // Genuinely recent — payment is likely still in progress
+      if (ageMs < oneMinute) {
+        const remainingSec = Math.ceil((oneMinute - ageMs) / 1000);
         throw new ApiError(
           lang === "en"
-            ? "You already have a payment in progress"
-            : "لديك عملية دفع قيد التنفيذ بالفعل",
+            ? `You have a recent pending order. Please retry after ${remainingSec} seconds`
+            : `لديك طلب معلق حديث. يرجى إعادة المحاولة بعد ${remainingSec} ثانية`,
           409,
         );
       }
@@ -2072,20 +2072,75 @@ export async function confirmOrderPaymentService({
       });
     } catch (err) {
       // Side effects failed (stock exhausted, wallet insufficient, etc.)
-      // Cancel the order and log for manual Paymob refund
       console.error(
-        `[Order] commitOrderSideEffects failed for ${order.orderNumber}: ${err.message}. Manual Paymob refund required.`,
+        `[Order] commitOrderSideEffects failed for ${order.orderNumber}: ${err.message}`,
       );
 
       order.status = orderStatusEnum.CANCELLED;
-      order.paymentStatus = paymentStatusEnum.PAID;
+      order.paymentStatus = paymentStatusEnum.REFUNDED;
       order.history = Array.isArray(order.history) ? order.history : [];
       order.history.push({
         at: new Date(),
-        description: `SECURITY: Side effects failed after payment — manual refund required. Reason: ${err.message}`,
+        description:
+          "Payment received but order could not be fulfilled — refunded to wallet",
         visibleToUser: false,
       });
-      await order.save();
+
+      if (order.user) {
+        // order.save + wallet credit in parallel (both critical, independent)
+        const [, updatedUser] = await Promise.all([
+          order.save(),
+          UserModel.findByIdAndUpdate(
+            order.user,
+            { $inc: { walletBalance: order.total } },
+            { new: true },
+          ),
+        ]);
+
+        await WalletTransactionModel.create({
+          user: order.user,
+          amount: order.total,
+          type: "ORDER_REFUND",
+          referenceType: "ORDER",
+          referenceId: order._id,
+          balanceAfter: updatedUser?.walletBalance ?? 0,
+        });
+
+        // Fire-and-forget notification
+        dispatchNotification({
+          userId: order.user,
+          title: {
+            title_en: "Order could not be completed",
+            title_ar: "لم يتم إتمام الطلب",
+          },
+          body: {
+            body_en: `An item in your order became unavailable. ${order.total} EGP has been added to your wallet.`,
+            body_ar: `أحد المنتجات في طلبك أصبح غير متاح. تم إضافة ${order.total} جنيه إلى محفظتك.`,
+          },
+          icon: "wallet",
+          action: {
+            type: "screen",
+            screen: "WalletScreen",
+            params: {},
+          },
+          source: {
+            domain: "order",
+            event: "payment_refunded",
+            referenceId: String(order._id),
+          },
+          channels: { push: true, inApp: true },
+        }).catch((e) =>
+          console.error("[Order] Refund notification failed:", e.message),
+        );
+      } else {
+        // Guest order — no wallet, flag for manual Paymob refund
+        order.history.push({
+          at: new Date(),
+          description: "Guest order — manual Paymob refund required",
+          visibleToUser: false,
+        });
+        await order.save();
+      }
     }
     return;
   }

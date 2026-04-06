@@ -39,7 +39,7 @@ export const registerDevice = asyncHandler(async (req, res) => {
     userId: req.user._id,
     token,
     platform,
-    lang: lang || "en",
+    lang: lang || req.lang || "en",
   });
 
   res.status(200).json({ data: device });
@@ -207,6 +207,8 @@ export const adminSendNotification = asyncHandler(async (req, res) => {
     return;
   }
 
-  throw new ApiError("Invalid target.type. Use 'users', 'all_users', or 'all_devices'", 400);
+  throw new ApiError(
+    "Invalid target.type. Use 'users', 'all_users', or 'all_devices'",
+    400,
+  );
 });
-
