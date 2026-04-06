@@ -6,10 +6,11 @@ import { UserModel } from "../user/user.model.js";
 import { WalletTransactionModel } from "../wallet/walletTransaction.model.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
 import { dispatchNotification } from "../notification/notificationDispatcher.js";
+import { pickLocalizedField } from "../../shared/utils/i18n.js";
 
 export async function getLoyaltySettingsService() {
   let settings = await LoyaltySettingsModel.findOne();
-  
+
   if (!settings) {
     settings = await LoyaltySettingsModel.create({
       pointsEarnRate: 1,
@@ -18,7 +19,7 @@ export async function getLoyaltySettingsService() {
       isActive: true,
     });
   }
-  
+
   return {
     pointsEarnRate: settings.pointsEarnRate,
     pointsRedeemRate: settings.pointsRedeemRate,
@@ -34,7 +35,7 @@ export async function updateLoyaltySettingsService({
   isActive,
 }) {
   let settings = await LoyaltySettingsModel.findOne();
-  
+
   if (!settings) {
     settings = await LoyaltySettingsModel.create({
       pointsEarnRate: pointsEarnRate ?? 1,
@@ -57,7 +58,7 @@ export async function updateLoyaltySettingsService({
     }
     await settings.save();
   }
-  
+
   return {
     pointsEarnRate: settings.pointsEarnRate,
     pointsRedeemRate: settings.pointsRedeemRate,
@@ -68,62 +69,75 @@ export async function updateLoyaltySettingsService({
 
 export async function calculateLoyaltyPointsForOrder(amountPaid) {
   const settings = await getLoyaltySettingsService();
-  
+
   if (!settings.isActive) {
     return 0;
   }
-  
+
   const paid = Math.max(0, Number(amountPaid) || 0);
   const points = Math.floor(paid * settings.pointsEarnRate);
-  
+
   return points;
 }
 
-export async function deductLoyaltyPointsOnReturnService({ userId, pointsToDeduct, session }) {
+export async function deductLoyaltyPointsOnReturnService({
+  userId,
+  pointsToDeduct,
+  session,
+}) {
   if (!userId || !pointsToDeduct || pointsToDeduct <= 0) {
     return { pointsDeducted: 0, walletDeducted: 0 };
   }
 
   const settings = await getLoyaltySettingsService();
-  const user = await UserModel.findById(userId).select("loyaltyPoints walletBalance").session(session);
-  
+  const user = await UserModel.findById(userId)
+    .select("loyaltyPoints walletBalance")
+    .session(session);
+
   if (!user) {
     throw new ApiError("User not found", 404);
   }
 
   const currentPoints = Math.max(0, user.loyaltyPoints || 0);
-  
+
   if (currentPoints >= pointsToDeduct) {
     // User has enough points, deduct all from points
     await UserModel.updateOne(
       { _id: userId },
       { $inc: { loyaltyPoints: -pointsToDeduct } },
-      { session }
+      { session },
     );
-    
+
     return { pointsDeducted: pointsToDeduct, walletDeducted: 0 };
   } else {
     // User doesn't have enough points, calculate deficit
     const pointsDeficit = pointsToDeduct - currentPoints;
-    const walletDeduction = Math.floor(pointsDeficit / settings.pointsRedeemRate);
-    
+    const walletDeduction = Math.floor(
+      pointsDeficit / settings.pointsRedeemRate,
+    );
+
     // Deduct available points and wallet equivalent
     await UserModel.updateOne(
       { _id: userId },
-      { 
-        $inc: { 
+      {
+        $inc: {
           loyaltyPoints: -currentPoints,
-          walletBalance: -walletDeduction 
-        } 
+          walletBalance: -walletDeduction,
+        },
       },
-      { session }
+      { session },
     );
-    
+
     return { pointsDeducted: currentPoints, walletDeducted: walletDeduction };
   }
 }
 
-export async function getLoyaltyTransactionsService({ userId, page = 1, limit = 20 }) {
+export async function getLoyaltyTransactionsService({
+  userId,
+  page = 1,
+  limit = 20,
+  lang = "en",
+}) {
   if (!userId) {
     throw new ApiError("User ID is required", 400);
   }
@@ -139,15 +153,25 @@ export async function getLoyaltyTransactionsService({ userId, page = 1, limit = 
     LoyaltyTransactionModel.countDocuments({ user: userId }),
   ]);
 
+  const formattedData = transactions.map((t) => {
+    const { description_en, description_ar, ...rest } = t;
+    return { ...rest, description: pickLocalizedField(t, "description", lang) };
+  });
+
   return {
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     page: pageNum,
-    results: transactions.length,
-    data: transactions,
+    results: formattedData.length,
+    data: formattedData,
   };
 }
 
-export async function getLoyaltyTransactionsForAdminService({ userId, page = 1, limit = 20 }) {
+export async function getLoyaltyTransactionsForAdminService({
+  userId,
+  page = 1,
+  limit = 20,
+  lang = "en",
+}) {
   if (!userId) {
     throw new ApiError("User ID is required", 400);
   }
@@ -169,11 +193,16 @@ export async function getLoyaltyTransactionsForAdminService({ userId, page = 1, 
     LoyaltyTransactionModel.countDocuments({ user: userId }),
   ]);
 
+  const formattedData = transactions.map((t) => {
+    const { description_en, description_ar, ...rest } = t;
+    return { ...rest, description: pickLocalizedField(t, "description", lang) };
+  });
+
   return {
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     page: pageNum,
-    results: transactions.length,
-    data: transactions,
+    results: formattedData.length,
+    data: formattedData,
   };
 }
 
@@ -187,7 +216,7 @@ export async function redeemLoyaltyPointsService({ userId }) {
     getLoyaltySettingsService(),
     UserModel.findById(userId).select("loyaltyPoints walletBalance").lean(),
   ]);
-  
+
   if (!settings.isActive) {
     throw new ApiError("Loyalty points system is currently disabled", 400);
   }
@@ -196,13 +225,15 @@ export async function redeemLoyaltyPointsService({ userId }) {
     throw new ApiError("User not found", 404);
   }
 
-  const currentPoints = typeof user.loyaltyPoints === "number" ? user.loyaltyPoints : 0;
-  const currentWallet = typeof user.walletBalance === "number" ? user.walletBalance : 0;
+  const currentPoints =
+    typeof user.loyaltyPoints === "number" ? user.loyaltyPoints : 0;
+  const currentWallet =
+    typeof user.walletBalance === "number" ? user.walletBalance : 0;
 
   if (currentPoints < settings.minPointsToRedeem) {
     throw new ApiError(
       `Minimum ${settings.minPointsToRedeem} points required to redeem. You have ${currentPoints} points.`,
-      400
+      400,
     );
   }
 
@@ -233,13 +264,13 @@ export async function redeemLoyaltyPointsService({ userId }) {
             walletBalance: walletCredit,
           },
         },
-        { session }
+        { session },
       );
 
       if (updateResult.matchedCount === 0) {
         throw new ApiError(
           "Insufficient points or concurrent modification",
-          400
+          400,
         );
       }
 
@@ -257,7 +288,7 @@ export async function redeemLoyaltyPointsService({ userId }) {
               description: `Redeemed ${pointsToDeduct} loyalty points for ${walletCredit} EGP`,
             },
           ],
-          { session }
+          { session },
         ),
         LoyaltyTransactionModel.create(
           [
@@ -268,10 +299,11 @@ export async function redeemLoyaltyPointsService({ userId }) {
               referenceType: "REDEMPTION",
               referenceId: redemptionId,
               balanceAfter: newPoints,
-              description: `Redeemed ${pointsToDeduct} points for ${walletCredit} EGP wallet credit`,
+              description_en: `Redeemed ${pointsToDeduct} points for ${walletCredit} EGP wallet credit`,
+              description_ar: `استبدال ${pointsToDeduct} نقطة مقابل رصيد محفظة ${walletCredit} جنيه`,
             },
           ],
-          { session }
+          { session },
         ),
       ]);
     });
@@ -301,7 +333,10 @@ export async function redeemLoyaltyPointsService({ userId }) {
     },
     channels: { push: true, inApp: true },
   }).catch((err) => {
-    console.error("[Loyalty] Failed to dispatch redemption notification:", err.message);
+    console.error(
+      "[Loyalty] Failed to dispatch redemption notification:",
+      err.message,
+    );
   });
 
   return {

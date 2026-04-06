@@ -196,9 +196,12 @@ export async function processReturnRequestService({
                 referenceType: "ORDER",
                 referenceId: order._id,
                 balanceAfter: userAfterDeduction?.loyaltyPoints ?? 0,
-                description: walletDeductedForPoints > 0
+                description_en: walletDeductedForPoints > 0
                   ? `Deducted ${deductionResult.pointsDeducted} points and ${walletDeductedForPoints} EGP from wallet for returned order ${order.orderNumber}`
                   : `Deducted ${order.loyaltyPointsAwarded} points due to returned order ${order.orderNumber}`,
+                description_ar: walletDeductedForPoints > 0
+                  ? `خصم ${deductionResult.pointsDeducted} نقطة و ${walletDeductedForPoints} جنيه من المحفظة للطلب المرتجع ${order.orderNumber}`
+                  : `خصم ${order.loyaltyPointsAwarded} نقطة بسبب الطلب المرتجع ${order.orderNumber}`,
               },
             ],
             { session }

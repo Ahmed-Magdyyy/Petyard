@@ -34,7 +34,11 @@ const loyaltyTransactionSchema = new Schema(
       required: true,
       min: 0,
     },
-    description: {
+    description_en: {
+      type: String,
+      trim: true,
+    },
+    description_ar: {
       type: String,
       trim: true,
     },

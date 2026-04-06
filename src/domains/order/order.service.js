@@ -1812,10 +1812,14 @@ export async function updateOrderStatusService({
               referenceType: "ORDER",
               referenceId: order._id,
               balanceAfter: userAfterDeduction?.loyaltyPoints ?? 0,
-              description:
+              description_en:
                 deductionResult.walletDeducted > 0
                   ? `Deducted ${deductionResult.pointsDeducted} points and ${deductionResult.walletDeducted} EGP from wallet for ${newStatus} order ${order.orderNumber}`
                   : `Deducted ${order.loyaltyPointsAwarded} points due to ${newStatus} order ${order.orderNumber}`,
+              description_ar:
+                deductionResult.walletDeducted > 0
+                  ? `خصم ${deductionResult.pointsDeducted} نقطة و ${deductionResult.walletDeducted} جنيه من المحفظة للطلب ${order.orderNumber} ${newStatus}`
+                  : `خصم ${order.loyaltyPointsAwarded} نقطة بسبب الطلب ${order.orderNumber} ${newStatus}`,
             },
           ],
           { session },
@@ -1849,7 +1853,6 @@ export async function updateOrderStatusService({
   return updated;
 }
 
-
 // ─── Shared: Award Loyalty Points on Payment ────────────────────────────────
 
 async function awardLoyaltyPointsForOrder(order, session) {
@@ -1881,7 +1884,8 @@ async function awardLoyaltyPointsForOrder(order, session) {
         referenceType: "ORDER",
         referenceId: order._id,
         balanceAfter: userAfterPoints?.loyaltyPoints ?? pointsToAward,
-        description: `Earned ${pointsToAward} points from order ${order.orderNumber}`,
+        description_en: `Earned ${pointsToAward} points from order ${order.orderNumber}`,
+        description_ar: `ربحت ${pointsToAward} نقطة من الطلب ${order.orderNumber}`,
       },
     ],
     { session },
@@ -1909,7 +1913,10 @@ async function awardLoyaltyPointsForOrder(order, session) {
     },
     channels: { push: true, inApp: true },
   }).catch((err) =>
-    console.error("[Order] Failed to dispatch loyalty points notification:", err.message),
+    console.error(
+      "[Order] Failed to dispatch loyalty points notification:",
+      err.message,
+    ),
   );
 }
 
