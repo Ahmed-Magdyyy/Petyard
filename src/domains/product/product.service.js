@@ -781,61 +781,61 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
 
     if (warehouseId) {
       selectedWarehouseId = warehouseId;
-      if (filter.type === productTypeEnum.SIMPLE) {
-        warehouseFilter = {
-          warehouseStocks: {
-            $elemMatch: {
-              warehouse: warehouseId,
-              ...(includeZeroStockInWarehouse ? {} : { quantity: { $gt: 0 } }),
-            },
-          },
-        };
-      } else if (filter.type === productTypeEnum.VARIANT) {
-        warehouseFilter = {
-          variants: {
-            $elemMatch: {
-              warehouseStocks: {
-                $elemMatch: {
-                  warehouse: warehouseId,
-                  ...(includeZeroStockInWarehouse
-                    ? {}
-                    : { quantity: { $gt: 0 } }),
-                },
+
+      // Admins: skip the warehouse filter so products with no stock entry
+      // (not just quantity 0, but missing from warehouseStocks entirely)
+      // are still returned.
+      if (!includeZeroStockInWarehouse) {
+        if (filter.type === productTypeEnum.SIMPLE) {
+          warehouseFilter = {
+            warehouseStocks: {
+              $elemMatch: {
+                warehouse: warehouseId,
+                quantity: { $gt: 0 },
               },
             },
-          },
-        };
-      } else {
-        warehouseFilter = {
-          $or: [
-            {
-              type: productTypeEnum.SIMPLE,
-              warehouseStocks: {
-                $elemMatch: {
-                  warehouse: warehouseId,
-                  ...(includeZeroStockInWarehouse
-                    ? {}
-                    : { quantity: { $gt: 0 } }),
-                },
-              },
-            },
-            {
-              type: productTypeEnum.VARIANT,
-              variants: {
-                $elemMatch: {
-                  warehouseStocks: {
-                    $elemMatch: {
-                      warehouse: warehouseId,
-                      ...(includeZeroStockInWarehouse
-                        ? {}
-                        : { quantity: { $gt: 0 } }),
-                    },
+          };
+        } else if (filter.type === productTypeEnum.VARIANT) {
+          warehouseFilter = {
+            variants: {
+              $elemMatch: {
+                warehouseStocks: {
+                  $elemMatch: {
+                    warehouse: warehouseId,
+                    quantity: { $gt: 0 },
                   },
                 },
               },
             },
-          ],
-        };
+          };
+        } else {
+          warehouseFilter = {
+            $or: [
+              {
+                type: productTypeEnum.SIMPLE,
+                warehouseStocks: {
+                  $elemMatch: {
+                    warehouse: warehouseId,
+                    quantity: { $gt: 0 },
+                  },
+                },
+              },
+              {
+                type: productTypeEnum.VARIANT,
+                variants: {
+                  $elemMatch: {
+                    warehouseStocks: {
+                      $elemMatch: {
+                        warehouse: warehouseId,
+                        quantity: { $gt: 0 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          };
+        }
       }
     }
   }
