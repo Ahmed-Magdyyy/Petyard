@@ -7,10 +7,11 @@ import {
   getCheckoutSummaryForGuest,
   getCheckoutSummaryForUser,
 } from "./checkout.controller.js";
+import { guestLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
 
 const router = Router();
 
-router.get("/guest/summary", getCheckoutSummaryForGuest);
+router.get("/guest/summary", guestLimiter, getCheckoutSummaryForGuest);
 
 router.get(
   "/me/summary",

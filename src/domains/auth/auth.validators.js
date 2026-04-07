@@ -26,9 +26,9 @@ export const signupValidator = [
   body("password")
     .notEmpty()
     .withMessage("Password is required")
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{6,}$/)
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters")
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{8,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   body("cPassword")
@@ -162,9 +162,9 @@ export const oauthSetPasswordValidator = [
   body("newPassword")
     .notEmpty()
     .withMessage("New password is required")
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{6,}$/)
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters")
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{8,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   body("cNewPassword")
@@ -219,9 +219,9 @@ export const loginValidator = [
   body("password")
     .notEmpty()
     .withMessage("Password is required")
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{6,}$/)
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters")
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{8,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   validatorMiddleware,
@@ -259,9 +259,9 @@ export const resetPasswordValidator = [
   body("newPassword")
     .notEmpty()
     .withMessage("New password is required")
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{6,}$/)
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters")
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{8,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   body("cNewPassword")

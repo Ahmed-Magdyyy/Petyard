@@ -1,3 +1,5 @@
+import { escapeRegex } from "./escapeRegex.js";
+
 // Build pagination info from query params
 export function buildPagination({ page, limit }, defaultLimit = 10) {
   const pageNum = Math.max(Number(page) || 1, 1);
@@ -53,7 +55,7 @@ export function buildRegexFilter(query, excludeKeys = []) {
     const value = query[key];
 
     if (typeof value === "string") {
-      filter[key] = { $regex: value, $options: "i" };
+      filter[key] = { $regex: escapeRegex(value), $options: "i" };
     } else {
       filter[key] = value;
     }

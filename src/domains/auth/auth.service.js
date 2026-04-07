@@ -122,7 +122,6 @@ export async function signupService({ name, email, phone, password }) {
 
   try {
     await sendOtpSms(user.phone, otp);
-    console.log("otp:", otp);
   } catch (err) {
     console.error("Failed to send OTP SMS", err);
     await UserModel.findByIdAndDelete(user._id);
@@ -358,7 +357,6 @@ export async function sendGuestOtpService({ phone }) {
 
   return {
     phone: normalizedPhone,
-    otp,
   };
 }
 
@@ -751,7 +749,6 @@ export async function oauthSendOtpService({ userId, phone }) {
 
   try {
     await sendOtpSms(normalizedPhone, otp);
-    console.log("otp:", otp);
   } catch (err) {
     console.error("Failed to send OTP SMS", err);
     throw new ApiError(
@@ -1049,7 +1046,7 @@ export async function forgetPasswordService({ email }) {
   const user = await UserModel.findOne({ email: email.toLowerCase() });
 
   if (!user) {
-    throw new ApiError(`No user found for this email: ${email}`, 404);
+    throw new ApiError(`Email not found: ${email}`, 404);
   }
 
   const resetCode = Math.floor(100000 + Math.random() * 900000).toString();

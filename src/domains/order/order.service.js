@@ -13,6 +13,7 @@ import {
   paymentStatusEnum,
 } from "../../shared/constants/enums.js";
 import { deleteCacheKey } from "../../shared/utils/cache.js";
+import { escapeRegex } from "../../shared/utils/escapeRegex.js";
 import {
   findActiveCouponByCodeService,
   computeCouponEffect,
@@ -1560,7 +1561,7 @@ export async function listOrdersForAdminService(query = {}) {
   Object.assign(filter, extraFilter);
 
   if (typeof q === "string" && q.trim()) {
-    const regex = { $regex: q.trim(), $options: "i" };
+    const regex = { $regex: escapeRegex(q.trim()), $options: "i" };
 
     const orConditions = [
       { "items.productName": regex },

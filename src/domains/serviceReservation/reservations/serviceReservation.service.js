@@ -36,6 +36,7 @@ import {
   buildSort,
   buildRegexFilter,
 } from "../../../shared/utils/apiFeatures.js";
+import { escapeRegex } from "../../../shared/utils/escapeRegex.js";
 
 function getRoomTypeForService(serviceType) {
   if (serviceType === serviceTypeEnum.CLINIC)
@@ -724,7 +725,7 @@ export async function adminListReservationsByDateService(query = {}) {
   Object.assign(filter, extraFilter);
 
   if (typeof q === "string" && q.trim()) {
-    const regex = { $regex: q.trim(), $options: "i" };
+    const regex = { $regex: escapeRegex(q.trim()), $options: "i" };
 
     const orConditions = [
       { serviceType: regex },

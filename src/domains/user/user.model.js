@@ -94,7 +94,7 @@ const userSchema = new Schema(
 
     password: {
       type: String,
-      minlength: [6, "Password must be at least 6 characters"],
+      minlength: [8, "Password must be at least 6 characters"],
       select: false,
     },
 

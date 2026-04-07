@@ -36,6 +36,7 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 import { getOrSetCache, deleteCacheKey } from "../../shared/utils/cache.js";
+import { escapeRegex } from "../../shared/utils/escapeRegex.js";
 import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
   autoHideExpiredCollections,
@@ -757,7 +758,7 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
   // Free-text search on name_en, name_ar, sku, and tags
   const orConditions = [];
   if (typeof q === "string" && q.trim()) {
-    const regex = { $regex: q.trim(), $options: "i" };
+    const regex = { $regex: escapeRegex(q.trim()), $options: "i" };
     orConditions.push(
       { name_en: regex },
       { name_ar: regex },

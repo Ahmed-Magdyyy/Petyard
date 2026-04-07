@@ -300,7 +300,7 @@ export async function redeemLoyaltyPointsService({ userId }) {
               referenceId: redemptionId,
               balanceAfter: newPoints,
               description_en: `Redeemed ${pointsToDeduct} points for ${walletCredit} EGP wallet credit`,
-              description_ar: `استبدال ${pointsToDeduct} نقطة مقابل رصيد محفظة ${walletCredit} جنيه`,
+              description_ar: `تم إستبدال ${pointsToDeduct} نقطة مقابل رصيد محفظة ${walletCredit} جنيه`,
             },
           ],
           { session },

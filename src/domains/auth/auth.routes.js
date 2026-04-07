@@ -41,7 +41,10 @@ import {
   oauthLinkAppleValidator,
   oauthSetPasswordValidator,
 } from "./auth.validators.js";
-import { authRateLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
+import {
+  strictAuthLimiter,
+  otpLimiter,
+} from "../../shared/middlewares/rateLimitMiddleware.js";
 import {
   onlySocialProfileCompletionPhone,
   protect,
@@ -49,25 +52,24 @@ import {
 
 const router = Router();
 
-// Apply rate limiter to all auth routes
-router.use(authRateLimiter);
+// Auth routes — strict limiter for credential-based attempts
+router.post("/signup", strictAuthLimiter, signupValidator, signup);
+router.post("/login", strictAuthLimiter, loginValidator, login);
+router.post("/verify-phone", strictAuthLimiter, verifyPhoneValidator, verifyPhone);
+router.post("/verify-reset-code", strictAuthLimiter, verifyResetCodeValidator, verifyPasswordResetCode);
+router.post("/reset-password", strictAuthLimiter, resetPasswordValidator, resetPassword);
 
-// Auth routes
-router.post("/signup", signupValidator, signup);
-router.post("/resend-otp", resendOtpValidator, resendOtp);
-router.post("/verify-phone", verifyPhoneValidator, verifyPhone);
-router.post("/guest/send-otp", guestSendOtpValidator, sendGuestOtp);
-router.post("/guest/verify-phone", guestVerifyOtpValidator, verifyGuestOtp);
-router.post("/login", loginValidator, login);
+// OTP-sending routes — stricter limiter
+router.post("/resend-otp", otpLimiter, resendOtpValidator, resendOtp);
+router.post("/guest/send-otp", otpLimiter, guestSendOtpValidator, sendGuestOtp);
+router.post("/forget-password", otpLimiter, forgetPasswordValidator, forgetPassword);
+
+// Guest verify (strict)
+router.post("/guest/verify-phone", strictAuthLimiter, guestVerifyOtpValidator, verifyGuestOtp);
+
+// Token management (already behind JWT or low-risk)
 router.post("/refresh-token", refreshToken);
 router.post("/logout", protect, logout);
-router.post("/forget-password", forgetPasswordValidator, forgetPassword);
-router.post(
-  "/verify-reset-code",
-  verifyResetCodeValidator,
-  verifyPasswordResetCode,
-);
-router.post("/reset-password", resetPasswordValidator, resetPassword);
 
 // OAuth routes
 router.post("/oauth/google", oauthGoogleLoginValidator, oauthGoogleLogin);

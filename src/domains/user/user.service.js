@@ -4,10 +4,10 @@ import { AddressModel } from "../address/address.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import {
   roles,
-  enabledControls as enabledControlsEnum,
+  enabledControls,
   accountStatus,
 } from "../../shared/constants/enums.js";
-import { normalizeEgyptianMobile, sendOtpSms } from "../../shared/utils/sms.js";
+import { normalizeEgyptianMobile } from "../../shared/utils/sms.js";
 import {
   buildPagination,
   buildSort,
@@ -18,6 +18,7 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+import { escapeRegex } from "../../shared/utils/escapeRegex.js";
 import { PetModel } from "../pet/pet.model.js";
 
 const DEFAULT_USER_AVATAR_URL =
@@ -34,7 +35,7 @@ export async function getUsersService(queryParams) {
     const roleValue = String(query.role);
     filter.role = {
       $ne: roles.SUPER_ADMIN,
-      ...(roleValue ? { $regex: roleValue, $options: "i" } : {}),
+      ...(roleValue ? { $regex: escapeRegex(roleValue), $options: "i" } : {}),
     };
   } else {
     filter.role = { $ne: roles.SUPER_ADMIN };

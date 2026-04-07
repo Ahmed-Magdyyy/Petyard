@@ -9,6 +9,7 @@ import {
   getLoyaltyTransactionsForAdmin,
 } from "./loyalty.controller.js";
 import { updateLoyaltySettingsValidator } from "./loyalty.validators.js";
+import { paymentLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
 
 const router = Router();
 
@@ -25,6 +26,7 @@ router.put(
 router.post(
   "/redeem",
   protect,
+  paymentLimiter,
   // allowedTo(roles.USER),
   redeemLoyaltyPoints
 );

@@ -27,19 +27,24 @@ import {
   orderIdParamValidator,
   updateOrderStatusValidator,
 } from "./order.validators.js";
+import {
+  guestLimiter,
+  paymentLimiter,
+} from "../../shared/middlewares/rateLimitMiddleware.js";
 
 const router = Router();
 
-// Guest checkout order
-router.post("/guest", createOrderForGuestValidator, createOrderForGuest);
-router.get("/guest", getGuestOrders);
-router.get("/guest/:id", orderIdParamValidator, getGuestOrder);
+// Guest checkout order (rate-limited)
+router.post("/guest", guestLimiter, paymentLimiter, createOrderForGuestValidator, createOrderForGuest);
+router.get("/guest", guestLimiter, getGuestOrders);
+router.get("/guest/:id", guestLimiter, orderIdParamValidator, getGuestOrder);
 
 // Logged-in user orders
 router.use("/me", protect);
 
 router.post(
   "/me",
+  paymentLimiter,
   requireSystemPhoneVerifiedForSensitiveActions,
   createOrderForUserValidator,
   createOrderForUser,

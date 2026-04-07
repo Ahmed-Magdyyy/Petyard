@@ -9,8 +9,12 @@ import helmet from "helmet";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import https from "https";
+import mongoSanitize from "express-mongo-sanitize";
+import hpp from "hpp";
+
 import { globalError } from "../shared/middlewares/errorMiddleware.js";
 import { unmatchedRouteHandler } from "../shared/middlewares/botFilterMiddleware.js";
+import { globalApiLimiter } from "../shared/middlewares/rateLimitMiddleware.js";
 import { dbConnection } from "../config/database.js";
 import { mountRoutes } from "./routes.js";
 import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
@@ -27,15 +31,30 @@ const __dirname = path.dirname(__filename);
 config({ path: path.resolve(__dirname, "../../.env") });
 
 // middlewares
-app.set("trust proxy", 1);
 app.set("json replacer", egyptTimezoneReplacer);
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
+app.use(express.urlencoded({ extended: false, limit: "10kb" }));
+app.use(express.json({ limit: "10kb" }));
 app.use(express.static(path.join(__dirname, "uploads")));
 app.use(cookieParser());
 app.use(compression());
 app.use(i18nMiddleware);
-app.use(cors());
+
+// Security middleware
+app.use(mongoSanitize());
+app.use(hpp());
+app.use(
+  cors({
+    origin: [
+      "https://petyard.netlify.app",
+      ...(process.env.NODE_ENV === "development"
+        ? ["http://localhost:3002"]
+        : []),
+    ],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept-Language", "x-guest-id"],
+    credentials: true,
+  }),
+);
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
@@ -46,6 +65,9 @@ if (process.env.NODE_ENV === "development") {
 app.use(helmet());
 // DB connecetion
 dbConnection();
+
+// Global API rate limiter (applied before all routes)
+app.use("/api/", globalApiLimiter);
 
 // Mount Routes
 mountRoutes(app);
