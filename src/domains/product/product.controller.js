@@ -9,7 +9,8 @@ import {
 } from "./product.service.js";
 
 export const getProducts = asyncHandler(async (req, res) => {
-  const result = await getProductsService(req.query, req.lang);
+  const userId = req.user?._id || null;
+  const result = await getProductsService(req.query, req.lang, {}, userId);
 
   res.status(200).json(result);
 });

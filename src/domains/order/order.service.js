@@ -103,7 +103,7 @@ const allowedStatusTransitions = {
     orderStatusEnum.DELIVERED,
     orderStatusEnum.CANCELLED,
   ],
-  [orderStatusEnum.DELIVERED]: [],
+  [orderStatusEnum.DELIVERED]: [orderStatusEnum.RETURNED],
   [orderStatusEnum.CANCELLED]: [],
 };
 
@@ -1725,22 +1725,28 @@ export async function updateOrderStatusService({
         newStatus === orderStatusEnum.CANCELLED &&
         oldStatus !== orderStatusEnum.CANCELLED;
 
+      const isReturning =
+        newStatus === orderStatusEnum.RETURNED &&
+        oldStatus === orderStatusEnum.DELIVERED;
+
       // Only restore stock/wallet if side effects were committed
       const shouldRestoreStock =
-        isCancelling && order.sideEffectsCommitted !== false;
+        (isCancelling || isReturning) &&
+        order.sideEffectsCommitted !== false;
 
       if (shouldRestoreStock) {
         await restoreStockForOrder({ session, order });
       }
 
-      const shouldRefundWallet =
+      // Cancellation: refund wallet amount that was used to pay
+      const shouldRefundWalletUsed =
         isCancelling &&
         order.sideEffectsCommitted !== false &&
         order.user &&
         typeof order.walletUsed === "number" &&
         order.walletUsed > 0;
 
-      if (shouldRefundWallet) {
+      if (shouldRefundWalletUsed) {
         await UserModel.updateOne(
           { _id: order.user },
           { $inc: { walletBalance: order.walletUsed } },
@@ -1765,6 +1771,44 @@ export async function updateOrderStatusService({
           ],
           { session },
         );
+      }
+
+      // Return: refund order total (subtotal - discount) to wallet
+      if (isReturning && order.user) {
+        const subtotal =
+          typeof order.subtotal === "number" ? order.subtotal : 0;
+        const discountAmount =
+          typeof order.discountAmount === "number" ? order.discountAmount : 0;
+        const refundToWallet = Math.max(0, subtotal - discountAmount);
+
+        if (refundToWallet > 0) {
+          await UserModel.updateOne(
+            { _id: order.user },
+            { $inc: { walletBalance: refundToWallet } },
+            { session },
+          );
+
+          const userAfterRefund = await UserModel.findById(order.user)
+            .session(session)
+            .select("walletBalance");
+
+          await WalletTransactionModel.create(
+            [
+              {
+                user: order.user,
+                amount: refundToWallet,
+                type: "ORDER_REFUND",
+                referenceType: "ORDER",
+                referenceId: order._id,
+                balanceAfter: userAfterRefund?.walletBalance ?? 0,
+                note: `Refund for returned order ${order.orderNumber}`,
+              },
+            ],
+            { session },
+          );
+        }
+
+        order.paymentStatus = paymentStatusEnum.REFUNDED;
       }
 
       order.status = newStatus;

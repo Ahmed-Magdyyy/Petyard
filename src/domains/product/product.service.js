@@ -47,6 +47,16 @@ import { brandExists } from "../brand/brand.repository.js";
 import { BrandModel } from "../brand/brand.model.js";
 import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
 import { countWarehouses } from "../warehouse/warehouse.repository.js";
+import { FavoriteModel } from "../favorite/favorite.model.js";
+
+async function getUserFavoriteProductIds(userId) {
+  if (!userId) return new Set();
+  const fav = await FavoriteModel.findOne({ user: userId })
+    .select("items.product")
+    .lean();
+  if (!fav || !Array.isArray(fav.items)) return new Set();
+  return new Set(fav.items.map((item) => String(item.product)));
+}
 
 export {
   getProductsService,
@@ -689,7 +699,7 @@ async function resolveCollectionFilter(collectionId) {
   return { $or: orConditions };
 }
 
-async function getProductsService(queryParams = {}, lang = "en", options = {}) {
+async function getProductsService(queryParams = {}, lang = "en", options = {}, userId = null) {
   const {
     page,
     limit,
@@ -881,13 +891,17 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}) {
     now,
   );
 
+  const favoriteProductIds = await getUserFavoriteProductIds(userId);
+
   const data = products.map((p) => {
     const promotion = promotionsByProductId.get(String(p._id)) || null;
-    return mapProductToCardDto(p, {
+    const dto = mapProductToCardDto(p, {
       lang: normalizedLang,
       promotion,
       warehouseId: selectedWarehouseId,
     });
+    dto.isFavorite = favoriteProductIds.has(String(p._id));
+    return dto;
   });
 
   const totalPages = Math.ceil(totalProductsCount / limitNum) || 1;
@@ -916,7 +930,7 @@ async function getProductByIdService(
   const whPart = warehouseId ? `:wh:${warehouseId}` : "";
   const cacheKey = `product:${id}:${normalizedLang}:${includeAllLanguages ? "all" : "localized"}${whPart}`;
 
-  return getOrSetCache(cacheKey, 60, async () => {
+  const result = await getOrSetCache(cacheKey, 60, async () => {
     await autoHideExpiredCollections();
 
     const product = await findProductByIdWithRefs(id);
@@ -941,6 +955,13 @@ async function getProductByIdService(
       warehouseId,
     });
   });
+
+  // isFavorite is user-specific, so add it outside the cache
+  const userId = user?._id || user?.id || null;
+  const favoriteProductIds = await getUserFavoriteProductIds(userId);
+  result.isFavorite = favoriteProductIds.has(String(id));
+
+  return result;
 }
 
 async function ensureSubcategoryAndCategory(subcategoryId) {

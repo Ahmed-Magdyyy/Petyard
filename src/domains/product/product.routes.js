@@ -34,7 +34,7 @@ import reviewRoutes from "../review/review.routes.js";
 
 const router = Router();
 
-router.get("/", listProductsQueryValidator, getProducts);
+router.get("/", optionalProtect, listProductsQueryValidator, getProducts);
 
 router.get(
   "/admin",
