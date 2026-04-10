@@ -28,7 +28,7 @@ function ensureCouponInvariants(payload) {
   if (!hasDiscountType && !hasFreeShipping) {
     throw new ApiError(
       "Coupon must have at least one effect: discountType or freeShipping",
-      400
+      400,
     );
   }
 
@@ -36,14 +36,14 @@ function ensureCouponInvariants(payload) {
     if (discountValue == null || Number(discountValue) <= 0) {
       throw new ApiError(
         "discountValue must be greater than 0 when discountType is set",
-        400
+        400,
       );
     }
   } else {
     if (discountValue != null || maxDiscountAmount != null) {
       throw new ApiError(
         "discountValue and maxDiscountAmount must be omitted when discountType is not set",
-        400
+        400,
       );
     }
   }
@@ -54,7 +54,7 @@ function ensureCouponInvariants(payload) {
     if (!Number.isNaN(minVal) && !Number.isNaN(maxVal) && minVal > maxVal) {
       throw new ApiError(
         "minOrderTotal cannot be greater than maxOrderTotal",
-        400
+        400,
       );
     }
   }
@@ -93,20 +93,16 @@ export async function getCouponsService(query = {}) {
     id: c._id,
     code: c.code,
     discountType: c.discountType || null,
-    discountValue:
-      typeof c.discountValue === "number" ? c.discountValue : null,
+    discountValue: typeof c.discountValue === "number" ? c.discountValue : null,
     maxDiscountAmount:
       typeof c.maxDiscountAmount === "number" ? c.maxDiscountAmount : null,
     freeShipping: !!c.freeShipping,
-    minOrderTotal:
-      typeof c.minOrderTotal === "number" ? c.minOrderTotal : null,
-    maxOrderTotal:
-      typeof c.maxOrderTotal === "number" ? c.maxOrderTotal : null,
+    minOrderTotal: typeof c.minOrderTotal === "number" ? c.minOrderTotal : null,
+    maxOrderTotal: typeof c.maxOrderTotal === "number" ? c.maxOrderTotal : null,
     isActive: !!c.isActive,
     startsAt: c.startsAt || null,
     expiresAt: c.expiresAt || null,
-    maxUsageTotal:
-      typeof c.maxUsageTotal === "number" ? c.maxUsageTotal : null,
+    maxUsageTotal: typeof c.maxUsageTotal === "number" ? c.maxUsageTotal : null,
     maxUsagePerUser:
       typeof c.maxUsagePerUser === "number" ? c.maxUsagePerUser : null,
     usageCount: typeof c.usageCount === "number" ? c.usageCount : 0,
@@ -167,7 +163,7 @@ export async function createCouponService(payload) {
   if (existing) {
     throw new ApiError(
       `Coupon with code '${normalizedCode}' already exists`,
-      409
+      409,
     );
   }
 
@@ -219,12 +215,13 @@ export async function updateCouponService(id, payload) {
     maxUsagePerUser,
     firstOrderOnly,
     allowedUserIds,
-    allowedEmails,
   } = payload;
 
   const next = {
     discountType:
-      discountType !== undefined ? discountType || undefined : coupon.discountType,
+      discountType !== undefined
+        ? discountType || undefined
+        : coupon.discountType,
     discountValue:
       discountValue !== undefined
         ? discountValue != null
@@ -303,9 +300,7 @@ export async function updateCouponService(id, payload) {
   }
 
   if (allowedUserIds !== undefined) {
-    coupon.allowedUserIds = Array.isArray(allowedUserIds)
-      ? allowedUserIds
-      : [];
+    coupon.allowedUserIds = Array.isArray(allowedUserIds) ? allowedUserIds : [];
   }
 
   const updated = await coupon.save();
@@ -327,7 +322,10 @@ export async function findActiveCouponByCodeService(code, now = new Date()) {
     throw new ApiError("code is required", 400);
   }
 
-  const orStart = [{ startsAt: { $lte: now } }, { startsAt: { $exists: false } }];
+  const orStart = [
+    { startsAt: { $lte: now } },
+    { startsAt: { $exists: false } },
+  ];
   const orEnd = [
     { expiresAt: { $gte: now } },
     { expiresAt: { $exists: false } },

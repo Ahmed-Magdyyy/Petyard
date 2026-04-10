@@ -81,16 +81,6 @@ async function sendPushToTokens({ tokens, notification, data }) {
       totalSuccess += response.successCount;
       totalFailure += response.failureCount;
 
-      // Log per-token errors so we can diagnose silent failures
-      if (response.failureCount > 0) {
-        response.responses.forEach((resp, idx) => {
-          if (!resp.success) {
-            console.error(
-              `[Push] Token ${idx} failed: ${resp.error?.code} — ${resp.error?.message}`,
-            );
-          }
-        });
-      }
     } catch (err) {
       console.error("[Notification] Failed to send push batch:", err.message);
       totalFailure += batchTokens.length;
@@ -186,10 +176,6 @@ export async function dispatchNotification({
       const devices = await NotificationDeviceModel.find({ user: userId });
       const tokens = devices.map((d) => d.token).filter(Boolean);
 
-      console.log(
-        `[Dispatcher] Push for ${source?.event || "unknown"}: ${tokens.length} token(s) for user ${userId}`,
-      );
-
       // Use English as default for push (could be enhanced to use user's preferred lang)
       const pushResult = await sendPushToTokens({
         tokens,
@@ -204,10 +190,6 @@ export async function dispatchNotification({
           ...(source?.referenceId ? { referenceId: source.referenceId } : {}),
         },
       });
-
-      console.log(
-        `[Dispatcher] Push result: ${pushResult.successCount} ok, ${pushResult.failureCount} failed${pushResult.skipped ? " (skipped — no Firebase admin)" : ""}`,
-      );
 
       results.push = {
         deviceCount: devices.length,

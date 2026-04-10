@@ -20,16 +20,18 @@ export const createCouponValidator = [
     .optional()
     .isNumeric()
     .withMessage("discountValue must be a number")
-    .custom((value, {req}) => {
-      const {discountType} = req.body
-      if (discountType){
+    .custom((value, { req }) => {
+      const { discountType } = req.body;
+      if (discountType) {
         if (typeof discountType === "string" && discountType === "PERCENT") {
           if (value < 0 || value > 100) {
-            throw new Error("discountValue must be between 0 and 100 for PERCENT discountType");
+            throw new Error(
+              "discountValue must be between 0 and 100 for PERCENT discountType",
+            );
           }
         }
       }
-      return true
+      return true;
     }),
 
   body("maxDiscountAmount")
@@ -101,20 +103,20 @@ export const createCouponValidator = [
 
     if (!hasDiscountType && !hasFreeShipping) {
       throw new Error(
-        "Coupon must have at least one effect: discountType or freeShipping"
+        "Coupon must have at least one effect: discountType or freeShipping",
       );
     }
 
     if (hasDiscountType) {
       if (discountValue == null || Number(discountValue) <= 0) {
         throw new Error(
-          "discountValue must be greater than 0 when discountType is set"
+          "discountValue must be greater than 0 when discountType is set",
         );
       }
     } else {
       if (discountValue != null || maxDiscountAmount != null) {
         throw new Error(
-          "discountValue and maxDiscountAmount must be omitted when discountType is not set"
+          "discountValue and maxDiscountAmount must be omitted when discountType is not set",
         );
       }
     }
@@ -140,10 +142,7 @@ export const createCouponValidator = [
 export const updateCouponValidator = [
   param("id").isMongoId().withMessage("Invalid coupon id"),
 
-  body("code")
-    .not()
-    .exists()
-    .withMessage("code cannot be updated"),
+  body("code").optional(),
 
   body("discountType")
     .optional()
@@ -238,13 +237,13 @@ export const updateCouponValidator = [
     if (hasDiscountType) {
       if (discountValue == null || Number(discountValue) <= 0) {
         throw new Error(
-          "discountValue must be greater than 0 when discountType is set"
+          "discountValue must be greater than 0 when discountType is set",
         );
       }
     } else {
       if (discountValue != null || maxDiscountAmount != null) {
         throw new Error(
-          "discountValue and maxDiscountAmount must be omitted when discountType is not set"
+          "discountValue and maxDiscountAmount must be omitted when discountType is not set",
         );
       }
     }
