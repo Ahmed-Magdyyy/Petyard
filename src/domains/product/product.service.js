@@ -956,12 +956,14 @@ async function getProductByIdService(
     });
   });
 
-  // isFavorite is user-specific, so add it outside the cache
+  // isFavorite is user-specific, so add it outside the cache.
+  // Shallow-clone to avoid mutating the cached object.
   const userId = user?._id || user?.id || null;
   const favoriteProductIds = await getUserFavoriteProductIds(userId);
-  result.isFavorite = favoriteProductIds.has(String(id));
+  const output = { ...result };
+  output.isFavorite = favoriteProductIds.has(String(id));
 
-  return result;
+  return output;
 }
 
 async function ensureSubcategoryAndCategory(subcategoryId) {

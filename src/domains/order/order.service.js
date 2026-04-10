@@ -1772,45 +1772,6 @@ export async function updateOrderStatusService({
           { session },
         );
       }
-
-      // Return: refund order total (subtotal - discount) to wallet
-      if (isReturning && order.user) {
-        const subtotal =
-          typeof order.subtotal === "number" ? order.subtotal : 0;
-        const discountAmount =
-          typeof order.discountAmount === "number" ? order.discountAmount : 0;
-        const refundToWallet = Math.max(0, subtotal - discountAmount);
-
-        if (refundToWallet > 0) {
-          await UserModel.updateOne(
-            { _id: order.user },
-            { $inc: { walletBalance: refundToWallet } },
-            { session },
-          );
-
-          const userAfterRefund = await UserModel.findById(order.user)
-            .session(session)
-            .select("walletBalance");
-
-          await WalletTransactionModel.create(
-            [
-              {
-                user: order.user,
-                amount: refundToWallet,
-                type: "ORDER_REFUND",
-                referenceType: "ORDER",
-                referenceId: order._id,
-                balanceAfter: userAfterRefund?.walletBalance ?? 0,
-                note: `Refund for returned order ${order.orderNumber}`,
-              },
-            ],
-            { session },
-          );
-        }
-
-        order.paymentStatus = paymentStatusEnum.REFUNDED;
-      }
-
       order.status = newStatus;
 
       // Auto-mark COD payments as paid when delivered
@@ -1832,6 +1793,7 @@ export async function updateOrderStatusService({
       }
 
       // Deduct loyalty points if order is cancelled/returned after points were awarded
+      let walletDeductedForPoints = 0;
       if (
         (newStatus === orderStatusEnum.CANCELLED ||
           newStatus === orderStatusEnum.RETURNED) &&
@@ -1843,6 +1805,8 @@ export async function updateOrderStatusService({
           pointsToDeduct: order.loyaltyPointsAwarded,
           session,
         });
+
+        walletDeductedForPoints = deductionResult.walletDeducted || 0;
 
         const userAfterDeduction = await UserModel.findById(order.user)
           .select("loyaltyPoints")
@@ -1871,6 +1835,51 @@ export async function updateOrderStatusService({
         );
       }
 
+      // Return: refund order total (subtotal - discount) to wallet, minus loyalty wallet deduction
+      if (isReturning && order.user) {
+        const subtotal =
+          typeof order.subtotal === "number" ? order.subtotal : 0;
+        const discountAmount =
+          typeof order.discountAmount === "number" ? order.discountAmount : 0;
+        const grossRefund = Math.max(0, subtotal - discountAmount);
+        const refundToWallet = Math.max(
+          0,
+          grossRefund - walletDeductedForPoints,
+        );
+
+        if (refundToWallet > 0) {
+          await UserModel.updateOne(
+            { _id: order.user },
+            { $inc: { walletBalance: refundToWallet } },
+            { session },
+          );
+
+          const userAfterRefund = await UserModel.findById(order.user)
+            .session(session)
+            .select("walletBalance");
+
+          await WalletTransactionModel.create(
+            [
+              {
+                user: order.user,
+                amount: refundToWallet,
+                type: "ORDER_REFUND",
+                referenceType: "ORDER",
+                referenceId: order._id,
+                balanceAfter: userAfterRefund?.walletBalance ?? 0,
+                note:
+                  walletDeductedForPoints > 0
+                    ? `Refund for returned order ${order.orderNumber} (${grossRefund} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
+                    : `Refund for returned order ${order.orderNumber}`,
+              },
+            ],
+            { session },
+          );
+        }
+
+        order.paymentStatus = paymentStatusEnum.REFUNDED;
+      }
+
       order.history = Array.isArray(order.history) ? order.history : [];
       order.history.push({
         at: new Date(),
@@ -1883,6 +1892,12 @@ export async function updateOrderStatusService({
     });
   } finally {
     session.endSession();
+  }
+
+  // Invalidate product caches after stock restoration
+  if (updated && (updated.status === orderStatusEnum.CANCELLED || updated.status === orderStatusEnum.RETURNED)) {
+    const productIds = (updated.items || []).map((i) => i.product);
+    await invalidateProductCaches(productIds);
   }
 
   if (updated) {
