@@ -324,16 +324,31 @@ export async function sendReturnStatusChangedNotification(returnRequest) {
 
   const status = returnRequest.status || "";
   const statusText = status.toLowerCase();
+  const refundMethod = returnRequest.refundMethod || "";
 
-  // i18n messages based on status
+  // i18n messages based on status + refund method
   let body_en;
   let body_ar;
+
   if (statusText === "approved") {
-    body_en =
-      "Your return request has been approved. Refund will be credited to your wallet.";
-    body_ar = "تم الموافقة على طلب الإرجاع. سيتم إضافة المبلغ إلى محفظتك.";
+    if (refundMethod === "wallet") {
+      body_en =
+        "Your return request has been approved. Refund will be credited to your wallet.";
+      body_ar = "تم الموافقة على طلب الإرجاع. سيتم إضافة المبلغ إلى محفظتك.";
+    } else if (refundMethod === "card") {
+      body_en =
+        "Your return request has been approved. Refund will be returned to your payment card.";
+      body_ar =
+        "تم الموافقة على طلب الإرجاع. سيتم إرجاع المبلغ إلى بطاقة الدفع الخاصة بك.";
+    } else {
+      // manual
+      body_en =
+        "Your return request has been approved. Our team will contact you regarding the refund.";
+      body_ar =
+        "تم الموافقة على طلب الإرجاع. سيتواصل معك فريقنا بخصوص استرداد المبلغ.";
+    }
   } else if (statusText === "rejected") {
-    body_en = `Your return request has been rejected. reason: ${returnRequest.rejectionReason}`;
+    body_en = `Your return request has been rejected. Reason: ${returnRequest.rejectionReason}`;
     body_ar = `تم رفض طلب الإرجاع. السبب: ${returnRequest.rejectionReason}`;
   } else {
     body_en = `Your return request status: ${statusText}`;
@@ -344,6 +359,7 @@ export async function sendReturnStatusChangedNotification(returnRequest) {
   const title_ar = "تحديث طلب الإرجاع";
 
   try {
+    // Registered user: push + in-app
     if (returnRequest.user) {
       const userId =
         typeof returnRequest.user === "object"
@@ -365,6 +381,21 @@ export async function sendReturnStatusChangedNotification(returnRequest) {
           referenceId: String(returnRequest._id),
         },
         channels: { push: true, inApp: true },
+      });
+      return result;
+    }
+
+    // Guest: push only (no in-app since no user account)
+    if (returnRequest.guestId) {
+      const result = await sendPushToGuest({
+        guestId: returnRequest.guestId,
+        notification: { title: title_en, body: body_en },
+        data: {
+          type: "return_status",
+          returnId: String(returnRequest._id),
+          status: statusText,
+          refundMethod,
+        },
       });
       return result;
     }
