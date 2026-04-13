@@ -10,7 +10,11 @@ import {
 } from "./collection.service.js";
 
 export const getCollections = asyncHandler(async (req, res) => {
-  const data = await getCollectionsService(req.query, req.lang, req.user || null);
+  const data = await getCollectionsService(
+    req.query,
+    req.lang,
+    req.user || null,
+  );
   res.status(200).json({ data });
 });
 
@@ -18,7 +22,7 @@ export const getCollection = asyncHandler(async (req, res) => {
   const data = await getCollectionByIdService(
     req.params.id,
     req.lang,
-    req.user || null
+    req.user || null,
   );
   res.status(200).json({ data });
 });
@@ -28,7 +32,7 @@ export const getCollectionWithProducts = asyncHandler(async (req, res) => {
     req.params.id,
     req.query,
     req.lang,
-    req.user || null
+    req.user || null,
   );
   res.status(200).json({ data });
 });
@@ -42,7 +46,7 @@ export const updateCollection = asyncHandler(async (req, res) => {
   const updated = await updateCollectionService(
     req.params.id,
     req.body,
-    req.file || null
+    req.file || null,
   );
   res.status(200).json({ data: updated });
 });

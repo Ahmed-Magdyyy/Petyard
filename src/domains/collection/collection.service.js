@@ -62,7 +62,11 @@ function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
 }
 
-function mapCollectionToPublicDto(c, lang, { includeAllLanguages = false } = {}) {
+function mapCollectionToPublicDto(
+  c,
+  lang,
+  { includeAllLanguages = false } = {},
+) {
   return {
     id: c._id,
     slug: c.slug,
@@ -80,6 +84,7 @@ function mapCollectionToPublicDto(c, lang, { includeAllLanguages = false } = {})
           name: pickLocalizedField(c, "name", lang),
           desc: pickLocalizedField(c, "desc", lang),
         }),
+    selector: c.selector,
     image: c.image?.url || null,
     position: c.position,
     promotion: c.promotion || null,
@@ -90,7 +95,7 @@ function mapCollectionToPublicDto(c, lang, { includeAllLanguages = false } = {})
 export async function getCollectionsService(
   queryParams = {},
   lang = "en",
-  user = null
+  user = null,
 ) {
   const normalizedLang = normalizeLang(lang);
 
@@ -122,7 +127,7 @@ export async function getCollectionsService(
   return collections.map((c) =>
     mapCollectionToPublicDto(c, normalizedLang, {
       includeAllLanguages: includeAllCollections,
-    })
+    }),
   );
 }
 
@@ -138,10 +143,25 @@ export async function getCollectionByIdService(id, lang = "en", user = null) {
   if (!includeAllCollections) {
     await autoHideExpiredCollections();
   }
+  let collection;
 
-  const collection = await CollectionModel.findOne(
-    includeAllCollections ? { _id: id } : { _id: id, isVisible: true }
-  );
+  if (includeAllCollections) {
+    collection = await CollectionModel.findOne({ _id: id })
+      .populate({
+        path: "selector.productIds",
+        select: "name_en name_ar",
+      })
+      .populate({
+        path: "selector.subcategoryIds",
+        select: "name_en name_ar",
+      })
+      .populate({
+        path: "selector.brandIds",
+        select: "name_en name_ar",
+      });
+  } else {
+    collection = await CollectionModel.findOne({ _id: id, isVisible: true });
+  }
   if (!collection) {
     throw new ApiError(`No collection found for this id: ${id}`, 404);
   }
@@ -155,10 +175,13 @@ export async function getCollectionWithProductsService(
   id,
   queryParams = {},
   lang = "en",
-  user = null
+  user = null,
 ) {
   const collection = await getCollectionByIdService(id, lang, user);
-  const products = await getProductsService({ ...queryParams, collection: id }, lang);
+  const products = await getProductsService(
+    { ...queryParams, collection: id },
+    lang,
+  );
   return { collection, products };
 }
 
@@ -176,7 +199,7 @@ export async function createCollectionService(payload, file) {
 
   const normalizedSelector = parseJsonField(selector, "selector");
   const normalizedPromotion = normalizePromotionObject(
-    parseJsonField(promotion, "promotion")
+    parseJsonField(promotion, "promotion"),
   );
 
   const normalizedSlug = slugify(String(name_en), {
@@ -191,7 +214,10 @@ export async function createCollectionService(payload, file) {
 
   const existing = await CollectionModel.findOne({ slug: normalizedSlug });
   if (existing) {
-    throw new ApiError(`Collection with slug '${normalizedSlug}' already exists`, 409);
+    throw new ApiError(
+      `Collection with slug '${normalizedSlug}' already exists`,
+      409,
+    );
   }
 
   let image;
@@ -255,13 +281,15 @@ export async function updateCollectionService(id, payload, file) {
 
   const normalizedSelector = parseJsonField(selector, "selector");
   const normalizedPromotion = normalizePromotionObject(
-    parseJsonField(promotion, "promotion")
+    parseJsonField(promotion, "promotion"),
   );
 
   const nextSelector =
     normalizedSelector !== undefined ? normalizedSelector : collection.selector;
   const nextPromotion =
-    normalizedPromotion !== undefined ? normalizedPromotion : collection.promotion;
+    normalizedPromotion !== undefined
+      ? normalizedPromotion
+      : collection.promotion;
 
   await ensurePromotionalCollectionUniqueness({
     collectionId: collection._id,
@@ -276,8 +304,10 @@ export async function updateCollectionService(id, payload, file) {
   if (parseBooleanField(isVisible) !== undefined)
     collection.isVisible = parseBooleanField(isVisible);
   if (position !== undefined) collection.position = Number(position) || 0;
-  if (normalizedSelector !== undefined) collection.selector = normalizedSelector;
-  if (normalizedPromotion !== undefined) collection.promotion = normalizedPromotion;
+  if (normalizedSelector !== undefined)
+    collection.selector = normalizedSelector;
+  if (normalizedPromotion !== undefined)
+    collection.promotion = normalizedPromotion;
 
   let newImage;
   let oldPublicId;
