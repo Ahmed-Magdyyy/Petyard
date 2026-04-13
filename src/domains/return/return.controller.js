@@ -82,10 +82,11 @@ export const getMyReturnRequest = asyncHandler(async (req, res, next) => {
 // ─── Admin Controllers ──────────────────────────────────────────────────────
 
 export const listReturnRequestsForAdmin = asyncHandler(async (req, res, next) => {
-  const { status, page, limit } = req.query;
+  const { status, page, limit, orderNumber } = req.query;
 
   const result = await listReturnRequestsService({
     status,
+    orderNumber,
     page: page ? parseInt(page, 10) : 1,
     limit: limit ? parseInt(limit, 10) : 20,
   });

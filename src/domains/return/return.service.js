@@ -175,6 +175,7 @@ export async function listReturnRequestsService({
   userId,
   guestId,
   status,
+  orderNumber,
   page = 1,
   limit = 20,
 }) {
@@ -197,6 +198,15 @@ export async function listReturnRequestsService({
     ) {
       filter.status = normalizedStatus;
     }
+  }
+
+  // Search by order number (admin use case)
+  if (orderNumber) {
+    const matchingOrders = await OrderModel.find(
+      { orderNumber: { $regex: orderNumber, $options: "i" } },
+      "_id",
+    ).lean();
+    filter.order = { $in: matchingOrders.map((o) => o._id) };
   }
 
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 20);

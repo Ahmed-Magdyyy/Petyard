@@ -29,6 +29,11 @@ export const listReturnRequestsValidator = [
     .optional()
     .isIn(Object.values(returnStatusEnum))
     .withMessage("Invalid status"),
+  query("orderNumber")
+    .optional()
+    .isString()
+    .trim()
+    .withMessage("orderNumber must be a string"),
   query("page")
     .optional()
     .isInt({ min: 1 })
