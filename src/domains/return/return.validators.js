@@ -2,6 +2,10 @@ import { body, param, query } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 import { returnStatusEnum } from "../../shared/constants/enums.js";
 
+// ─── Shared Validators (work for both user and guest) ───────────────────────
+// Guest identity is sent via "x-guest-id" header — handled by the controller,
+// not validated here (express-validator doesn't validate custom headers easily).
+
 export const createReturnRequestValidator = [
   param("orderId").isMongoId().withMessage("Invalid order ID"),
   body("reason")
@@ -35,6 +39,8 @@ export const listReturnRequestsValidator = [
     .withMessage("Limit must be between 1 and 100"),
   validatorMiddleware,
 ];
+
+// ─── Admin Validators ───────────────────────────────────────────────────────
 
 export const processReturnRequestValidator = [
   param("returnId").isMongoId().withMessage("Invalid return request ID"),

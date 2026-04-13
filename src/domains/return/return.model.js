@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
-import { returnStatusEnum } from "../../shared/constants/enums.js";
+import {
+  returnStatusEnum,
+  refundMethodEnum,
+} from "../../shared/constants/enums.js";
 
 const { Schema, model } = mongoose;
 
@@ -14,7 +17,10 @@ const returnRequestSchema = new Schema(
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      index: true,
+    },
+    guestId: {
+      type: String,
       index: true,
     },
     reason: {
@@ -30,6 +36,11 @@ const returnRequestSchema = new Schema(
       required: true,
       index: true,
     },
+    refundMethod: {
+      type: String,
+      enum: Object.values(refundMethodEnum),
+      required: true,
+    },
     refundAmount: {
       type: Number,
       required: true,
@@ -40,6 +51,9 @@ const returnRequestSchema = new Schema(
       required: true,
       min: 0,
       default: 0,
+    },
+    paymobRefundTransactionId: {
+      type: String,
     },
     requestedAt: {
       type: Date,
@@ -59,9 +73,10 @@ const returnRequestSchema = new Schema(
       maxlength: 500,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 returnRequestSchema.index({ user: 1, status: 1 });
+returnRequestSchema.index({ guestId: 1, status: 1 });
 
 export const ReturnRequestModel = model("ReturnRequest", returnRequestSchema);

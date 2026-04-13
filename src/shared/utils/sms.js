@@ -24,56 +24,45 @@ export function normalizeEgyptianMobile(phone) {
     return `20${trimmed}`;
   }
 
-  throw new Error("Invalid Egyptian mobile format for SMS Misr");
+  throw new Error("Invalid Egyptian mobile format");
 }
+
+const EPUSH_BASE_URL = "https://api.epusheg.com/api/v2/send_bulk";
 
 export async function sendOtpSms(phone, code) {
   const {
-    SMS_API_USERNAME,
-    SMS_API_PASSWORD,
-    SMS_API_URL,
-    SMS_API_SENDER,
-    SMS_API_TEMPLATE,
-    SMS_API_ENVIRONMENT,
+    epush_username,
+    epush_password,
+    epush_api_key,
   } = process.env;
 
-
-  if (!SMS_API_USERNAME || !SMS_API_PASSWORD || !SMS_API_URL) {
-    console.error("SMS Misr credentials or URL are not configured");
+  if (!epush_username || !epush_password || !epush_api_key) {
+    console.error("ePush credentials are not configured");
     throw new Error("SMS provider not configured");
-  }
-
-  const environment = SMS_API_ENVIRONMENT || "2"; // 1 Live, 2 Test
-  const sender = SMS_API_SENDER;
-  const template = SMS_API_TEMPLATE;
-
-  if (!sender || !template) {
-    console.error("SMS Misr sender or template token is not configured");
-    throw new Error("SMS provider not fully configured");
   }
 
   const mobile = normalizeEgyptianMobile(phone);
 
   const params = {
-    environment,
-    username: SMS_API_USERNAME,
-    password: SMS_API_PASSWORD,
-    sender,
-    mobile,
-    template,
-    otp: String(code).slice(0, 10),
+    username: epush_username,
+    password: epush_password,
+    api_key: epush_api_key,
+    message: `your Petyard OTP code is: ${String(code).slice(0, 10)}`,
+    from: "Petyard",
+    to: mobile,
   };
 
   try {
-    const { data } = await axios.post(SMS_API_URL, null, { params });
+    const { data } = await axios.get(EPUSH_BASE_URL, { params });
 
-    if (data?.Code !== "4901") {
-      console.error("SMS Misr error response", data);
+    // ePush returns { new_msg_id, transaction_price, net_balance } on success
+    if (!data?.new_msg_id) {
+      console.error("ePush error response", data);
       throw new Error("Failed to send OTP SMS");
     }
   } catch (err) {
     console.error(
-      "SMS Misr request error",
+      "ePush request error",
       err.response?.data || err.message || err
     );
     throw err;

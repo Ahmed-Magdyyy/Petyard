@@ -9,33 +9,40 @@ import {
   orderStatusEnum,
   returnStatusEnum,
   paymentStatusEnum,
+  paymentMethodEnum,
+  refundMethodEnum,
 } from "../../shared/constants/enums.js";
 import { restoreStockForOrder } from "../order/order.service.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
 import { sendReturnStatusChangedNotification } from "../notification/notification.service.js";
 import { deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
+import { refundTransaction } from "../payment/paymob.service.js";
 
 const RETURN_WINDOW_DAYS = 14;
 
-export async function createReturnRequestService({
-  userId,
-  orderId,
-  reason,
-  lang = "en",
-}) {
-  if (!orderId || !reason || !reason.trim()) {
-    throw new ApiError("Order ID and reason are required", 400);
-  }
+// ─── Refund Strategy ────────────────────────────────────────────────────────
+//
+// Change this single function to adjust refund routing.
+//
+// Current rules:
+//   User  + any payment  → wallet
+//   Guest + card          → card (Paymob refund)
+//   Guest + COD           → manual
+//
+function resolveRefundMethod(order) {
+  const isGuest = !order.user;
+  const isCard = order.paymentMethod === paymentMethodEnum.CARD;
 
-  const order = await OrderModel.findById(orderId).populate("user");
-  if (!order) {
-    throw new ApiError("Order not found", 404);
+  if (isGuest) {
+    return isCard ? refundMethodEnum.CARD : refundMethodEnum.MANUAL;
   }
+  // Registered user — always wallet
+  return refundMethodEnum.WALLET;
+}
 
-  if (!order.user || String(order.user._id) !== String(userId)) {
-    throw new ApiError("Order not found", 404);
-  }
+// ─── Shared Helpers ─────────────────────────────────────────────────────────
 
+function validateDeliveredAndReturnWindow(order, lang) {
   if (order.status !== orderStatusEnum.DELIVERED) {
     throw new ApiError(
       lang === "ar"
@@ -45,6 +52,29 @@ export async function createReturnRequestService({
     );
   }
 
+  const deliveredHistoryEntry = order.history.find(
+    (h) => h.description && h.description.includes("DELIVERED"),
+  );
+
+  const deliveredDate = deliveredHistoryEntry
+    ? deliveredHistoryEntry.at
+    : order.updatedAt;
+
+  const daysSinceDelivery = Math.floor(
+    (Date.now() - new Date(deliveredDate).getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  if (daysSinceDelivery > RETURN_WINDOW_DAYS) {
+    throw new ApiError(
+      lang === "ar"
+        ? `يمكن الإرجاع خلال ${RETURN_WINDOW_DAYS} أيام من تاريخ التسليم`
+        : `Return only available within ${RETURN_WINDOW_DAYS} days from delivery date`,
+      400,
+    );
+  }
+}
+
+async function validateNoExistingReturn(orderId, lang) {
   const existingReturn = await ReturnRequestModel.findOne({ order: orderId });
 
   if (existingReturn && existingReturn.status === returnStatusEnum.APPROVED) {
@@ -73,49 +103,77 @@ export async function createReturnRequestService({
       400,
     );
   }
+}
 
-  const deliveredHistoryEntry = order.history.find(
-    (h) => h.description && h.description.includes("DELIVERED"),
-  );
-
-  const deliveredDate = deliveredHistoryEntry
-    ? deliveredHistoryEntry.at
-    : order.updatedAt;
-
-  const daysSinceDelivery = Math.floor(
-    (Date.now() - new Date(deliveredDate).getTime()) / (1000 * 60 * 60 * 24),
-  );
-
-  if (daysSinceDelivery > RETURN_WINDOW_DAYS) {
-    throw new ApiError(
-      lang === "ar"
-        ? `يمكن الإرجاع خلال ${RETURN_WINDOW_DAYS} أيام من تاريخ التسليم`
-        : `Return only available within ${RETURN_WINDOW_DAYS} days from delivery date`,
-      400,
-    );
-  }
-
+function computeRefundAmount(order) {
   const subtotal = typeof order.subtotal === "number" ? order.subtotal : 0;
   const discountAmount =
     typeof order.discountAmount === "number" ? order.discountAmount : 0;
+  return Math.max(0, subtotal - discountAmount);
+}
 
-  const refundToWallet = Math.max(0, subtotal - discountAmount);
+// ─── Create Return Request (User or Guest) ──────────────────────────────────
 
-  const returnRequest = await ReturnRequestModel.create({
+export async function createReturnRequestService({
+  userId,
+  guestId,
+  orderId,
+  reason,
+  lang = "en",
+}) {
+  if (!orderId || !reason || !reason.trim()) {
+    throw new ApiError("Order ID and reason are required", 400);
+  }
+
+  const order = await OrderModel.findById(orderId);
+  if (!order) {
+    throw new ApiError("Order not found", 404);
+  }
+
+  // Ownership check — user or guest
+  if (userId) {
+    if (!order.user || String(order.user) !== String(userId)) {
+      throw new ApiError("Order not found", 404);
+    }
+  } else if (guestId) {
+    if (!order.guestId || order.guestId !== guestId) {
+      throw new ApiError("Order not found", 404);
+    }
+  }
+
+  validateDeliveredAndReturnWindow(order, lang);
+  await validateNoExistingReturn(orderId, lang);
+
+  const refundAmount = computeRefundAmount(order);
+  const method = resolveRefundMethod(order);
+
+  const returnData = {
     order: orderId,
-    user: userId,
     reason: reason.trim(),
     status: returnStatusEnum.PENDING,
-    refundAmount: refundToWallet,
-    walletRefund: refundToWallet,
+    refundMethod: method,
+    refundAmount,
+    walletRefund: method === refundMethodEnum.WALLET ? refundAmount : 0,
     requestedAt: new Date(),
-  });
+  };
+
+  // Attach the correct identity
+  if (userId) {
+    returnData.user = userId;
+  } else {
+    returnData.guestId = guestId;
+  }
+
+  const returnRequest = await ReturnRequestModel.create(returnData);
 
   return returnRequest;
 }
 
+// ─── List Return Requests ───────────────────────────────────────────────────
+
 export async function listReturnRequestsService({
   userId,
+  guestId,
   status,
   page = 1,
   limit = 20,
@@ -124,6 +182,8 @@ export async function listReturnRequestsService({
 
   if (userId) {
     filter.user = userId;
+  } else if (guestId) {
+    filter.guestId = guestId;
   }
 
   if (status) {
@@ -141,9 +201,15 @@ export async function listReturnRequestsService({
 
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 20);
 
+  const selectFields = guestId ? "-user" : "-guestId";
+
   const [returnRequests, totalCount] = await Promise.all([
     ReturnRequestModel.find(filter)
-      .populate("order", "orderNumber status total walletUsed createdAt")
+      .select(selectFields)
+      .populate(
+        "order",
+        "orderNumber status total walletUsed createdAt paymentMethod",
+      )
       .populate("user", "name phone email")
       .populate("processedBy", "name role")
       .sort({ createdAt: -1 })
@@ -161,7 +227,13 @@ export async function listReturnRequestsService({
   };
 }
 
-export async function getReturnRequestByIdService({ returnId, userId }) {
+// ─── Get Return Request By Id ───────────────────────────────────────────────
+
+export async function getReturnRequestByIdService({
+  returnId,
+  userId,
+  guestId,
+}) {
   const returnRequest = await ReturnRequestModel.findById(returnId)
     .populate("order")
     .populate("user", "name phone email")
@@ -171,12 +243,26 @@ export async function getReturnRequestByIdService({ returnId, userId }) {
     throw new ApiError("Return request not found", 404);
   }
 
-  if (userId && String(returnRequest.user._id) !== String(userId)) {
+  if (userId && String(returnRequest.user?._id) !== String(userId)) {
     throw new ApiError("Return request not found", 404);
   }
 
-  return returnRequest;
+  if (guestId && returnRequest.guestId !== guestId) {
+    throw new ApiError("Return request not found", 404);
+  }
+
+  // Strip the opposite identity field from the response
+  const result = returnRequest.toObject();
+  if (guestId) {
+    delete result.user;
+  } else {
+    delete result.guestId;
+  }
+
+  return result;
 }
+
+// ─── Process Return Request (Admin) ─────────────────────────────────────────
 
 export async function processReturnRequestService({
   returnId,
@@ -228,7 +314,7 @@ export async function processReturnRequestService({
       if (normalizedAction === returnStatusEnum.APPROVED) {
         let walletDeductedForPoints = 0;
 
-        // Deduct loyalty points if order had awarded points
+        // ── Loyalty point deduction (registered users only) ──
         if (returnRequest.user && order.loyaltyPointsAwarded > 0) {
           const deductionResult = await deductLoyaltyPointsOnReturnService({
             userId: returnRequest.user,
@@ -267,46 +353,21 @@ export async function processReturnRequestService({
           );
         }
 
-        // Wallet refund (minus any wallet deducted for points)
-        if (returnRequest.walletRefund > 0 && returnRequest.user) {
-          const netRefund = Math.max(
-            0,
-            returnRequest.walletRefund - walletDeductedForPoints,
-          );
-
-          if (netRefund > 0) {
-            await UserModel.updateOne(
-              { _id: returnRequest.user },
-              { $inc: { walletBalance: netRefund } },
-              { session },
-            );
-          }
-
-          const userAfterRefund = await UserModel.findById(returnRequest.user)
-            .session(session)
-            .select("walletBalance");
-
-          await WalletTransactionModel.create(
-            [
-              {
-                user: returnRequest.user,
-                amount: netRefund,
-                type: "ORDER_REFUND",
-                referenceType: "ORDER",
-                referenceId: order._id,
-                balanceAfter: userAfterRefund?.walletBalance ?? 0,
-                description:
-                  walletDeductedForPoints > 0
-                    ? `Refund for returned order ${order.orderNumber} (${returnRequest.walletRefund} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
-                    : `Refund for returned order ${order.orderNumber}`,
-              },
-            ],
-            { session },
-          );
+        // ── Refund by method ──
+        if (returnRequest.refundMethod === refundMethodEnum.WALLET) {
+          await processWalletRefund({
+            returnRequest,
+            order,
+            walletDeductedForPoints,
+            session,
+          });
         }
+        // Card refund is handled AFTER the transaction (external API call)
 
+        // ── Restore stock ──
         await restoreStockForOrder({ session, order });
 
+        // ── Update order status ──
         order.status = orderStatusEnum.RETURNED;
         order.paymentStatus = paymentStatusEnum.REFUNDED;
         order.history = Array.isArray(order.history) ? order.history : [];
@@ -334,10 +395,101 @@ export async function processReturnRequestService({
     session.endSession();
   }
 
+  // ── Card refund (external API — must run outside MongoDB transaction) ──
+  if (
+    updatedReturn &&
+    updatedReturn.status === returnStatusEnum.APPROVED &&
+    updatedReturn.refundMethod === refundMethodEnum.CARD
+  ) {
+    await processCardRefund(updatedReturn);
+  }
+
   if (updatedReturn) {
     // Fire-and-forget notification about the return status change
     void sendReturnStatusChangedNotification(updatedReturn);
   }
 
   return updatedReturn;
+}
+
+// ─── Refund Processors ──────────────────────────────────────────────────────
+
+async function processWalletRefund({
+  returnRequest,
+  order,
+  walletDeductedForPoints,
+  session,
+}) {
+  if (returnRequest.walletRefund <= 0 || !returnRequest.user) return;
+
+  const netRefund = Math.max(
+    0,
+    returnRequest.walletRefund - walletDeductedForPoints,
+  );
+
+  if (netRefund > 0) {
+    await UserModel.updateOne(
+      { _id: returnRequest.user },
+      { $inc: { walletBalance: netRefund } },
+      { session },
+    );
+  }
+
+  const userAfterRefund = await UserModel.findById(returnRequest.user)
+    .session(session)
+    .select("walletBalance");
+
+  await WalletTransactionModel.create(
+    [
+      {
+        user: returnRequest.user,
+        amount: netRefund,
+        type: "ORDER_REFUND",
+        referenceType: "ORDER",
+        referenceId: order._id,
+        balanceAfter: userAfterRefund?.walletBalance ?? 0,
+        description:
+          walletDeductedForPoints > 0
+            ? `Refund for returned order ${order.orderNumber} (${returnRequest.walletRefund} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
+            : `Refund for returned order ${order.orderNumber}`,
+      },
+    ],
+    { session },
+  );
+}
+
+async function processCardRefund(returnRequest) {
+  const order = await OrderModel.findById(returnRequest.order);
+
+  if (!order?.paymobTransactionId) {
+    console.error(
+      `[Return] Cannot card-refund order ${order?.orderNumber || returnRequest.order} — no paymobTransactionId`,
+    );
+    return;
+  }
+
+  const amountCents = Math.round(returnRequest.refundAmount * 100);
+
+  try {
+    const result = await refundTransaction({
+      transactionId: order.paymobTransactionId,
+      amountCents,
+    });
+
+    await ReturnRequestModel.updateOne(
+      { _id: returnRequest._id },
+      { paymobRefundTransactionId: result.refundTransactionId },
+    );
+
+    console.log(
+      `[Return] Card refund successful for order ${order.orderNumber} — refund txn ${result.refundTransactionId}`,
+    );
+  } catch (err) {
+    console.error(
+      `[Return] Card refund FAILED for order ${order.orderNumber}:`,
+      err.message,
+    );
+    // The return is already approved and stock restored.
+    // Admin will need to manually resolve the failed card refund.
+  }
 }

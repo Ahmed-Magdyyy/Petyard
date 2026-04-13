@@ -9,6 +9,7 @@ import {
 } from "./return.controller.js";
 import {
   protect,
+  optionalProtect,
   allowedTo,
   enabledControls as enabledControlsMiddleware,
 } from "../auth/auth.middleware.js";
@@ -25,29 +26,33 @@ import {
 
 const router = Router();
 
+// ─── User / Guest Routes (same endpoints) ───────────────────────────────────
+// If Bearer token → authenticated user.
+// If no token but guestId in query → guest.
+// If neither → 401.
+
 router.post(
   "/orders/:orderId/return",
-  protect,
-  // allowedTo(roles.USER),
+  optionalProtect,
   createReturnRequestValidator,
-  createReturnRequest
+  createReturnRequest,
 );
 
 router.get(
   "/me",
-  protect,
-  // allowedTo(roles.USER),
+  optionalProtect,
   listReturnRequestsValidator,
-  getMyReturnRequests
+  getMyReturnRequests,
 );
 
 router.get(
   "/me/:returnId",
-  protect,
-  // allowedTo(roles.USER),
+  optionalProtect,
   getReturnRequestValidator,
-  getMyReturnRequest
+  getMyReturnRequest,
 );
+
+// ─── Admin Routes ───────────────────────────────────────────────────────────
 
 router.get(
   "/admin",
@@ -55,7 +60,7 @@ router.get(
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
   enabledControlsMiddleware([enabledControlsEnum.ORDERS]),
   listReturnRequestsValidator,
-  listReturnRequestsForAdmin
+  listReturnRequestsForAdmin,
 );
 
 router.get(
@@ -64,7 +69,7 @@ router.get(
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
   enabledControlsMiddleware([enabledControlsEnum.ORDERS]),
   getReturnRequestValidator,
-  getReturnRequestForAdmin
+  getReturnRequestForAdmin,
 );
 
 router.patch(
@@ -73,7 +78,7 @@ router.patch(
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
   enabledControlsMiddleware([enabledControlsEnum.ORDERS]),
   processReturnRequestValidator,
-  processReturnRequest
+  processReturnRequest,
 );
 
 export default router;

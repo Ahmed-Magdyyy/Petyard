@@ -47,6 +47,12 @@ export const returnStatusEnum = Object.freeze({
   REJECTED: "rejected",
 });
 
+export const refundMethodEnum = Object.freeze({
+  WALLET: "wallet",
+  CARD: "card",
+  MANUAL: "manual",
+});
+
 export const enabledControls = Object.freeze({
   ANALYTICS: "analytics",
   USERS: "users",

@@ -7,6 +7,7 @@ const PAYMOB_BASE_URL = "https://accept.paymob.com";
 
 function getConfig() {
   return {
+    apiKey: process.env.PAYMOB_API_KEY,
     secretKey: process.env.PAYMOB_SECRET_KEY,
     publicKey: process.env.PAYMOB_PUBLIC_KEY,
     integrationId: Number(process.env.PAYMOB_INTEGRATION_ID),
@@ -17,6 +18,78 @@ function getConfig() {
 
 export function getPublicKey() {
   return getConfig().publicKey;
+}
+
+// ─── Legacy Auth Token (required by refund endpoint) ────────────────────────
+
+let _cachedAuthToken = null;
+let _cachedAuthTokenExpiresAt = 0;
+
+async function getPaymobAuthToken() {
+  if (_cachedAuthToken && Date.now() < _cachedAuthTokenExpiresAt) {
+    return _cachedAuthToken;
+  }
+
+  const { apiKey } = getConfig();
+  if (!apiKey) {
+    throw new ApiError("Paymob API key is not configured", 500);
+  }
+
+  const response = await fetch(`${PAYMOB_BASE_URL}/api/auth/tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("[Paymob] Auth token error:", response.status, errorBody);
+    throw new ApiError("Failed to authenticate with payment gateway", 502);
+  }
+
+  const data = await response.json();
+  _cachedAuthToken = data.token;
+  // Paymob tokens last ~1 hour; cache for 50 minutes
+  _cachedAuthTokenExpiresAt = Date.now() + 50 * 60 * 1000;
+
+  return _cachedAuthToken;
+}
+
+// ─── Refund Transaction ─────────────────────────────────────────────────────
+
+export async function refundTransaction({ transactionId, amountCents }) {
+  const authToken = await getPaymobAuthToken();
+
+  const response = await fetch(
+    `${PAYMOB_BASE_URL}/api/acceptance/void_refund/refund`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auth_token: authToken,
+        transaction_id: transactionId,
+        amount_cents: amountCents,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("[Paymob] Refund API error:", response.status, errorBody);
+    throw new ApiError("Failed to process card refund", 502);
+  }
+
+  const data = await response.json();
+
+  if (!data.success && data.success !== undefined) {
+    console.error("[Paymob] Refund rejected:", data);
+    throw new ApiError("Card refund was rejected by payment gateway", 502);
+  }
+
+  return {
+    refundTransactionId: data.id ? String(data.id) : null,
+    success: data.success !== false,
+  };
 }
 
 // ─── Create Payment Intention (v2 API) ──────────────────────────────────────
