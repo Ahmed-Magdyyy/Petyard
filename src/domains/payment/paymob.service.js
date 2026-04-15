@@ -243,7 +243,7 @@ export function extractTransactionData(webhookBody) {
       pan: obj.source_data?.pan || null,
       subType: obj.source_data?.sub_type || null,
     },
-    cardToken: obj.data?.token || null,
+    cardToken: obj.token || obj.data?.token || null,
   };
 }
 

@@ -15,16 +15,31 @@ import {
 } from "./savedCard.service.js";
 import { OrderModel } from "../order/order.model.js";
 
-// ─── Shared webhook processing logic ────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-async function processWebhook(transactionObj, receivedHmac, fullBody) {
+/**
+ * Find an order by merchantOrderId (orderNumber) or paymobOrderId.
+ */
+async function findOrderByIds(merchantOrderId, paymobOrderId) {
+  let order = null;
+  if (merchantOrderId) {
+    order = await OrderModel.findOne({ orderNumber: merchantOrderId });
+  }
+  if (!order && paymobOrderId) {
+    order = await OrderModel.findOne({ paymobOrderId: String(paymobOrderId) });
+  }
+  return order;
+}
+
+// ─── TRANSACTION webhook logic ──────────────────────────────────────────────
+
+async function handleTransaction(transactionObj, receivedHmac, fullBody) {
   if (!receivedHmac || !transactionObj) {
     console.warn("[Paymob Webhook] Missing HMAC or transaction object");
     return { status: 400, message: "Invalid webhook payload" };
   }
 
-  const isValid = verifyWebhookHmac(transactionObj, receivedHmac);
-  if (!isValid) {
+  if (!verifyWebhookHmac(transactionObj, receivedHmac)) {
     console.warn("[Paymob Webhook] HMAC verification failed");
     return { status: 401, message: "HMAC verification failed" };
   }
@@ -32,21 +47,20 @@ async function processWebhook(transactionObj, receivedHmac, fullBody) {
   const txData = extractTransactionData(fullBody);
 
   console.log(
-    `[Paymob Webhook] txn=${txData.transactionId} success=${txData.success} pending=${txData.pending} merchantOrder=${txData.merchantOrderId} paymobOrder=${txData.paymobOrderId}`,
+    `[Paymob Webhook] txn=${txData.transactionId} success=${txData.success}` +
+      ` pending=${txData.pending} merchantOrder=${txData.merchantOrderId}` +
+      ` paymobOrder=${txData.paymobOrderId}` +
+      ` cardToken=${txData.cardToken ? "present" : "absent"}`,
   );
 
   if (txData.pending) {
     return { status: 200, message: "Pending transaction acknowledged" };
   }
 
-  // Look up our order: try merchantOrderId (orderNumber) first, then paymobOrderId
-  let order = null;
-  if (txData.merchantOrderId) {
-    order = await OrderModel.findOne({ orderNumber: txData.merchantOrderId });
-  }
-  if (!order && txData.paymobOrderId) {
-    order = await OrderModel.findOne({ paymobOrderId: txData.paymobOrderId });
-  }
+  const order = await findOrderByIds(
+    txData.merchantOrderId,
+    txData.paymobOrderId,
+  );
 
   if (!order) {
     console.warn(
@@ -59,7 +73,8 @@ async function processWebhook(transactionObj, receivedHmac, fullBody) {
   const expectedAmountCents = Math.round(order.total * 100);
   if (!verifyPaymentAmount(txData.amountCents, expectedAmountCents)) {
     console.error(
-      `[Paymob Webhook] SECURITY: Amount mismatch for order ${order.orderNumber} — expected ${expectedAmountCents}, received ${txData.amountCents}. Full payload: ${JSON.stringify(txData)}`,
+      `[Paymob Webhook] SECURITY: Amount mismatch for order ${order.orderNumber}` +
+        ` — expected ${expectedAmountCents}, received ${txData.amountCents}`,
     );
 
     order.history = Array.isArray(order.history) ? order.history : [];
@@ -73,6 +88,7 @@ async function processWebhook(transactionObj, receivedHmac, fullBody) {
     return { status: 200, message: "Amount mismatch — flagged for review" };
   }
 
+  // ── Confirm or fail ──
   if (txData.success) {
     await confirmOrderPaymentService({
       orderId: order._id,
@@ -80,7 +96,7 @@ async function processWebhook(transactionObj, receivedHmac, fullBody) {
       paymobOrderId: txData.paymobOrderId,
     });
 
-    // Save card token for future payments (fire-and-forget)
+    // Save card token if present in TRANSACTION payload (fire-and-forget)
     if (order.user && txData.cardToken) {
       saveCardFromTransaction(order.user, txData).catch((err) =>
         console.error("[Paymob Webhook] Failed to save card:", err.message),
@@ -93,44 +109,87 @@ async function processWebhook(transactionObj, receivedHmac, fullBody) {
   return { status: 200, message: "Webhook processed" };
 }
 
+// ─── TOKEN webhook logic ────────────────────────────────────────────────────
+
+async function handleTokenWebhook(body) {
+  const tokenObj = body.obj || {};
+  const token = tokenObj.token;
+  const maskedPan = tokenObj.masked_pan || "";
+  const cardSubtype = tokenObj.card_subtype || "";
+  const orderId = tokenObj.order_id || tokenObj.order?.id;
+
+  if (!token || !orderId) {
+    console.log("[Paymob Webhook] TOKEN webhook missing token or order_id");
+    return;
+  }
+
+  const order = await findOrderByIds(null, orderId);
+
+  if (!order?.user) {
+    console.log(
+      `[Paymob Webhook] TOKEN — no order/user found for order_id=${orderId}`,
+    );
+    return;
+  }
+
+  const lastFour = maskedPan.slice(-4) || "";
+
+  saveCardFromTransaction(order.user, {
+    cardToken: token,
+    sourceData: { pan: lastFour, subType: cardSubtype },
+  }).catch((err) =>
+    console.error(
+      "[Paymob Webhook] Failed to save card from TOKEN:",
+      err.message,
+    ),
+  );
+
+  console.log(
+    `[Paymob Webhook] TOKEN processed — saving card for order ${orderId}`,
+  );
+}
+
 // ─── POST webhook (server-to-server callback) ──────────────────────────────
 
 export const handlePaymobWebhookPost = asyncHandler(async (req, res) => {
-  // Paymob sends several webhook types (TRANSACTION, ORDER, TOKEN, etc.)
-  // We only care about TRANSACTION — the others have different payload
-  // structures and their HMAC fields don't match ours.
   const webhookType = req.body.type;
+
+  // Card-token webhook — save card for future payments
+  if (webhookType === "TOKEN") {
+    await handleTokenWebhook(req.body);
+    return res.status(200).json({ message: "TOKEN processed" });
+  }
+
+  // Ignore other non-TRANSACTION types (ORDER, DELIVERY, etc.)
   if (webhookType && webhookType !== "TRANSACTION") {
     console.log(
-      `[Paymob Webhook] Ignoring non-TRANSACTION webhook type: ${webhookType}`,
+      `[Paymob Webhook] Ignoring webhook type: ${webhookType}`,
     );
     return res.status(200).json({ message: `${webhookType} acknowledged` });
   }
 
+  // TRANSACTION webhook — process payment
   const receivedHmac = req.body.hmac || req.query.hmac;
   const transactionObj = req.body.transaction || req.body.obj || req.body;
 
-  const result = await processWebhook(transactionObj, receivedHmac, req.body);
+  const result = await handleTransaction(transactionObj, receivedHmac, req.body);
   res.status(result.status).json({ message: result.message });
 });
 
-// ─── GET webhook (browser redirect callback) ────────────────────────────────
-// NOTE: The GET redirect is for UX only — the POST webhook is the source of
-// truth for payment confirmation. Paymob's GET redirect HMAC uses a different
-// computation, so we intentionally skip HMAC verification here and just show
-// the user a friendly result page based on the query parameters.
+// ─── GET webhook (browser redirect) ────────────────────────────────────────
+// The POST webhook is the source of truth. The GET redirect is for UX only —
+// Flutter intercepts the URL and reads query params natively.
 
 export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
   console.log(
-    `[Paymob Redirect] success=${req.query.success} pending=${req.query.pending} merchantOrder=${req.query.merchant_order_id}`,
+    `[Paymob Redirect] success=${req.query.success} pending=${req.query.pending}` +
+      ` merchantOrder=${req.query.merchant_order_id}`,
   );
 
-  // Flutter app intercepts this redirect URL and reads query params natively.
-  // Just return 200 to avoid errors in logs.
   res.status(200).json({ message: "Redirect acknowledged" });
 });
 
-// ─── Saved Cards ─────────────────────────────────────────────────────────────
+// ─── Saved Cards ────────────────────────────────────────────────────────────
 
 export const getUserSavedCards = asyncHandler(async (req, res) => {
   const cards = await getUserSavedCardsService(req.user._id);
