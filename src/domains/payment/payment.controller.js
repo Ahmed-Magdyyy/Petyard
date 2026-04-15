@@ -113,10 +113,16 @@ async function handleTransaction(transactionObj, receivedHmac, fullBody) {
 
 async function handleTokenWebhook(body) {
   const tokenObj = body.obj || {};
+
+  // Debug: log full TOKEN payload to identify available fields
+  console.log("[Paymob Webhook] TOKEN payload:", JSON.stringify(tokenObj));
+
   const token = tokenObj.token;
   const maskedPan = tokenObj.masked_pan || "";
   const cardSubtype = tokenObj.card_subtype || "";
   const orderId = tokenObj.order_id || tokenObj.order?.id;
+  const expiryMonth = tokenObj.expiry_month || tokenObj.card_expiry_month || null;
+  const expiryYear = tokenObj.expiry_year || tokenObj.card_expiry_year || null;
 
   if (!token || !orderId) {
     console.log("[Paymob Webhook] TOKEN webhook missing token or order_id");
@@ -137,6 +143,8 @@ async function handleTokenWebhook(body) {
   saveCardFromTransaction(order.user, {
     cardToken: token,
     sourceData: { pan: lastFour, subType: cardSubtype },
+    expiryMonth,
+    expiryYear,
   }).catch((err) =>
     console.error(
       "[Paymob Webhook] Failed to save card from TOKEN:",

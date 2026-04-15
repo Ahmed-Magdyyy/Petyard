@@ -42,6 +42,8 @@ export async function saveCardFromTransaction(userId, transactionData) {
     paymobToken: transactionData.cardToken,
     lastFour: transactionData.sourceData.pan,
     brand: transactionData.sourceData.subType || "",
+    expiryMonth: transactionData.expiryMonth || null,
+    expiryYear: transactionData.expiryYear || null,
   });
 }
 
