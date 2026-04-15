@@ -267,34 +267,14 @@ export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
       font-size: 14px;
       color: #6b7280;
       line-height: 1.6;
-      margin-bottom: 32px;
     }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: #111;
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      padding: 14px 28px;
-      font-size: 15px;
-      font-weight: 500;
-      font-family: 'Inter', sans-serif;
-      cursor: pointer;
-      text-decoration: none;
-    }
-    .arrow { font-size: 18px; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="icon-circle">${icon}</div>
     <h1>${title}</h1>
-    <p>${message}<br>Press the back button to return to the app.</p>
-    <button class="btn" onclick="history.back()">
-      <span class="arrow">←</span> Go Back
-    </button>
+    <p>${message}<br>Press your phone's back button to return to the app.</p>
   </div>
 </body>
 </html>`);
