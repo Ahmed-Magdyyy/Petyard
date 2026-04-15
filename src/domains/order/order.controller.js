@@ -49,14 +49,13 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
 });
 
 export const createOrderForUser = asyncHandler(async (req, res) => {
-  const { couponCode, paymentMethod, notes, savedCardId } = req.body;
+  const { couponCode, paymentMethod, notes } = req.body;
 
   const result = await createOrderForUserService({
     userId: req.user._id,
     couponCode,
     paymentMethod,
     notes,
-    savedCardId,
     lang: req.lang,
   });
 

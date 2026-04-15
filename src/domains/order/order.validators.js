@@ -16,11 +16,6 @@ export const createOrderForUserValidator = [
     .isIn(Object.values(paymentMethodEnum))
     .withMessage("Invalid paymentMethod"),
 
-  body("savedCardId")
-    .optional({ nullable: true })
-    .isMongoId()
-    .withMessage("savedCardId must be a valid ID"),
-
   body("notes")
     .optional({ nullable: true })
     .isString()
