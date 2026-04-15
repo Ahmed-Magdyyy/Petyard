@@ -209,16 +209,25 @@ export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
     } catch (err) {
       console.error("[Paymob Redirect] Error in failure fallback:", err.message);
     }
+
+    // WORKAROUND FOR FLUTTER SDK BUG:
+    // Many Paymob Flutter wrappers fail to close the WebView when success=false.
+    // They only intercept success=true. 
+    // Since we already failed the order in the database, we can safely redirect the WebView 
+    // to a success=true URL to force the SDK to close it. 
+    // The Frontend will receive success=true from the SDK, but will poll the backend,
+    // receive status="cancelled", and show the correct failure UI.
+    return res.redirect(`/api/v1/payments/webhook?id=${paymobOrderId}&success=true&merchant_order_id=${merchantOrderId}&forced_close=true`);
   }
 
-  // Return a web page that tries to auto-close the webview, replacing "Redirect acknowledged" JSON.
+  // Return a web page that tries to auto-close the webview (for valid success=true cases that slipped through)
   res.status(200).send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Payment ${isSuccess ? 'Successful' : 'Failed'}</title>
+      <title>Payment ${isSuccess ? 'Response' : 'Failed'}</title>
       <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f9fafb; color: #1f2937; text-align: center; padding: 20px; }
         .card { background: white; padding: 40px 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); max-width: 400px; width: 100%; }
@@ -231,14 +240,12 @@ export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
     <body>
       <div class="card">
         <div class="spinner"></div>
-        <h1>Payment ${isSuccess ? 'Successful' : 'Failed'}</h1>
+        <h1>Payment ${isSuccess ? 'Response' : 'Failed'}</h1>
         <p>Redirecting you back to the app...<br><br><small>If you are not redirected automatically, please press the back button or close this screen to continue.</small></p>
       </div>
       <script>
-        // Attempt to close the webview automatically
         setTimeout(() => {
           try { window.close(); } catch (e) {}
-          // For Flutter WebViews that inject a JavascriptChannel named "PaymobSDK" or "Print"
           try { if (window.PaymobSDK) window.PaymobSDK.postMessage(JSON.stringify({ success: ${isSuccess} })); } catch(e) {}
           try { if (window.Print) window.Print.postMessage('close'); } catch(e) {}
         }, 800);
