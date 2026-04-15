@@ -25,6 +25,11 @@ export async function getSavedCardTokenService(userId, cardId) {
   return card.paymobToken;
 }
 
+export async function getUserSavedCardTokensService(userId) {
+  const cards = await SavedCardModel.find({ user: userId }).select("paymobToken").lean();
+  return cards.map(c => c.paymobToken).filter(Boolean);
+}
+
 export async function saveCardFromTransaction(userId, transactionData) {
   if (!transactionData.cardToken || !transactionData.sourceData?.pan) {
     return null;

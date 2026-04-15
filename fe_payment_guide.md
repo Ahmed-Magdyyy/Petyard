@@ -38,7 +38,7 @@ FE calls:  POST /orders/me
 Body:      { paymentMethod: "card", couponCode: "SAVE10", notes: "Ring bell" }
 ```
 
-
+> If the user selected a saved card, also include: `savedCardId: "saved_card_id_here"`
 
 ### Step 2: Check the Response
 
@@ -185,7 +185,7 @@ Future<void> placeOrder() async {
       'paymentMethod': selectedMethod,     // "cod" or "card"
       'couponCode': couponCode,            // optional
       'notes': notes,                      // optional
-
+      'savedCardId': selectedSavedCardId,  // optional, only for card
     });
 
     // ──────────────────────────────────────────────

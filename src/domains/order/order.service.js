@@ -40,7 +40,7 @@ import {
   createPaymentIntention,
   getPublicKey,
 } from "../payment/paymob.service.js";
-import { getSavedCardTokenService } from "../payment/savedCard.service.js";
+import { getSavedCardTokenService, getUserSavedCardTokensService } from "../payment/savedCard.service.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -1072,7 +1072,7 @@ async function processOrderCreationWithCart({
 
 // ─── Card Payment Initialization ────────────────────────────────────────────
 
-async function initializeCardPayment(order, savedCardToken = null) {
+async function initializeCardPayment(order, cardTokens = []) {
   const user = order.user
     ? await UserModel.findById(order.user).select("name email phone")
     : null;
@@ -1104,7 +1104,7 @@ async function initializeCardPayment(order, savedCardToken = null) {
     currency: order.currency || "EGP",
     billingData,
     items,
-    savedCardToken,
+    cardTokens,
   });
 
   // Persist Paymob reference on the order (non-transactional, safe)
@@ -1211,13 +1211,13 @@ export async function createOrderForUserService({
 
   // ── Card payment: initialize Paymob intention ──
   if (createdOrder.paymentMethod === paymentMethodEnum.CARD) {
-    let savedCardToken = null;
-    if (savedCardId) {
-      savedCardToken = await getSavedCardTokenService(userId, savedCardId);
+    let cardTokens = [];
+    if (userId) {
+      cardTokens = await getUserSavedCardTokensService(userId);
     }
 
     try {
-      const payment = await initializeCardPayment(createdOrder, savedCardToken);
+      const payment = await initializeCardPayment(createdOrder, cardTokens);
       return {
         order: createdOrder,
         action: "requires_payment",

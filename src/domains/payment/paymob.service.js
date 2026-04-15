@@ -100,7 +100,7 @@ export async function createPaymentIntention({
   currency = "EGP",
   billingData,
   items = [],
-  savedCardToken = null,
+  cardTokens = [],
 }) {
   const config = getConfig();
 
@@ -127,7 +127,7 @@ export async function createPaymentIntention({
     special_reference: merchantOrderId,
     extras: { merchant_order_id: merchantOrderId },
     ...(config.webhookUrl && { notification_url: config.webhookUrl }),
-    ...(savedCardToken && { token: savedCardToken }),
+    ...(cardTokens && cardTokens.length > 0 && { card_tokens: cardTokens }),
   };
 
   const response = await fetch(`${PAYMOB_BASE_URL}/v1/intention/`, {
