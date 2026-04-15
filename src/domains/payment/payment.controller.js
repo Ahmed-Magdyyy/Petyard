@@ -8,6 +8,11 @@ import {
   confirmOrderPaymentService,
   failOrderPaymentService,
 } from "../order/order.service.js";
+import {
+  getUserSavedCardsService,
+  deleteUserSavedCardService,
+  saveCardFromTransaction,
+} from "./savedCard.service.js";
 import { OrderModel } from "../order/order.model.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -44,7 +49,8 @@ async function handleTransaction(transactionObj, receivedHmac, fullBody) {
   console.log(
     `[Paymob Webhook] txn=${txData.transactionId} success=${txData.success}` +
       ` pending=${txData.pending} merchantOrder=${txData.merchantOrderId}` +
-      ` paymobOrder=${txData.paymobOrderId}`,
+      ` paymobOrder=${txData.paymobOrderId}` +
+      ` cardToken=${txData.cardToken ? "present" : "absent"}`,
   );
 
   if (txData.pending) {
@@ -89,6 +95,13 @@ async function handleTransaction(transactionObj, receivedHmac, fullBody) {
       paymobTransactionId: txData.transactionId,
       paymobOrderId: txData.paymobOrderId,
     });
+
+    // Save card token if present in TRANSACTION payload (fire-and-forget)
+    if (order.user && txData.cardToken) {
+      saveCardFromTransaction(order.user, txData).catch((err) =>
+        console.error("[Paymob Webhook] Failed to save card:", err.message),
+      );
+    }
   } else {
     await failOrderPaymentService(order._id);
   }
@@ -96,12 +109,66 @@ async function handleTransaction(transactionObj, receivedHmac, fullBody) {
   return { status: 200, message: "Webhook processed" };
 }
 
+// ─── TOKEN webhook logic ────────────────────────────────────────────────────
+
+async function handleTokenWebhook(body) {
+  const tokenObj = body.obj || {};
+
+  // Debug: log full TOKEN payload to identify available fields
+  console.log("[Paymob Webhook] TOKEN payload:", JSON.stringify(tokenObj));
+
+  const token = tokenObj.token;
+  const maskedPan = tokenObj.masked_pan || "";
+  const cardSubtype = tokenObj.card_subtype || "";
+  const orderId = tokenObj.order_id || tokenObj.order?.id;
+  const expiryMonth = tokenObj.expiry_month || tokenObj.card_expiry_month || null;
+  const expiryYear = tokenObj.expiry_year || tokenObj.card_expiry_year || null;
+
+  if (!token || !orderId) {
+    console.log("[Paymob Webhook] TOKEN webhook missing token or order_id");
+    return;
+  }
+
+  const order = await findOrderByIds(null, orderId);
+
+  if (!order?.user) {
+    console.log(
+      `[Paymob Webhook] TOKEN — no order/user found for order_id=${orderId}`,
+    );
+    return;
+  }
+
+  const lastFour = maskedPan.slice(-4) || "";
+
+  saveCardFromTransaction(order.user, {
+    cardToken: token,
+    sourceData: { pan: lastFour, subType: cardSubtype },
+    expiryMonth,
+    expiryYear,
+  }).catch((err) =>
+    console.error(
+      "[Paymob Webhook] Failed to save card from TOKEN:",
+      err.message,
+    ),
+  );
+
+  console.log(
+    `[Paymob Webhook] TOKEN processed — saving card for order ${orderId}`,
+  );
+}
+
 // ─── POST webhook (server-to-server callback) ──────────────────────────────
 
 export const handlePaymobWebhookPost = asyncHandler(async (req, res) => {
   const webhookType = req.body.type;
 
-  // Ignore non-TRANSACTION types (TOKEN, ORDER, DELIVERY, etc.)
+  // Card-token webhook — save card for future payments
+  if (webhookType === "TOKEN") {
+    await handleTokenWebhook(req.body);
+    return res.status(200).json({ message: "TOKEN processed" });
+  }
+
+  // Ignore other non-TRANSACTION types (ORDER, DELIVERY, etc.)
   if (webhookType && webhookType !== "TRANSACTION") {
     console.log(
       `[Paymob Webhook] Ignoring webhook type: ${webhookType}`,
@@ -128,4 +195,16 @@ export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
   );
 
   res.status(200).json({ message: "Redirect acknowledged" });
+});
+
+// ─── Saved Cards ────────────────────────────────────────────────────────────
+
+export const getUserSavedCards = asyncHandler(async (req, res) => {
+  const cards = await getUserSavedCardsService(req.user._id);
+  res.status(200).json({ data: cards });
+});
+
+export const deleteUserSavedCard = asyncHandler(async (req, res) => {
+  await deleteUserSavedCardService(req.user._id, req.params.id);
+  res.status(200).json({ message: "Card deleted" });
 });

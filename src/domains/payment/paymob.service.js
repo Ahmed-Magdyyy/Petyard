@@ -99,8 +99,8 @@ export async function createPaymentIntention({
   amountCents,
   currency = "EGP",
   billingData,
-  customerEmail,
   items = [],
+  savedCardToken = null,
 }) {
   const config = getConfig();
 
@@ -118,13 +118,6 @@ export async function createPaymentIntention({
       email: billingData.email || "na@na.com",
       phone_number: billingData.phone || "N/A",
     },
-    // Customer identity — enables Paymob SDK to show saved cards for this user
-    customer: {
-      first_name: billingData.firstName || "N/A",
-      last_name: billingData.lastName || "N/A",
-      email: customerEmail || billingData.email || "na@na.com",
-      phone_number: billingData.phone || "N/A",
-    },
     items: items.map((item) => ({
       name: item.name || "Product",
       amount: item.amountCents,
@@ -134,6 +127,7 @@ export async function createPaymentIntention({
     special_reference: merchantOrderId,
     extras: { merchant_order_id: merchantOrderId },
     ...(config.webhookUrl && { notification_url: config.webhookUrl }),
+    ...(savedCardToken && { token: savedCardToken }),
   };
 
   const response = await fetch(`${PAYMOB_BASE_URL}/v1/intention/`, {
@@ -161,8 +155,6 @@ export async function createPaymentIntention({
       : null,
   };
 }
-
-
 
 // ─── Webhook HMAC Verification ──────────────────────────────────────────────
 
@@ -251,6 +243,7 @@ export function extractTransactionData(webhookBody) {
       pan: obj.source_data?.pan || null,
       subType: obj.source_data?.sub_type || null,
     },
+    cardToken: obj.token || obj.data?.token || null,
   };
 }
 

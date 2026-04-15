@@ -40,6 +40,7 @@ import {
   createPaymentIntention,
   getPublicKey,
 } from "../payment/paymob.service.js";
+import { getSavedCardTokenService } from "../payment/savedCard.service.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -1071,20 +1072,12 @@ async function processOrderCreationWithCart({
 
 // ─── Card Payment Initialization ────────────────────────────────────────────
 
-async function initializeCardPayment(order) {
+async function initializeCardPayment(order, savedCardToken = null) {
   const user = order.user
     ? await UserModel.findById(order.user).select("name email phone")
     : null;
 
   const amountCents = Math.round(order.total * 100);
-
-  const billingData = {
-    firstName:
-      user?.name?.split(" ")[0] || order.deliveryAddress?.name || "N/A",
-    lastName: user?.name?.split(" ").slice(1).join(" ") || "",
-    email: user?.email || "na@na.com",
-    phone: order.deliveryAddress?.phone || user?.phone || "N/A",
-  };
 
   // Paymob requires sum(item.amount) === total amount exactly.
   // Shipping, discounts, and wallet make per-item amounts diverge from the total,
@@ -1097,13 +1090,21 @@ async function initializeCardPayment(order) {
     },
   ];
 
+  const billingData = {
+    firstName:
+      user?.name?.split(" ")[0] || order.deliveryAddress?.name || "N/A",
+    lastName: user?.name?.split(" ").slice(1).join(" ") || "",
+    email: user?.email || "na@na.com",
+    phone: order.deliveryAddress?.phone || user?.phone || "N/A",
+  };
+
   const intention = await createPaymentIntention({
     merchantOrderId: order.orderNumber,
     amountCents,
     currency: order.currency || "EGP",
     billingData,
-    customerEmail: user?.email || null,
     items,
+    savedCardToken,
   });
 
   // Persist Paymob reference on the order (non-transactional, safe)
@@ -1125,6 +1126,7 @@ export async function createOrderForUserService({
   couponCode,
   paymentMethod,
   notes,
+  savedCardId,
   lang = "en",
 }) {
   if (!userId) {
@@ -1209,9 +1211,13 @@ export async function createOrderForUserService({
 
   // ── Card payment: initialize Paymob intention ──
   if (createdOrder.paymentMethod === paymentMethodEnum.CARD) {
-    try {
-      const payment = await initializeCardPayment(createdOrder);
+    let savedCardToken = null;
+    if (savedCardId) {
+      savedCardToken = await getSavedCardTokenService(userId, savedCardId);
+    }
 
+    try {
+      const payment = await initializeCardPayment(createdOrder, savedCardToken);
       return {
         order: createdOrder,
         action: "requires_payment",
