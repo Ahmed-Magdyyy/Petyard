@@ -190,17 +190,25 @@ export const handlePaymobWebhookPost = asyncHandler(async (req, res) => {
 
 export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
   const isSuccess = req.query.success === "true";
+  const isForcedClose = req.query.forced_close === "true";
   const merchantOrderId = req.query.merchant_order_id;
   const paymobOrderId = req.query.id;
 
   console.log(
     `[Paymob Redirect] success=${req.query.success} pending=${req.query.pending}` +
-      ` merchantOrder=${merchantOrderId}`,
+      ` merchantOrder=${merchantOrderId} forcedClose=${isForcedClose}`,
   );
 
-  // Fallback: If user cancelled and POST webhook was missed or delayed, fail the order now.
-  // The FE is polling GET /orders/me/:id in the background — once it sees
-  // status="cancelled", it closes the webview and shows the error toast.
+  // If this is the forced_close redirect (second hit), just return OK.
+  // The SDK should intercept this URL (success=true) and close the webview
+  // before this response even renders.
+  if (isForcedClose) {
+    return res.status(200).send("OK");
+  }
+
+  // Payment failed: mark order as cancelled, then redirect to success=true
+  // to force the Flutter SDK to close the webview (it only closes on success=true).
+  // The FE will poll GET /orders/me/:id, see status="cancelled", and show the error toast.
   if (!isSuccess && (merchantOrderId || paymobOrderId)) {
     try {
       const order = await findOrderByIds(merchantOrderId, paymobOrderId);
@@ -211,12 +219,15 @@ export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
     } catch (err) {
       console.error("[Paymob Redirect] Error in failure fallback:", err.message);
     }
+
+    const redirectUrl = `${req.protocol}://${req.get("host")}/api/v1/payments/webhook?id=${paymobOrderId}&success=true&merchant_order_id=${merchantOrderId}&forced_close=true`;
+    console.log(`[Paymob Redirect] Redirecting to success=true to force SDK close`);
+    return res.redirect(redirectUrl);
   }
 
-  // Simple acknowledgment — FE handles closing the webview via order-status polling.
-  res.status(200).send(
-    "<html><body><h2>Payment processed</h2><p>You can close this page.</p></body></html>",
-  );
+  // Success case: return minimal response.
+  // SDK should intercept this URL before this renders.
+  res.status(200).send("OK");
 });
 
 // ─── Saved Cards ────────────────────────────────────────────────────────────
