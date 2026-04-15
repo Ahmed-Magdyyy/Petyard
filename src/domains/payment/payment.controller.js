@@ -190,25 +190,15 @@ export const handlePaymobWebhookPost = asyncHandler(async (req, res) => {
 
 export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
   const isSuccess = req.query.success === "true";
-  const isForcedClose = req.query.forced_close === "true";
   const merchantOrderId = req.query.merchant_order_id;
   const paymobOrderId = req.query.id;
 
   console.log(
     `[Paymob Redirect] success=${req.query.success} pending=${req.query.pending}` +
-      ` merchantOrder=${merchantOrderId} forcedClose=${isForcedClose}`,
+      ` merchantOrder=${merchantOrderId}`,
   );
 
-  // If this is the forced_close redirect (second hit), just return OK.
-  // The SDK should intercept this URL (success=true) and close the webview
-  // before this response even renders.
-  if (isForcedClose) {
-    return res.status(200).send("OK");
-  }
-
-  // Payment failed: mark order as cancelled, then redirect to success=true
-  // to force the Flutter SDK to close the webview (it only closes on success=true).
-  // The FE will poll GET /orders/me/:id, see status="cancelled", and show the error toast.
+  // Fallback: mark order as cancelled if POST webhook hasn't arrived yet.
   if (!isSuccess && (merchantOrderId || paymobOrderId)) {
     try {
       const order = await findOrderByIds(merchantOrderId, paymobOrderId);
@@ -219,15 +209,95 @@ export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
     } catch (err) {
       console.error("[Paymob Redirect] Error in failure fallback:", err.message);
     }
-
-    const redirectUrl = `${req.protocol}://${req.get("host")}/api/v1/payments/webhook?id=${paymobOrderId}&success=true&merchant_order_id=${merchantOrderId}&forced_close=true`;
-    console.log(`[Paymob Redirect] Redirecting to success=true to force SDK close`);
-    return res.redirect(redirectUrl);
   }
 
-  // Success case: return minimal response.
-  // SDK should intercept this URL before this renders.
-  res.status(200).send("OK");
+  const icon = isSuccess ? "✓" : "✕";
+  const iconColor = isSuccess ? "#22c55e" : "#ef4444";
+  const title = isSuccess ? "Payment Successful" : "Payment Failed";
+  const message = isSuccess
+    ? "Your payment was completed successfully."
+    : "Your payment was not completed.";
+
+  res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f8f8f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 48px 32px;
+      text-align: center;
+      max-width: 360px;
+      width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    .icon-circle {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: ${iconColor}18;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      font-size: 32px;
+      color: ${iconColor};
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #111;
+      margin-bottom: 10px;
+    }
+    p {
+      font-size: 14px;
+      color: #6b7280;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 28px;
+      font-size: 15px;
+      font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .arrow { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-circle">${icon}</div>
+    <h1>${title}</h1>
+    <p>${message}<br>Press the back button to return to the app.</p>
+    <button class="btn" onclick="history.back()">
+      <span class="arrow">←</span> Go Back
+    </button>
+  </div>
+</body>
+</html>`);
 });
 
 // ─── Saved Cards ────────────────────────────────────────────────────────────
