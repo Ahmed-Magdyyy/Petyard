@@ -191,68 +191,32 @@ export const handlePaymobWebhookPost = asyncHandler(async (req, res) => {
 export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
   const isSuccess = req.query.success === "true";
   const merchantOrderId = req.query.merchant_order_id;
-  const paymobOrderId = req.query.id; // Usually mapped to `id` in GET redirect
+  const paymobOrderId = req.query.id;
 
   console.log(
     `[Paymob Redirect] success=${req.query.success} pending=${req.query.pending}` +
       ` merchantOrder=${merchantOrderId}`,
   );
 
-  // Fallback: If user cancelled and POST webhook was missed or delayed, fail the order immediately.
+  // Fallback: If user cancelled and POST webhook was missed or delayed, fail the order now.
+  // The FE is polling GET /orders/me/:id in the background — once it sees
+  // status="cancelled", it closes the webview and shows the error toast.
   if (!isSuccess && (merchantOrderId || paymobOrderId)) {
     try {
       const order = await findOrderByIds(merchantOrderId, paymobOrderId);
       if (order && order.status === "awaiting_payment") {
         await failOrderPaymentService(order._id);
-        console.log(`[Paymob Redirect] Marked order ${merchantOrderId} as failed via GET fallback`);
+        console.log(`[Paymob Redirect] Marked order ${merchantOrderId} as cancelled via GET fallback`);
       }
     } catch (err) {
       console.error("[Paymob Redirect] Error in failure fallback:", err.message);
     }
-
-    // WORKAROUND FOR FLUTTER SDK BUG:
-    // Many Paymob Flutter wrappers fail to close the WebView when success=false.
-    // They only intercept success=true. 
-    // Since we already failed the order in the database, we can safely redirect the WebView 
-    // to a success=true URL to force the SDK to close it. 
-    // The Frontend will receive success=true from the SDK, but will poll the backend,
-    // receive status="cancelled", and show the correct failure UI.
-    return res.redirect(`/api/v1/payments/webhook?id=${paymobOrderId}&success=true&merchant_order_id=${merchantOrderId}&forced_close=true`);
   }
 
-  // Return a web page that tries to auto-close the webview (for valid success=true cases that slipped through)
-  res.status(200).send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Payment ${isSuccess ? 'Response' : 'Failed'}</title>
-      <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f9fafb; color: #1f2937; text-align: center; padding: 20px; }
-        .card { background: white; padding: 40px 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); max-width: 400px; width: 100%; }
-        h1 { margin-top: 0; font-size: 24px; color: ${isSuccess ? '#10b981' : '#ef4444'}; }
-        p { color: #6b7280; margin-bottom: 24px; line-height: 1.5; }
-        .spinner { width: 40px; height: 40px; border: 3px solid rgba(0,0,0,0.1); border-radius: 50%; border-top-color: #3b82f6; animation: spin 1s ease-in-out infinite; margin: 0 auto 20px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-      </style>
-    </head>
-    <body>
-      <div class="card">
-        <div class="spinner"></div>
-        <h1>Payment ${isSuccess ? 'Response' : 'Failed'}</h1>
-        <p>Redirecting you back to the app...<br><br><small>If you are not redirected automatically, please press the back button or close this screen to continue.</small></p>
-      </div>
-      <script>
-        setTimeout(() => {
-          try { window.close(); } catch (e) {}
-          try { if (window.PaymobSDK) window.PaymobSDK.postMessage(JSON.stringify({ success: ${isSuccess} })); } catch(e) {}
-          try { if (window.Print) window.Print.postMessage('close'); } catch(e) {}
-        }, 800);
-      </script>
-    </body>
-    </html>
-  `);
+  // Simple acknowledgment — FE handles closing the webview via order-status polling.
+  res.status(200).send(
+    "<html><body><h2>Payment processed</h2><p>You can close this page.</p></body></html>",
+  );
 });
 
 // ─── Saved Cards ────────────────────────────────────────────────────────────
