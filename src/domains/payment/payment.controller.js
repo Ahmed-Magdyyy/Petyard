@@ -2,7 +2,6 @@ import asyncHandler from "express-async-handler";
 import {
   verifyWebhookHmac,
   extractTransactionData,
-  buildTransactionFromQuery,
   verifyPaymentAmount,
 } from "./paymob.service.js";
 import {
@@ -116,25 +115,19 @@ export const handlePaymobWebhookPost = asyncHandler(async (req, res) => {
 });
 
 // ─── GET webhook (browser redirect callback) ────────────────────────────────
+// NOTE: The GET redirect is for UX only — the POST webhook is the source of
+// truth for payment confirmation. Paymob's GET redirect HMAC uses a different
+// computation, so we intentionally skip HMAC verification here and just show
+// the user a friendly result page based on the query parameters.
 
 export const handlePaymobWebhookGet = asyncHandler(async (req, res) => {
-  const receivedHmac = req.query.hmac;
-  const transactionObj = buildTransactionFromQuery(req.query);
-
-  const result = await processWebhook(
-    transactionObj,
-    receivedHmac,
-    { transaction: transactionObj },
+  console.log(
+    `[Paymob Redirect] success=${req.query.success} pending=${req.query.pending} merchantOrder=${req.query.merchant_order_id}`,
   );
 
-  // For GET (browser redirect), return a simple HTML page instead of JSON
-  if (result.status === 200 && result.message === "Webhook processed") {
-    return res.status(200).send(
-      "<html><body><h2>Payment processed successfully</h2><p>You can close this page.</p></body></html>",
-    );
-  }
-
-  res.status(result.status).json({ message: result.message });
+  // Flutter app intercepts this redirect URL and reads query params natively.
+  // Just return 200 to avoid errors in logs.
+  res.status(200).json({ message: "Redirect acknowledged" });
 });
 
 // ─── Saved Cards ─────────────────────────────────────────────────────────────
