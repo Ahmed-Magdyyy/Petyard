@@ -1,4 +1,8 @@
 import axios from "axios";
+import https from "https";
+
+// ePushEg uses an incomplete SSL certificate chain — disable verification for this host only
+const epushHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 export function normalizeEgyptianMobile(phone) {
   const trimmed = String(phone).trim();
@@ -30,11 +34,7 @@ export function normalizeEgyptianMobile(phone) {
 const EPUSH_BASE_URL = "https://api.epusheg.com/api/v2/send_bulk";
 
 export async function sendOtpSms(phone, code) {
-  const {
-    epush_username,
-    epush_password,
-    epush_api_key,
-  } = process.env;
+  const { epush_username, epush_password, epush_api_key } = process.env;
 
   if (!epush_username || !epush_password || !epush_api_key) {
     console.error("ePush credentials are not configured");
@@ -53,10 +53,12 @@ export async function sendOtpSms(phone, code) {
   };
 
   try {
-    const { data } = await axios.get(EPUSH_BASE_URL, { params });
+    const { data } = await axios.get(EPUSH_BASE_URL, {
+      params,
+      httpsAgent: epushHttpsAgent,
+    });
 
     // ePush returns { new_msg_id, transaction_price, net_balance } on success
-consone.log('epish date', data
     if (!data?.new_msg_id) {
       console.error("ePush error response", data);
       throw new Error("Failed to send OTP SMS");
@@ -64,7 +66,7 @@ consone.log('epish date', data
   } catch (err) {
     console.error(
       "ePush request error",
-      err.response?.data || err.message || err
+      err.response?.data || err.message || err,
     );
     throw err;
   }
