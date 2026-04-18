@@ -56,6 +56,7 @@ export async function sendOtpSms(phone, code) {
     const { data } = await axios.get(EPUSH_BASE_URL, { params });
 
     // ePush returns { new_msg_id, transaction_price, net_balance } on success
+consone.log('epish date', data
     if (!data?.new_msg_id) {
       console.error("ePush error response", data);
       throw new Error("Failed to send OTP SMS");
