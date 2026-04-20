@@ -40,7 +40,10 @@ import {
   createPaymentIntention,
   getPublicKey,
 } from "../payment/paymob.service.js";
-import { getSavedCardTokenService, getUserSavedCardTokensService } from "../payment/savedCard.service.js";
+import {
+  getSavedCardTokenService,
+  getUserSavedCardTokensService,
+} from "../payment/savedCard.service.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -1612,7 +1615,7 @@ export async function listOrdersForAdminService(query = {}) {
       .skip(skip)
       .limit(limitNum)
       .populate({ path: "user", select: "name phone" })
-      .populate({ path: "warehouse", select: "name" })
+      .populate({ path: "warehouse", select: "name governorate address" })
       .populate({ path: "history.byUserId", select: "name role" })
       .lean(),
   ]);
@@ -1731,8 +1734,7 @@ export async function updateOrderStatusService({
 
       // Only restore stock/wallet if side effects were committed
       const shouldRestoreStock =
-        (isCancelling || isReturning) &&
-        order.sideEffectsCommitted !== false;
+        (isCancelling || isReturning) && order.sideEffectsCommitted !== false;
 
       if (shouldRestoreStock) {
         await restoreStockForOrder({ session, order });
@@ -1895,7 +1897,11 @@ export async function updateOrderStatusService({
   }
 
   // Invalidate product caches after stock restoration
-  if (updated && (updated.status === orderStatusEnum.CANCELLED || updated.status === orderStatusEnum.RETURNED)) {
+  if (
+    updated &&
+    (updated.status === orderStatusEnum.CANCELLED ||
+      updated.status === orderStatusEnum.RETURNED)
+  ) {
     const productIds = (updated.items || []).map((i) => i.product);
     await invalidateProductCaches(productIds);
   }
