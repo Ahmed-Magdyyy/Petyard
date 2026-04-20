@@ -33,7 +33,11 @@ export const orderStatusEnum = Object.freeze({
 export const paymentMethodEnum = Object.freeze({
   COD: "cod",
   CARD: "card",
+  POS_ON_DELIVERY: "pos_on_delivery",
+  INSTAPAY: "instapay",
 });
+
+export const FREE_SHIPPING_THRESHOLD = 3000;
 export const paymentStatusEnum = Object.freeze({
   PENDING: "pending",
   PAID: "paid",

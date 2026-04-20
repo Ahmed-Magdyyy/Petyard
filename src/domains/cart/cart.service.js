@@ -10,6 +10,7 @@ import { normalizeProductType } from "../../shared/utils/productType.js";
 import {
   cartStatusEnum,
   productTypeEnum,
+  FREE_SHIPPING_THRESHOLD,
 } from "../../shared/constants/enums.js";
 import {
   autoHideExpiredCollections,
@@ -509,11 +510,16 @@ export async function getCartService({
   }
 
   const rawShipping = warehouse.defaultShippingPrice;
-  const shippingFee =
+  const baseShippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
 
   const baseCart = await getOrCreateCart({ userId, guestId, warehouseId });
   const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
+
+  // Free shipping for orders with items subtotal >= threshold
+  const shippingFee =
+    cart.totalCartPrice >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
+
   return mapCartToResponse(cart, { shippingFee });
 }
 

@@ -11,6 +11,7 @@ import {
   orderStatusEnum,
   paymentMethodEnum,
   paymentStatusEnum,
+  FREE_SHIPPING_THRESHOLD,
 } from "../../shared/constants/enums.js";
 import { deleteCacheKey } from "../../shared/utils/cache.js";
 import { escapeRegex } from "../../shared/utils/escapeRegex.js";
@@ -53,6 +54,8 @@ function normalizePaymentMethod(method) {
   if (!method) return paymentMethodEnum.COD;
   const v = String(method).trim().toLowerCase();
   if (v === paymentMethodEnum.CARD) return paymentMethodEnum.CARD;
+  if (v === paymentMethodEnum.POS_ON_DELIVERY) return paymentMethodEnum.POS_ON_DELIVERY;
+  if (v === paymentMethodEnum.INSTAPAY) return paymentMethodEnum.INSTAPAY;
   return paymentMethodEnum.COD;
 }
 
@@ -893,8 +896,10 @@ async function processOrderCreationWithCart({
   }
 
   const rawShipping = warehouse.defaultShippingPrice;
-  const shippingFee =
+  const baseShippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
+  // Free shipping for orders with items subtotal >= threshold
+  const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
 
   if (couponCode && hasPromotionalItems) {
     throw new ApiError(
@@ -1776,10 +1781,15 @@ export async function updateOrderStatusService({
       }
       order.status = newStatus;
 
-      // Auto-mark COD payments as paid when delivered
+      // Auto-mark pay-on-delivery methods as paid when delivered
+      const payOnDeliveryMethods = [
+        paymentMethodEnum.COD,
+        paymentMethodEnum.POS_ON_DELIVERY,
+        paymentMethodEnum.INSTAPAY,
+      ];
       if (
         newStatus === orderStatusEnum.DELIVERED &&
-        order.paymentMethod === paymentMethodEnum.COD &&
+        payOnDeliveryMethods.includes(order.paymentMethod) &&
         order.paymentStatus !== paymentStatusEnum.PAID
       ) {
         order.paymentStatus = paymentStatusEnum.PAID;

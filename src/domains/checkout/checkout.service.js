@@ -9,6 +9,7 @@ import {
 import { UserModel } from "../user/user.model.js";
 import { calculateLoyaltyPointsForOrder } from "../loyalty/loyalty.service.js";
 import { OrderModel } from "../order/order.model.js";
+import { FREE_SHIPPING_THRESHOLD } from "../../shared/constants/enums.js";
 
 export async function applyCouponAtCheckoutService({
   userId,
@@ -79,8 +80,10 @@ export async function applyCouponAtCheckoutService({
 
   const warehouse = await getWarehouseByIdService(warehouseId);
   const rawShipping = warehouse?.defaultShippingPrice;
-  const shippingFee =
+  const baseShippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
+  // Free shipping for orders with items subtotal >= threshold
+  const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
 
   const coupon = await findActiveCouponByCodeService(trimmedCode);
 
@@ -273,8 +276,10 @@ export async function getCheckoutSummaryService({
 
     const warehouse = await getWarehouseByIdService(warehouseId);
     const rawShipping = warehouse?.defaultShippingPrice;
-    const shippingFee =
+    const baseShippingFee =
       typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
+    // Free shipping for orders with items subtotal >= threshold
+    const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
 
     const couponDoc = await findActiveCouponByCodeService(trimmedCode);
 
@@ -403,8 +408,10 @@ export async function getCheckoutSummaryService({
   } else {
     const warehouse = await getWarehouseByIdService(warehouseId);
     const rawShipping = warehouse?.defaultShippingPrice;
-    const shippingFee =
+    const baseShippingFee =
       typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
+    // Free shipping for orders with items subtotal >= threshold
+    const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
 
     pricing = {
       subtotal,
