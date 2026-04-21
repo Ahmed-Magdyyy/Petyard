@@ -1642,8 +1642,6 @@ async function deleteProductService(id) {
 //  • autoHideExpiredCollectionsThrottled fires-and-forgets so it never blocks.
 //  • All independent DB queries run in parallel via Promise.all.
 
-const SUGGESTION_MAX_LENGTH = 50;
-
 export async function searchProductsService({
   q,
   warehouse,
@@ -1745,13 +1743,10 @@ export async function searchProductsService({
 
     const addSuggestion = (text) => {
       if (!text || typeof text !== "string") return;
-      let trimmed = text.trim();
+      const trimmed = text.trim();
       if (!trimmed) return;
       // Only suggest names that actually contain the query text
       if (!nameMatchRegex.test(trimmed)) return;
-      if (trimmed.length > SUGGESTION_MAX_LENGTH) {
-        trimmed = trimmed.slice(0, SUGGESTION_MAX_LENGTH).trimEnd() + "…";
-      }
       const key = trimmed.toLowerCase();
       if (seen.has(key)) return;
       seen.add(key);
