@@ -45,7 +45,6 @@ import {
 } from "../collection/collection.promotion.js";
 import { brandExists } from "../brand/brand.repository.js";
 import { BrandModel } from "../brand/brand.model.js";
-import { ProductModel } from "./product.model.js";
 import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
 import { countWarehouses } from "../warehouse/warehouse.repository.js";
 import { FavoriteModel } from "../favorite/favorite.model.js";
@@ -1635,12 +1634,15 @@ async function deleteProductService(id) {
 //  • Redis cache (15 s TTL) keyed on warehouse+lang+q+limit covers the entire
 //    DB workload — repeat keystrokes within the debounce window are free.
 //  • isFavorite is user-specific and injected OUTSIDE the cache.
-//  • Single brand query (select _id+names) serves both text suggestions and
-//    the product-filter brandId array — eliminates the duplicate brand lookup.
-//  • Name-suggestion query uses ProductModel.find() directly to skip the
-//    populate() overhead baked into findProducts().
+//  • Suggestions are derived ONLY from products that actually exist and are
+//    in-stock — no orphan brand/name suggestions that lead to empty results.
+//  • Brand lookup is used solely for widening the product filter (find products
+//    whose brand name matches q). Suggestion text comes from the product
+//    results themselves.
 //  • autoHideExpiredCollectionsThrottled fires-and-forgets so it never blocks.
 //  • All independent DB queries run in parallel via Promise.all.
+
+const SUGGESTION_MAX_LENGTH = 50;
 
 export async function searchProductsService({
   q,
@@ -1664,7 +1666,7 @@ export async function searchProductsService({
   autoHideExpiredCollectionsThrottled().catch(() => {});
 
   // Cache key excludes userId — isFavorite is injected after cache hit
-  const cacheKey = `search:v1:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}`;
+  const cacheKey = `search:v2:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}`;
 
   // ── Cached core: suggestions + product DTOs (without isFavorite) ────────────
   const { suggestions, dtos } = await getOrSetCache(cacheKey, 15, async () => {
@@ -1690,32 +1692,20 @@ export async function searchProductsService({
       ],
     };
 
-    // ── Round 1 (parallel): brands + name suggestions ─────────────────────
-    // Both queries are independent — start them together.
-    // One brand query (select _id + names) replaces what was previously two
-    // separate brand queries.
-    const [matchedBrands, nameMatchedProducts] = await Promise.all([
-      BrandModel.find({ $or: [{ name_en: regex }, { name_ar: regex }] })
-        .select("_id name_en name_ar")
-        .limit(8)
-        .lean(),
+    // ── Round 1: brand IDs (needed to widen the product filter) ────────────
+    // We only use these IDs to find products by brand match — NOT for
+    // suggestion text. Suggestion text comes exclusively from the actual
+    // product results (Round 2) so we never suggest a brand with 0 products.
+    const matchedBrands = await BrandModel.find({
+      $or: [{ name_en: regex }, { name_ar: regex }],
+    })
+      .select("_id")
+      .limit(20)
+      .lean();
 
-      // Direct ProductModel query — bypasses the populate() in findProducts()
-      // since we only need name fields for autocomplete text.
-      ProductModel.find({
-        $and: [
-          { $or: [{ name_en: regex }, { name_ar: regex }] },
-          warehouseStockFilter,
-        ],
-      })
-        .select("name_en name_ar")
-        .limit(8)
-        .lean(),
-    ]);
-
-    // ── Round 2: product results (needs brandIds from round 1) ────────────
     const brandIds = matchedBrands.map((b) => b._id);
 
+    // ── Round 2: product results (uses brandIds from round 1) ─────────────
     const productQFilter = {
       $or: [
         { name_en: regex },
@@ -1728,6 +1718,8 @@ export async function searchProductsService({
     const listSelect =
       "_id slug type name_en name_ar price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
 
+    // findProducts() already populates brand with name_en, name_ar — we use
+    // this to extract brand suggestion text from REAL, in-stock products.
     const rawProducts = await findProducts(
       { $and: [productQFilter, warehouseStockFilter] },
       { limit: limitNum, select: listSelect, lean: true },
@@ -1739,20 +1731,31 @@ export async function searchProductsService({
       new Date(),
     );
 
-    // ── Build suggestions (brands first, then product names) ──────────────
+    // ── Build suggestions from ACTUAL product results only ────────────────
+    // Every suggestion is backed by real, in-stock products.
+    // Priority: unique brand names first, then product names.
+    // Truncated to SUGGESTION_MAX_LENGTH chars for mobile screens.
     const seen = new Set();
     const suggestions = [];
 
     const addSuggestion = (text) => {
       if (!text || typeof text !== "string") return;
-      const key = text.trim().toLowerCase();
-      if (!key || seen.has(key)) return;
+      let trimmed = text.trim();
+      if (!trimmed) return;
+      if (trimmed.length > SUGGESTION_MAX_LENGTH) {
+        trimmed = trimmed.slice(0, SUGGESTION_MAX_LENGTH).trimEnd() + "…";
+      }
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) return;
       seen.add(key);
-      suggestions.push(text.trim());
+      suggestions.push(trimmed);
     };
 
-    for (const brand of matchedBrands) {
+    // 1) Brand names from the returned products (deduplicated)
+    for (const product of rawProducts) {
       if (suggestions.length >= 6) break;
+      const brand = product.brand;
+      if (!brand || typeof brand !== "object") continue;
       addSuggestion(
         normalizedLang === "ar"
           ? brand.name_ar || brand.name_en
@@ -1760,7 +1763,8 @@ export async function searchProductsService({
       );
     }
 
-    for (const product of nameMatchedProducts) {
+    // 2) Product names from the returned products
+    for (const product of rawProducts) {
       if (suggestions.length >= 6) break;
       addSuggestion(
         normalizedLang === "ar"
