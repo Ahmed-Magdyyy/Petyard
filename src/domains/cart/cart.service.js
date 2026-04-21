@@ -119,7 +119,7 @@ function computeTotalCartPrice(cart) {
   }, 0);
 }
 
-function mapCartToResponse(cart, { shippingFee = 0 } = {}) {
+export function mapCartToResponse(cart, { shippingFee = 0 } = {}) {
   const removedItems =
     Array.isArray(cart._removedItems) && cart._removedItems.length > 0
       ? cart._removedItems.map((item) => ({
@@ -339,7 +339,7 @@ async function finalizeActiveCartAndSave(cart, warehouseId) {
   return cart;
 }
 
-async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
+export async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
   if (!cart) return null;
 
   await autoHideExpiredCollectionsThrottled();

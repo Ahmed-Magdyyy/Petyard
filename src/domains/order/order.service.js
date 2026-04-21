@@ -1391,6 +1391,250 @@ export async function createOrderForGuestService({
   return { order: createdOrder };
 }
 
+// ─── Reorder ────────────────────────────────────────────────────────────────
+
+export async function reorderService({ userId, guestId, orderId, lang = "en" }) {
+  const normalizedLang = normalizeLang(lang);
+
+  // 1. Find the order and verify ownership
+  const order = await OrderModel.findById(orderId).lean();
+  if (!order) {
+    throw new ApiError(
+      lang === "en" ? "Order not found" : "الطلب غير موجود",
+      404,
+    );
+  }
+
+  if (userId && String(order.user) !== String(userId)) {
+    throw new ApiError(
+      lang === "en" ? "Order not found" : "الطلب غير موجود",
+      404,
+    );
+  }
+
+  if (guestId && order.guestId !== guestId) {
+    throw new ApiError(
+      lang === "en" ? "Order not found" : "الطلب غير موجود",
+      404,
+    );
+  }
+
+  // 2. Find the existing cart (do NOT create one)
+  const identityFilter = userId ? { user: userId } : { guestId };
+  const { findCart } = await import("../cart/cart.repository.js");
+  const cart = await findCart(identityFilter);
+
+  if (!cart) {
+    throw new ApiError(
+      lang === "en" ? "Cart not found" : "السلة غير موجودة",
+      404,
+    );
+  }
+
+  const warehouseId = cart.warehouse;
+  if (!warehouseId) {
+    throw new ApiError(
+      lang === "en"
+        ? "Cart has no warehouse assigned. Please set a delivery address first"
+        : "السلة ليس لها مخزن محدد. يرجى تحديد عنوان التوصيل أولاً",
+      400,
+    );
+  }
+
+  // 3. Fetch all products from the order items
+  const orderItems = Array.isArray(order.items) ? order.items : [];
+  if (!orderItems.length) {
+    throw new ApiError(
+      lang === "en"
+        ? "This order has no items to reorder"
+        : "هذا الطلب لا يحتوي على منتجات لإعادة الطلب",
+      400,
+    );
+  }
+
+  const productIds = [
+    ...new Set(
+      orderItems
+        .map((item) => (item.product ? String(item.product) : null))
+        .filter(Boolean),
+    ),
+  ];
+
+  const products = await ProductModel.find({ _id: { $in: productIds } });
+  const productById = new Map(products.map((p) => [String(p._id), p]));
+
+  // 4. Validate every order item (all-or-nothing)
+  for (const item of orderItems) {
+    const product = productById.get(String(item.product));
+    const itemName = item.productName || "Unknown product";
+
+    if (!product) {
+      throw new ApiError(
+        lang === "en"
+          ? `Product ${itemName} no longer exists`
+          : `المنتج ${itemName} لم يعد متوفراً`,
+        400,
+      );
+    }
+
+    const quantity =
+      typeof item.quantity === "number" && item.quantity > 0
+        ? item.quantity
+        : 0;
+
+    if (product.type === "SIMPLE") {
+      const stocks = Array.isArray(product.warehouseStocks)
+        ? product.warehouseStocks
+        : [];
+      const stock = stocks.find(
+        (ws) => String(ws.warehouse) === String(warehouseId),
+      );
+
+      if (!stock || typeof stock.quantity !== "number" || stock.quantity <= 0) {
+        throw new ApiError(
+          lang === "en"
+            ? `Product ${itemName} is out of stock`
+            : `المنتج ${itemName} غير متوفر في المخزون`,
+          400,
+        );
+      }
+
+      if (quantity > stock.quantity) {
+        throw new ApiError(
+          lang === "en"
+            ? `Requested quantity for ${itemName} exceeds available stock (${stock.quantity})`
+            : `الكمية المطلوبة للمنتج ${itemName} تتجاوز المخزون المتاح (${stock.quantity})`,
+          400,
+        );
+      }
+    } else {
+      // VARIANT
+      const variants = Array.isArray(product.variants)
+        ? product.variants
+        : [];
+      const variant = variants.find(
+        (v) => String(v._id) === String(item.variantId),
+      );
+
+      if (!variant) {
+        throw new ApiError(
+          lang === "en"
+            ? `Variant not found for product ${itemName}`
+            : `الإختيار غير موجود للمنتج ${itemName}`,
+          400,
+        );
+      }
+
+      const vStocks = Array.isArray(variant.warehouseStocks)
+        ? variant.warehouseStocks
+        : [];
+      const vStock = vStocks.find(
+        (ws) => String(ws.warehouse) === String(warehouseId),
+      );
+
+      if (
+        !vStock ||
+        typeof vStock.quantity !== "number" ||
+        vStock.quantity <= 0
+      ) {
+        throw new ApiError(
+          lang === "en"
+            ? `Product ${itemName} is out of stock`
+            : `المنتج ${itemName} غير متوفر في المخزون`,
+          400,
+        );
+      }
+
+      if (quantity > vStock.quantity) {
+        throw new ApiError(
+          lang === "en"
+            ? `Requested quantity for ${itemName} exceeds available stock (${vStock.quantity})`
+            : `الكمية المطلوبة للمنتج ${itemName} تتجاوز المخزون المتاح (${vStock.quantity})`,
+          400,
+        );
+      }
+    }
+  }
+
+  // 5. All validations passed — merge order items into cart
+  const cartItems = Array.isArray(cart.items) ? cart.items : [];
+
+  for (const orderItem of orderItems) {
+    const product = productById.get(String(orderItem.product));
+    if (!product) continue;
+
+    const productName = pickLocalizedField(product, "name", normalizedLang);
+
+    // Build the cart item key: productId + variantId
+    const existingCartItem = cartItems.find((ci) => {
+      if (!ci.product || String(ci.product) !== String(orderItem.product)) {
+        return false;
+      }
+      if (product.type === "SIMPLE") {
+        return !ci.variantId;
+      }
+      return (
+        ci.variantId && String(ci.variantId) === String(orderItem.variantId)
+      );
+    });
+
+    const orderQuantity =
+      typeof orderItem.quantity === "number" && orderItem.quantity > 0
+        ? orderItem.quantity
+        : 1;
+
+    if (existingCartItem) {
+      // Order quantity always wins (overwrite)
+      existingCartItem.quantity = orderQuantity;
+      existingCartItem.productName = productName;
+    } else {
+      // Add new item to cart
+      let productImageUrl = orderItem.productImageUrl || null;
+      let variantOptionsSnapshot = [];
+
+      if (product.type === "VARIANT" && orderItem.variantId) {
+        const variant = (product.variants || []).find(
+          (v) => String(v._id) === String(orderItem.variantId),
+        );
+        if (variant) {
+          variantOptionsSnapshot = Array.isArray(variant.options)
+            ? variant.options.map((o) => ({
+                name: typeof o.name === "string" ? o.name : "",
+                value: typeof o.value === "string" ? o.value : "",
+              }))
+            : [];
+
+          if (Array.isArray(variant.images) && variant.images.length > 0) {
+            const mainImg =
+              variant.images.find((img) => img.isMain) || variant.images[0];
+            productImageUrl = mainImg?.url || productImageUrl;
+          }
+        }
+      }
+
+      cart.items.push({
+        product: orderItem.product,
+        productType: product.type,
+        productName,
+        productImageUrl,
+        variantId: orderItem.variantId || undefined,
+        variantOptionsSnapshot,
+        quantity: orderQuantity,
+        itemPrice: 0, // Will be recalculated by rebindCartToWarehouse
+      });
+    }
+  }
+
+  // 6. Rebind to refresh prices, promotions, and persist
+  const {
+    rebindCartToWarehouse,
+    mapCartToResponse,
+  } = await import("../cart/cart.service.js");
+
+  const refreshedCart = await rebindCartToWarehouse(cart, warehouseId, lang);
+  return mapCartToResponse(refreshedCart);
+}
+
 export async function getMyOrdersService({ userId, page, limit, lang = "en" }) {
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const limitNum = Math.max(parseInt(limit, 10) || 20, 1);

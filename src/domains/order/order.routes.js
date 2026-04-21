@@ -9,6 +9,8 @@ import {
   listOrdersForAdmin,
   getOrderForAdmin,
   updateOrderStatusForAdmin,
+  reorderForUser,
+  reorderForGuest,
 } from "./order.controller.js";
 import { scopeOrdersToModeratorWarehouses } from "./order.middleware.js";
 import {
@@ -38,6 +40,7 @@ const router = Router();
 router.post("/guest", guestLimiter, paymentLimiter, createOrderForGuestValidator, createOrderForGuest);
 router.get("/guest", guestLimiter, getGuestOrders);
 router.get("/guest/:id", guestLimiter, orderIdParamValidator, getGuestOrder);
+router.post("/guest/:id/reorder", guestLimiter, orderIdParamValidator, reorderForGuest);
 
 // Logged-in user orders
 router.use("/me", protect);
@@ -51,6 +54,7 @@ router.post(
 );
 router.get("/me", getMyOrders);
 router.get("/me/:id", orderIdParamValidator, getMyOrder);
+router.post("/me/:id/reorder", orderIdParamValidator, reorderForUser);
 
 // Admin orders
 router.use(

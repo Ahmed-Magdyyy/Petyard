@@ -10,6 +10,7 @@ import {
   listOrdersForAdminService,
   getOrderByIdForAdminService,
   updateOrderStatusService,
+  reorderService,
 } from "./order.service.js";
 
 function getGuestId(req) {
@@ -167,4 +168,35 @@ export const updateOrderStatusForAdmin = asyncHandler(async (req, res) => {
   });
 
   res.status(200).json({ data: updated });
+});
+
+export const reorderForUser = asyncHandler(async (req, res) => {
+  const orderId = req.params.id;
+
+  const cart = await reorderService({
+    userId: req.user._id,
+    guestId: null,
+    orderId,
+    lang: req.lang,
+  });
+
+  res.status(200).json({ data: cart });
+});
+
+export const reorderForGuest = asyncHandler(async (req, res) => {
+  const guestId = getGuestId(req);
+  if (!guestId) {
+    throw new ApiError("x-guest-id header is required", 400);
+  }
+
+  const orderId = req.params.id;
+
+  const cart = await reorderService({
+    userId: null,
+    guestId,
+    orderId,
+    lang: req.lang,
+  });
+
+  res.status(200).json({ data: cart });
 });
