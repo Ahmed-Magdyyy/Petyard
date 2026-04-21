@@ -1666,7 +1666,7 @@ export async function searchProductsService({
   autoHideExpiredCollectionsThrottled().catch(() => {});
 
   // Cache key excludes userId — isFavorite is injected after cache hit
-  const cacheKey = `search:v2:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}`;
+  const cacheKey = `search:v4:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}`;
 
   // ── Cached core: suggestions + product DTOs (without isFavorite) ────────────
   const { suggestions, dtos } = await getOrSetCache(cacheKey, 15, async () => {
@@ -1733,8 +1733,13 @@ export async function searchProductsService({
 
     // ── Build suggestions from ACTUAL product results only ────────────────
     // Every suggestion is backed by real, in-stock products.
+    // A name only qualifies as a suggestion if the query actually appears
+    // somewhere in that name (contains match). This filters out products
+    // that only matched via tags — their names wouldn't contain the query
+    // text, so they'd produce misleading suggestions like "Alpha" for "r".
     // Priority: unique brand names first, then product names.
     // Truncated to SUGGESTION_MAX_LENGTH chars for mobile screens.
+    const nameMatchRegex = new RegExp(escapeRegex(trimmedQ), "i");
     const seen = new Set();
     const suggestions = [];
 
@@ -1742,6 +1747,8 @@ export async function searchProductsService({
       if (!text || typeof text !== "string") return;
       let trimmed = text.trim();
       if (!trimmed) return;
+      // Only suggest names that actually contain the query text
+      if (!nameMatchRegex.test(trimmed)) return;
       if (trimmed.length > SUGGESTION_MAX_LENGTH) {
         trimmed = trimmed.slice(0, SUGGESTION_MAX_LENGTH).trimEnd() + "…";
       }
@@ -1752,15 +1759,18 @@ export async function searchProductsService({
     };
 
     // 1) Brand names from the returned products (deduplicated)
+    //    Skip placeholder brands like "Generic" / "Genaric" — not useful.
+    const IGNORED_BRANDS = new Set(["generic", "genaric"]);
     for (const product of rawProducts) {
       if (suggestions.length >= 6) break;
       const brand = product.brand;
       if (!brand || typeof brand !== "object") continue;
-      addSuggestion(
+      const brandName =
         normalizedLang === "ar"
           ? brand.name_ar || brand.name_en
-          : brand.name_en,
-      );
+          : brand.name_en;
+      if (brandName && IGNORED_BRANDS.has(brandName.trim().toLowerCase())) continue;
+      addSuggestion(brandName);
     }
 
     // 2) Product names from the returned products
