@@ -36,4 +36,7 @@ const brandSchema = new Schema(
   { timestamps: true }
 );
 
+brandSchema.index({ name_en: 1 });
+brandSchema.index({ name_ar: 1 });
+
 export const BrandModel = model("Brand", brandSchema);

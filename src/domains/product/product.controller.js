@@ -6,6 +6,7 @@ import {
   createProductService,
   updateProductService,
   deleteProductService,
+  searchProductsService,
 } from "./product.service.js";
 
 export const getProducts = asyncHandler(async (req, res) => {
@@ -54,4 +55,19 @@ export const deleteProduct = asyncHandler(async (req, res) => {
   await deleteProductService(req.params.id);
 
   res.status(200).json({ message: "Product deleted successfully" });
+});
+
+export const searchProducts = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || null;
+  const { q, warehouse, limit } = req.query;
+
+  const result = await searchProductsService({
+    q,
+    warehouse,
+    limit,
+    lang: req.lang,
+    userId,
+  });
+
+  res.status(200).json(result);
 });

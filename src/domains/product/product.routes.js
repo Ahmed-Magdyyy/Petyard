@@ -7,6 +7,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  searchProducts,
 } from "./product.controller.js";
 
 import {
@@ -26,6 +27,7 @@ import {
   updateProductValidator,
   productIdParamValidator,
   listProductsQueryValidator,
+  searchProductsQueryValidator,
 } from "./product.validators.js";
 
 import { uploadMultipleImages } from "../../shared/middlewares/uploadMiddleware.js";
@@ -49,6 +51,9 @@ router.get(
 
   getProductsForAdmin,
 );
+
+// Must be before /:id to avoid Express treating "search" as a product ID
+router.get("/search", optionalProtect, searchProductsQueryValidator, searchProducts);
 
 router.get("/:id", optionalProtect, productIdParamValidator, getProduct);
 

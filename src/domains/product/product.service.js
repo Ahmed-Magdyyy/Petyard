@@ -45,6 +45,7 @@ import {
 } from "../collection/collection.promotion.js";
 import { brandExists } from "../brand/brand.repository.js";
 import { BrandModel } from "../brand/brand.model.js";
+import { ProductModel } from "./product.model.js";
 import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
 import { countWarehouses } from "../warehouse/warehouse.repository.js";
 import { FavoriteModel } from "../favorite/favorite.model.js";
@@ -765,16 +766,26 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}, u
     Object.assign(filter, collectionFilter);
   }
 
-  // Free-text search on name_en, name_ar, sku, and tags
+  // Free-text search on name_en, name_ar, tags, and matched brands
   const orConditions = [];
   if (typeof q === "string" && q.trim()) {
     const regex = { $regex: escapeRegex(q.trim()), $options: "i" };
     orConditions.push(
       { name_en: regex },
       { name_ar: regex },
-      { sku: regex },
       { tags: regex },
     );
+
+    // Also search by brand name — find brands matching q, then include their products
+    const matchedBrands = await BrandModel.find({
+      $or: [{ name_en: regex }, { name_ar: regex }],
+    })
+      .select("_id")
+      .lean();
+
+    if (matchedBrands.length > 0) {
+      orConditions.push({ brand: { $in: matchedBrands.map((b) => b._id) } });
+    }
   }
 
   // Generic regex filters for any extra query keys
@@ -1617,3 +1628,170 @@ async function deleteProductService(id) {
   await deleteCacheKey(`product:${id}:en`);
   await deleteCacheKey(`product:${id}:ar`);
 }
+
+// ─── Search Suggestions ──────────────────────────────────────────────────────
+//
+// Performance design:
+//  • Redis cache (15 s TTL) keyed on warehouse+lang+q+limit covers the entire
+//    DB workload — repeat keystrokes within the debounce window are free.
+//  • isFavorite is user-specific and injected OUTSIDE the cache.
+//  • Single brand query (select _id+names) serves both text suggestions and
+//    the product-filter brandId array — eliminates the duplicate brand lookup.
+//  • Name-suggestion query uses ProductModel.find() directly to skip the
+//    populate() overhead baked into findProducts().
+//  • autoHideExpiredCollectionsThrottled fires-and-forgets so it never blocks.
+//  • All independent DB queries run in parallel via Promise.all.
+
+export async function searchProductsService({
+  q,
+  warehouse,
+  limit = 10,
+  lang = "en",
+  userId = null,
+}) {
+  const normalizedLang = normalizeLang(lang);
+  const trimmedQ = typeof q === "string" ? q.trim() : "";
+
+  if (!trimmedQ) {
+    return { suggestions: [], products: [] };
+  }
+
+  const regex = { $regex: escapeRegex(trimmedQ), $options: "i" };
+  const warehouseId = String(warehouse);
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 20);
+
+  // Fire-and-forget — never block the search hot path
+  autoHideExpiredCollectionsThrottled().catch(() => {});
+
+  // Cache key excludes userId — isFavorite is injected after cache hit
+  const cacheKey = `search:v1:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}`;
+
+  // ── Cached core: suggestions + product DTOs (without isFavorite) ────────────
+  const { suggestions, dtos } = await getOrSetCache(cacheKey, 15, async () => {
+    // Warehouse stock filter — in-stock only in the specified warehouse
+    const warehouseStockFilter = {
+      $or: [
+        {
+          type: productTypeEnum.SIMPLE,
+          warehouseStocks: {
+            $elemMatch: { warehouse: warehouseId, quantity: { $gt: 0 } },
+          },
+        },
+        {
+          type: productTypeEnum.VARIANT,
+          variants: {
+            $elemMatch: {
+              warehouseStocks: {
+                $elemMatch: { warehouse: warehouseId, quantity: { $gt: 0 } },
+              },
+            },
+          },
+        },
+      ],
+    };
+
+    // ── Round 1 (parallel): brands + name suggestions ─────────────────────
+    // Both queries are independent — start them together.
+    // One brand query (select _id + names) replaces what was previously two
+    // separate brand queries.
+    const [matchedBrands, nameMatchedProducts] = await Promise.all([
+      BrandModel.find({ $or: [{ name_en: regex }, { name_ar: regex }] })
+        .select("_id name_en name_ar")
+        .limit(8)
+        .lean(),
+
+      // Direct ProductModel query — bypasses the populate() in findProducts()
+      // since we only need name fields for autocomplete text.
+      ProductModel.find({
+        $and: [
+          { $or: [{ name_en: regex }, { name_ar: regex }] },
+          warehouseStockFilter,
+        ],
+      })
+        .select("name_en name_ar")
+        .limit(8)
+        .lean(),
+    ]);
+
+    // ── Round 2: product results (needs brandIds from round 1) ────────────
+    const brandIds = matchedBrands.map((b) => b._id);
+
+    const productQFilter = {
+      $or: [
+        { name_en: regex },
+        { name_ar: regex },
+        { tags: regex },
+        ...(brandIds.length > 0 ? [{ brand: { $in: brandIds } }] : []),
+      ],
+    };
+
+    const listSelect =
+      "_id slug type name_en name_ar price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
+
+    const rawProducts = await findProducts(
+      { $and: [productQFilter, warehouseStockFilter] },
+      { limit: limitNum, select: listSelect, lean: true },
+    );
+
+    // ── Round 3: promotions (needs rawProducts from round 2) ─────────────
+    const promotionsByProductId = await findActivePromotionsForProducts(
+      rawProducts,
+      new Date(),
+    );
+
+    // ── Build suggestions (brands first, then product names) ──────────────
+    const seen = new Set();
+    const suggestions = [];
+
+    const addSuggestion = (text) => {
+      if (!text || typeof text !== "string") return;
+      const key = text.trim().toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      suggestions.push(text.trim());
+    };
+
+    for (const brand of matchedBrands) {
+      if (suggestions.length >= 6) break;
+      addSuggestion(
+        normalizedLang === "ar"
+          ? brand.name_ar || brand.name_en
+          : brand.name_en,
+      );
+    }
+
+    for (const product of nameMatchedProducts) {
+      if (suggestions.length >= 6) break;
+      addSuggestion(
+        normalizedLang === "ar"
+          ? product.name_ar || product.name_en
+          : product.name_en,
+      );
+    }
+
+    // ── Map to card DTOs (isFavorite defaults false — injected after cache) ─
+    const dtos = rawProducts.map((p) => {
+      const promotion = promotionsByProductId.get(String(p._id)) || null;
+      const dto = mapProductToCardDto(p, {
+        lang: normalizedLang,
+        promotion,
+        warehouseId,
+      });
+      dto.isFavorite = false; // will be overwritten outside cache
+      return dto;
+    });
+
+    return { suggestions, dtos };
+  });
+
+  // ── isFavorite — user-specific, always computed fresh outside cache ─────────
+  if (userId) {
+    const favoriteProductIds = await getUserFavoriteProductIds(userId);
+    for (const dto of dtos) {
+      dto.isFavorite = favoriteProductIds.has(String(dto.id));
+    }
+  }
+
+  return { suggestions, products: dtos };
+}
+

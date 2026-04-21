@@ -181,5 +181,8 @@ productSchema.index({ brand: 1 });
 productSchema.index({ type: 1 });
 productSchema.index({ type: 1, "warehouseStocks.warehouse": 1 });
 productSchema.index({ type: 1, "variants.warehouseStocks.warehouse": 1 });
+// Search suggestion indexes — speeds up prefix-regex on name fields
+productSchema.index({ name_en: 1 });
+productSchema.index({ name_ar: 1 });
 
 export const ProductModel = model("Product", productSchema);
