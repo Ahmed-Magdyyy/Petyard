@@ -311,6 +311,10 @@ export async function deleteLoggedUserService({ userId }) {
     throw new ApiError("User not found", 404);
   }
 
+  if (user.role === roles.SUPER_ADMIN) {
+    throw new ApiError("Super admin can't be deleted", 400);
+  }
+
   if (user.deletedAt) {
     user.active = false;
     user.refreshTokens = [];
