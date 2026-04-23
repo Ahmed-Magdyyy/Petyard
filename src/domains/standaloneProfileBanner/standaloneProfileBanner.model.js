@@ -16,8 +16,8 @@ standaloneProfileBannerSchema.set("toJSON", {
   transform: (doc, ret) => {
     delete ret._id;
     delete ret.__v;
-    if (ret.image && ret.image.public_id) {
-      delete ret.image.public_id;
+    if (ret.image && ret.image.url) {
+      ret.image = ret.image.url;
     }
     return ret;
   },
