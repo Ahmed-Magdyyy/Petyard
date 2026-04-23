@@ -18,7 +18,10 @@ export async function createStandaloneProfileBannerService(file) {
 
   const existingBanner = await StandaloneProfileBannerModel.findOne();
   if (existingBanner) {
-    throw new ApiError("Standalone banner already exists. Use the update route instead.", 400);
+    throw new ApiError(
+      "Standalone banner already exists. Use the update route instead.",
+      400,
+    );
   }
 
   validateImageFile(file);
@@ -29,7 +32,9 @@ export async function createStandaloneProfileBannerService(file) {
   });
 
   try {
-    const banner = await StandaloneProfileBannerModel.create({ image: newImage });
+    const banner = await StandaloneProfileBannerModel.create({
+      image: newImage,
+    });
     return banner;
   } catch (err) {
     if (newImage?.public_id) {
@@ -48,7 +53,10 @@ export async function updateStandaloneProfileBannerService(file) {
 
   let banner = await StandaloneProfileBannerModel.findOne();
   if (!banner) {
-    throw new ApiError("No standalone banner found. Please create one first.", 404);
+    throw new ApiError(
+      "No standalone banner found. Please create one first.",
+      404,
+    );
   }
 
   const newImage = await uploadImageToCloudinary(file, {
@@ -73,4 +81,3 @@ export async function updateStandaloneProfileBannerService(file) {
     throw err;
   }
 }
-
