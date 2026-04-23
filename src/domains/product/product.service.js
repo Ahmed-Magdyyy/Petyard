@@ -46,6 +46,7 @@ import {
 import { brandExists } from "../brand/brand.repository.js";
 import { BrandModel } from "../brand/brand.model.js";
 import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
+import { CategoryModel } from "../category/category.model.js";
 import { countWarehouses } from "../warehouse/warehouse.repository.js";
 import { FavoriteModel } from "../favorite/favorite.model.js";
 
@@ -1158,6 +1159,7 @@ async function uploadProductImages(files, slug, mainImageIndex) {
 async function createProductService(payload, files = []) {
   const {
     type,
+    category: payloadCategoryId,
     subcategory: subcategoryId,
     brand: brandId,
     name_en,
@@ -1195,8 +1197,22 @@ async function createProductService(payload, files = []) {
     );
   }
 
-  const { categoryId, subcategoryName, categoryName } =
-    await ensureSubcategoryAndCategory(subcategoryId);
+  let categoryId = payloadCategoryId;
+  let subcategoryName = null;
+  let categoryName = null;
+
+  if (subcategoryId) {
+    const resolved = await ensureSubcategoryAndCategory(subcategoryId);
+    categoryId = resolved.categoryId;
+    subcategoryName = resolved.subcategoryName;
+    categoryName = resolved.categoryName;
+  } else if (categoryId) {
+    const categoryDoc = await CategoryModel.findById(categoryId).select("name_en").lean();
+    if (!categoryDoc) throw new ApiError(`No category found for this id: ${categoryId}`, 400);
+    categoryName = categoryDoc.name_en;
+  } else {
+    throw new ApiError("category or subcategory is required", 400);
+  }
   const brand = await ensureBrandExists(brandId);
 
   // Resolve brand name for AI context (lightweight query)
@@ -1299,7 +1315,7 @@ async function createProductService(payload, files = []) {
     const product = await createProduct({
       slug: normalizedSlug,
       type: normalizedType,
-      subcategory: subcategoryId,
+      subcategory: subcategoryId || undefined,
       category: categoryId,
       ...(brand && { brand }),
       name_en,
@@ -1339,6 +1355,7 @@ async function updateProductService(id, payload, files = []) {
   }
 
   const {
+    category: payloadCategoryId,
     subcategory: subcategoryId,
     brand: brandId,
     name_en,
@@ -1360,12 +1377,23 @@ async function updateProductService(id, payload, files = []) {
   let subcategoryName = null;
   let categoryName = null;
 
+  if (payloadCategoryId !== undefined) {
+    const categoryDoc = await CategoryModel.findById(payloadCategoryId).select("name_en").lean();
+    if (!categoryDoc) throw new ApiError(`No category found for this id: ${payloadCategoryId}`, 400);
+    product.category = payloadCategoryId;
+    categoryName = categoryDoc.name_en;
+  }
+
   if (subcategoryId !== undefined) {
-    const resolved = await ensureSubcategoryAndCategory(subcategoryId);
-    product.subcategory = subcategoryId;
-    product.category = resolved.categoryId;
-    subcategoryName = resolved.subcategoryName;
-    categoryName = resolved.categoryName;
+    if (subcategoryId === null || subcategoryId === "") {
+      product.subcategory = undefined;
+    } else {
+      const resolved = await ensureSubcategoryAndCategory(subcategoryId);
+      product.subcategory = subcategoryId;
+      product.category = resolved.categoryId;
+      subcategoryName = resolved.subcategoryName;
+      categoryName = resolved.categoryName;
+    }
   }
 
   let brandName = null;
@@ -1406,6 +1434,9 @@ async function updateProductService(id, payload, files = []) {
       const resolved = await ensureSubcategoryAndCategory(product.subcategory);
       subcategoryName = resolved.subcategoryName;
       categoryName = resolved.categoryName;
+    } else if (!categoryName && product.category) {
+      const catDoc = await CategoryModel.findById(product.category).select("name_en").lean();
+      categoryName = catDoc?.name_en || null;
     }
     if (!brandName && product.brand) {
       const brandDoc = await BrandModel.findById(product.brand)

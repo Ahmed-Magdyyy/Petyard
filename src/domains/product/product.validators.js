@@ -12,9 +12,13 @@ export const createProductValidator = [
     .isIn(Object.values(productTypeEnum))
     .withMessage("type must be either SIMPLE or VARIANT"),
 
+  body("category")
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage("category must be a valid id"),
+
   body("subcategory")
-    .notEmpty()
-    .withMessage("subcategory is required")
+    .optional({ nullable: true })
     .isMongoId()
     .withMessage("subcategory must be a valid id"),
 
@@ -197,8 +201,13 @@ export const updateProductValidator = [
 
   body("type").not().exists().withMessage("type cannot be updated"),
 
-  body("subcategory")
+  body("category")
     .optional()
+    .isMongoId()
+    .withMessage("category must be a valid id"),
+
+  body("subcategory")
+    .optional({ nullable: true })
     .isMongoId()
     .withMessage("subcategory must be a valid id"),
 

@@ -90,7 +90,6 @@ const productSchema = new Schema(
     subcategory: {
       type: Schema.Types.ObjectId,
       ref: "Subcategory",
-      required: true,
     },
     category: {
       type: Schema.Types.ObjectId,
