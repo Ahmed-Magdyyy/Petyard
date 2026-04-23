@@ -26,6 +26,7 @@ import recommendationRoutes from "../domains/recommendation/recommendation.route
 import addressRoutes from "../domains/address/address.routes.js";
 import homeLayoutRoutes from "../domains/homeLayout/homeLayout.routes.js";
 import paymentRoutes from "../domains/payment/payment.routes.js";
+import bankAccountRoutes from "../domains/bankAccount/bankAccount.routes.js";
 
 export function mountRoutes(app) {
   app.use("/api/v1/analytics", analyticsRoutes);
@@ -56,4 +57,5 @@ export function mountRoutes(app) {
   app.use("/api/v1/service-reservations", serviceReservationRoutes);
   app.use("/api/v1/home-layout", homeLayoutRoutes);
   app.use("/api/v1/payments", paymentRoutes);
+  app.use("/api/v1/bank-accounts", bankAccountRoutes);
 }
