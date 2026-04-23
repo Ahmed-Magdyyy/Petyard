@@ -29,6 +29,11 @@ export async function getBankAccountByIdService(id) {
 export async function createBankAccountService(payload) {
   const { bankName, accountName, accountNumber } = payload;
 
+  const existingAccount = await BankAccountModel.findOne({ bankName, accountNumber });
+  if (existingAccount) {
+    throw new ApiError(`A bank account with number ${accountNumber} at ${bankName} already exists`, 409);
+  }
+
   const account = await BankAccountModel.create({
     bankName,
     accountName,
@@ -45,6 +50,21 @@ export async function updateBankAccountService(id, payload) {
   }
 
   const { bankName, accountName, accountNumber } = payload;
+
+  if (bankName !== undefined || accountNumber !== undefined) {
+    const checkBankName = bankName !== undefined ? bankName : account.bankName;
+    const checkAccountNumber = accountNumber !== undefined ? accountNumber : account.accountNumber;
+    
+    const existingAccount = await BankAccountModel.findOne({ 
+      _id: { $ne: id },
+      bankName: checkBankName, 
+      accountNumber: checkAccountNumber 
+    });
+    
+    if (existingAccount) {
+      throw new ApiError(`A bank account with number ${checkAccountNumber} at ${checkBankName} already exists`, 409);
+    }
+  }
 
   if (bankName !== undefined) account.bankName = bankName;
   if (accountName !== undefined) account.accountName = accountName;
