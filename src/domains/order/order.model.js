@@ -178,6 +178,7 @@ const orderSchema = new Schema(
       enum: Object.values(paymentMethodEnum),
       default: paymentMethodEnum.COD,
     },
+    instapayScreenshot: { type: String },
     paymentStatus: {
       type: String,
       enum: Object.values(paymentStatusEnum),

@@ -14,7 +14,13 @@ export const createOrderForUserValidator = [
   body("paymentMethod")
     .optional()
     .isIn(Object.values(paymentMethodEnum))
-    .withMessage("Invalid paymentMethod"),
+    .withMessage("Invalid paymentMethod")
+    .custom((val, { req }) => {
+      if (val === paymentMethodEnum.INSTAPAY && !req.file) {
+        throw new Error("instapay screenshot is required for instapay payment method");
+      }
+      return true;
+    }),
 
   body("savedCardId")
     .optional({ nullable: true })
@@ -38,7 +44,13 @@ export const createOrderForGuestValidator = [
   body("paymentMethod")
     .optional()
     .isIn(Object.values(paymentMethodEnum))
-    .withMessage("Invalid paymentMethod"),
+    .withMessage("Invalid paymentMethod")
+    .custom((val, { req }) => {
+      if (val === paymentMethodEnum.INSTAPAY && !req.file) {
+        throw new Error("instapay screenshot is required for instapay payment method");
+      }
+      return true;
+    }),
 
   body("notes")
     .optional({ nullable: true })

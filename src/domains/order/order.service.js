@@ -45,6 +45,10 @@ import {
   getSavedCardTokenService,
   getUserSavedCardTokensService,
 } from "../payment/savedCard.service.js";
+import {
+  validateImageFile,
+  uploadImageToCloudinary,
+} from "../../shared/utils/imageUpload.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -859,6 +863,7 @@ async function processOrderCreationWithCart({
   lang,
   addressUser,
   historyByUserId,
+  instapayScreenshotUrl,
 }) {
   const { orderItems, subtotal, hasPromotionalItems } =
     await buildOrderItemsWithPromotions({ session, cart, lang });
@@ -1004,6 +1009,7 @@ async function processOrderCreationWithCart({
     couponCode: couponResult.couponCode,
     status: isCard ? orderStatusEnum.AWAITING_PAYMENT : orderStatusEnum.PENDING,
     paymentMethod: pm,
+    instapayScreenshot: instapayScreenshotUrl || undefined,
     paymentStatus: paymentStatusEnum.PENDING,
     sideEffectsCommitted: !isCard,
     history: [historyEntry],
@@ -1135,6 +1141,7 @@ export async function createOrderForUserService({
   paymentMethod,
   notes,
   savedCardId,
+  instapayScreenshotFile,
   lang = "en",
 }) {
   if (!userId) {
@@ -1145,6 +1152,23 @@ export async function createOrderForUserService({
   }
 
   const pm = normalizePaymentMethod(paymentMethod);
+
+  let instapayScreenshotUrl = null;
+  if (pm === paymentMethodEnum.INSTAPAY) {
+    if (!instapayScreenshotFile) {
+      throw new ApiError(
+        lang === "en" ? "instapayScreenshot is required" : "صورة التحويل مطلوبة",
+        400,
+      );
+    }
+    validateImageFile(instapayScreenshotFile);
+    const uploadResult = await uploadImageToCloudinary(instapayScreenshotFile, {
+      folder: "instapay_screenshots",
+    });
+    if (uploadResult) {
+      instapayScreenshotUrl = uploadResult.url;
+    }
+  }
 
   // ── Card: check for concurrent pending payment ──
   if (pm === paymentMethodEnum.CARD) {
@@ -1209,6 +1233,7 @@ export async function createOrderForUserService({
         lang,
         addressUser: cart.user,
         historyByUserId: userId,
+        instapayScreenshotUrl,
       });
     });
   } finally {
@@ -1272,6 +1297,7 @@ export async function createOrderForGuestService({
   couponCode,
   paymentMethod,
   notes,
+  instapayScreenshotFile,
   lang = "en",
 }) {
   if (!guestId) {
@@ -1282,6 +1308,23 @@ export async function createOrderForGuestService({
   }
 
   const pm = normalizePaymentMethod(paymentMethod);
+
+  let instapayScreenshotUrl = null;
+  if (pm === paymentMethodEnum.INSTAPAY) {
+    if (!instapayScreenshotFile) {
+      throw new ApiError(
+        lang === "en" ? "instapayScreenshot is required" : "صورة التحويل مطلوبة",
+        400,
+      );
+    }
+    validateImageFile(instapayScreenshotFile);
+    const uploadResult = await uploadImageToCloudinary(instapayScreenshotFile, {
+      folder: "instapay_screenshots",
+    });
+    if (uploadResult) {
+      instapayScreenshotUrl = uploadResult.url;
+    }
+  }
 
   // ── Card: check for concurrent pending payment ──
   if (pm === paymentMethodEnum.CARD) {
@@ -1346,6 +1389,7 @@ export async function createOrderForGuestService({
         lang,
         addressUser: null,
         historyByUserId: undefined,
+        instapayScreenshotUrl,
       });
     });
   } finally {

@@ -33,11 +33,12 @@ import {
   guestLimiter,
   paymentLimiter,
 } from "../../shared/middlewares/rateLimitMiddleware.js";
+import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
 
 const router = Router();
 
 // Guest checkout order (rate-limited)
-router.post("/guest", guestLimiter, paymentLimiter, createOrderForGuestValidator, createOrderForGuest);
+router.post("/guest", guestLimiter, paymentLimiter, uploadSingleImage("instapayScreenshot"), createOrderForGuestValidator, createOrderForGuest);
 router.get("/guest", guestLimiter, getGuestOrders);
 router.get("/guest/:id", guestLimiter, orderIdParamValidator, getGuestOrder);
 router.post("/guest/:id/reorder", guestLimiter, orderIdParamValidator, reorderForGuest);
@@ -49,6 +50,7 @@ router.post(
   "/me",
   paymentLimiter,
   requireSystemPhoneVerifiedForSensitiveActions,
+  uploadSingleImage("instapayScreenshot"),
   createOrderForUserValidator,
   createOrderForUser,
 );

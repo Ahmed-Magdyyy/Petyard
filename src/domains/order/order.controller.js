@@ -34,6 +34,7 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
     couponCode,
     paymentMethod,
     notes,
+    instapayScreenshotFile: req.file,
     lang: req.lang,
   });
 
@@ -58,6 +59,7 @@ export const createOrderForUser = asyncHandler(async (req, res) => {
     paymentMethod,
     notes,
     savedCardId,
+    instapayScreenshotFile: req.file,
     lang: req.lang,
   });
 
