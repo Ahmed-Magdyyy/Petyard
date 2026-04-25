@@ -918,6 +918,7 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}, u
   const totalPages = Math.ceil(totalProductsCount / limitNum) || 1;
 
   return {
+    totalResults: totalProductsCount,
     totalPages,
     page: pageNum,
     results: data.length,
