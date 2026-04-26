@@ -1,7 +1,13 @@
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { getFirebaseAdmin } from "../../config/firebase.js";
 import { NotificationDeviceModel } from "./notification.model.js";
-import { dispatchNotification } from "./notificationDispatcher.js";
+import { dispatchNotification, dispatchNotificationToUsers } from "./notificationDispatcher.js";
+import { UserModel } from "../user/user.model.js";
+import { WarehouseModel } from "../warehouse/warehouse.model.js";
+import {
+  roles,
+  enabledControls,
+} from "../../shared/constants/enums.js";
 
 function normalizePlatform(value) {
   const v = typeof value === "string" ? value.toLowerCase().trim() : "";
@@ -448,4 +454,82 @@ export async function sendBroadcastNotificationToAllDevices({
     deviceCount: devices.length,
     ...result,
   };
+}
+
+/**
+ * Send notification to all admins with "orders" control enabled
+ * and to all moderators of the order's warehouse.
+ *
+ * @param {Object} order - The order document (must have orderNumber, warehouse, _id)
+ */
+export async function sendNewOrderNotificationToAdminsAndModerators(order) {
+  if (!order) return { skipped: true };
+
+  try {
+    const orderNumber = order.orderNumber || "";
+
+    // 1. Find all superAdmins (full access) + admins with "orders" control enabled
+    const admins = await UserModel.find({
+      active: true,
+      $or: [
+        { role: roles.SUPER_ADMIN },
+        { role: roles.ADMIN, enabledControls: enabledControls.ORDERS },
+      ],
+    }).select("_id");
+
+    const adminIds = admins.map((a) => String(a._id));
+
+    // 2. Find moderators for the order's warehouse (if any)
+    let moderatorIds = [];
+    if (order.warehouse) {
+      const warehouse = await WarehouseModel.findById(order.warehouse).select(
+        "moderators",
+      );
+      if (warehouse && Array.isArray(warehouse.moderators)) {
+        moderatorIds = warehouse.moderators
+          .filter(Boolean)
+          .map((id) => String(id));
+      }
+    }
+
+    // 3. Merge and deduplicate
+    const allRecipientIds = [
+      ...new Set([...adminIds, ...moderatorIds]),
+    ];
+
+    if (!allRecipientIds.length) {
+      return { skipped: true, reason: "no_recipients" };
+    }
+
+    // 4. Dispatch notification
+    const result = await dispatchNotificationToUsers({
+      userIds: allRecipientIds,
+      notification: {
+        title_en: "New Order Placed",
+        title_ar: "طلب جديد",
+        body_en: `Order ${orderNumber} has been placed and is awaiting processing.`,
+        body_ar: `تم تقديم الطلب ${orderNumber} وينتظر المعالجة.`,
+      },
+      icon: "order",
+      action: {
+        type: "order_detail",
+        screen: "OrderDetailScreen",
+        params: { orderId: String(order._id) },
+      },
+      source: {
+        domain: "order",
+        event: "new_order_placed",
+        referenceId: String(order._id),
+      },
+      channels: { push: true, inApp: true },
+    });
+
+    return result;
+  } catch (err) {
+    console.error(
+      "[Notification] Failed to send new order notification to admins/moderators:",
+      err.message,
+    );
+    return { skipped: true };
+  }
 }

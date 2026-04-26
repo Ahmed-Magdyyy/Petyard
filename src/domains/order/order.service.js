@@ -19,7 +19,7 @@ import {
   findActiveCouponByCodeService,
   computeCouponEffect,
 } from "../coupon/coupon.service.js";
-import { sendOrderStatusChangedNotification } from "../notification/notification.service.js";
+import { sendOrderStatusChangedNotification, sendNewOrderNotificationToAdminsAndModerators } from "../notification/notification.service.js";
 import { dispatchNotification } from "../notification/notificationDispatcher.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import {
@@ -1289,6 +1289,13 @@ export async function createOrderForUserService({
     ),
   );
 
+  sendNewOrderNotificationToAdminsAndModerators(createdOrder).catch((err) =>
+    console.error(
+      "[Order] Failed to send new order notification to admins/moderators:",
+      err.message,
+    ),
+  );
+
   return { order: createdOrder };
 }
 
@@ -1426,11 +1433,18 @@ export async function createOrderForGuestService({
     }
   }
 
-  // ── COD: invalidate caches ──
+  // ── COD: invalidate caches and send notifications ──
   const productIds = Array.isArray(createdOrder.items)
     ? createdOrder.items.map((i) => i.product)
     : [];
   await invalidateProductCaches(productIds);
+
+  sendNewOrderNotificationToAdminsAndModerators(createdOrder).catch((err) =>
+    console.error(
+      "[Order] Failed to send new order notification to admins/moderators:",
+      err.message,
+    ),
+  );
 
   return { order: createdOrder };
 }
@@ -2410,6 +2424,13 @@ async function commitOrderSideEffects(
         err.message,
       ),
     );
+
+    sendNewOrderNotificationToAdminsAndModerators(updatedOrder).catch((err) =>
+      console.error(
+        "[Order] Failed to send new order notification to admins/moderators:",
+        err.message,
+      ),
+    );
   }
 }
 
@@ -2525,6 +2546,13 @@ export async function confirmOrderPaymentService({
   sendOrderStatusChangedNotification(order).catch((err) =>
     console.error(
       "[Order] Failed to send payment confirmed notification:",
+      err.message,
+    ),
+  );
+
+  sendNewOrderNotificationToAdminsAndModerators(order).catch((err) =>
+    console.error(
+      "[Order] Failed to send new order notification to admins/moderators:",
       err.message,
     ),
   );
