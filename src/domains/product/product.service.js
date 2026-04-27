@@ -36,7 +36,7 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 import { getOrSetCache, deleteCacheKey } from "../../shared/utils/cache.js";
-import { escapeRegex } from "../../shared/utils/escapeRegex.js";
+import { escapeRegex, buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
 import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
   autoHideExpiredCollections,
@@ -769,7 +769,7 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}, u
   // Free-text search on name_en, name_ar, tags, and matched brands
   const orConditions = [];
   if (typeof q === "string" && q.trim()) {
-    const regex = { $regex: escapeRegex(q.trim()), $options: "i" };
+    const regex = { $regex: buildFlexibleSearchPattern(q.trim()), $options: "i" };
     orConditions.push(
       { name_en: regex },
       { name_ar: regex },
@@ -1688,7 +1688,7 @@ export async function searchProductsService({
     return { suggestions: [], products: [] };
   }
 
-  const regex = { $regex: escapeRegex(trimmedQ), $options: "i" };
+  const regex = { $regex: buildFlexibleSearchPattern(trimmedQ), $options: "i" };
   const warehouseId = String(warehouse);
   const limitNum = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 20);
 
