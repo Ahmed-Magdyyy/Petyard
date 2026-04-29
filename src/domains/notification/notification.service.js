@@ -7,6 +7,11 @@ import {
 } from "./notificationDispatcher.js";
 import { UserModel } from "../user/user.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
+import {
+  toCairoDateISO,
+  toCairoHour24,
+  formatHourLabel12,
+} from "../serviceReservation/reservations/serviceReservation.utils.js";
 import { roles, enabledControls } from "../../shared/constants/enums.js";
 
 function normalizePlatform(value) {
@@ -548,6 +553,11 @@ export async function sendNewServiceReservationNotificationToAdmins(
       reservation.serviceName_en || reservation.serviceType || "";
     const ownerName = reservation.ownerName || "";
 
+    // Compute local date/time from startsAt (Cairo timezone)
+    const localDate = toCairoDateISO(reservation.startsAt);
+    const hour24 = toCairoHour24(reservation.startsAt);
+    const label = formatHourLabel12(hour24);
+
     // Find all superAdmins + admins with "service_reservations" control enabled
     const admins = await UserModel.find({
       active: true,
@@ -565,14 +575,14 @@ export async function sendNewServiceReservationNotificationToAdmins(
     if (!recipientIds.length) {
       return { skipped: true, reason: "no_recipients" };
     }
-console.log("reservation",reservation);
+
     const result = await dispatchNotificationToUsers({
       userIds: recipientIds,
       notification: {
         title_en: "New Service Reservation",
         title_ar: "حجز خدمة جديد",
-        body_en: `${ownerName} booked a ${reservation.serviceName_en} reservation on ${reservation.localDate} at ${reservation.localTime}.`,
-        body_ar: `قام ${ownerName} بحجز خدمة ${reservation.serviceName_ar} ليوم ${reservation.localDate} في ${reservation.localTime}.`,
+        body_en: `${ownerName} booked a ${serviceName} reservation on ${localDate} at ${label}.`,
+        body_ar: `قام ${ownerName} بحجز خدمة ${reservation.serviceName_ar || serviceName} ليوم ${localDate} في ${label}.`,
       },
       icon: "service",
       action: {
