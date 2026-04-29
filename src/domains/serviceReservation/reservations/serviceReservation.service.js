@@ -298,7 +298,7 @@ async function buildReservationDto(reservation, location, lang) {
   };
 }
 
-function assertWithinBookingWindowOrThrow(cairoDateStart, lang) {
+function assertWithinBookingWindowOrThrow(cairoDateStart, lang = "en") {
   const now = getNowCairo().startOf("day");
   const diffDays = cairoDateStart.diff(now, "days").days;
 
@@ -444,7 +444,7 @@ export async function createReservationService({
         ];
 
   const cairoDateStart = parseCairoDateOrThrow(payload.date);
-  assertWithinBookingWindowOrThrow(cairoDateStart);
+  assertWithinBookingWindowOrThrow(cairoDateStart, lang);
 
   const { hour24, utcDate: startsAt } = cairoSlotToUtcDate({
     dateISO: payload.date,
