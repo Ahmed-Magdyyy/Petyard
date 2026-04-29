@@ -94,19 +94,24 @@ export function formatHourLabel12(hour24) {
   }
   return DateTime.fromObject(
     { hour: n, minute: 0 },
-    { zone: CAIRO_TIMEZONE }
+    { zone: CAIRO_TIMEZONE },
   ).toFormat("h:mm a");
 }
 
-export function ensureWithinWorkingHoursOrThrow({ cairoDateStart, hour24 }) {
+export function ensureWithinWorkingHoursOrThrow(
+  { cairoDateStart, hour24 },
+  lang = "en",
+) {
   const { startHour, endHour } = getWorkingHoursForCairoDate(cairoDateStart);
 
   if (hour24 < startHour || hour24 >= endHour) {
     const startLabel = formatHourLabel12(startHour) || `${startHour}:00`;
     const endLabel = formatHourLabel12(endHour) || `${endHour}:00`;
     throw new ApiError(
-      `Selected time is outside working hours (${startLabel} - ${endLabel})`,
-      400
+      lang === "ar"
+        ? `الوقت المحدد خارج ساعات العمل (${startLabel} - ${endLabel})`
+        : `Selected time is outside working hours (${startLabel} - ${endLabel})`,
+      400,
     );
   }
 }
@@ -122,14 +127,14 @@ export function startOfCurrentHourCairo() {
 
 export function toCairoDateISO(dtUtc) {
   const cairo = DateTime.fromJSDate(dtUtc, { zone: "utc" }).setZone(
-    CAIRO_TIMEZONE
+    CAIRO_TIMEZONE,
   );
   return cairo.toFormat("yyyy-LL-dd");
 }
 
 export function toCairoHour24(dtUtc) {
   const cairo = DateTime.fromJSDate(dtUtc, { zone: "utc" }).setZone(
-    CAIRO_TIMEZONE
+    CAIRO_TIMEZONE,
   );
   return cairo.hour;
 }

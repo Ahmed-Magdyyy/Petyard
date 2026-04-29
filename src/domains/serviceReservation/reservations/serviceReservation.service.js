@@ -454,7 +454,10 @@ export async function createReservationService({
   });
 
   for (let i = 0; i < requestedServices.length; i += 1) {
-    ensureWithinWorkingHoursOrThrow({ cairoDateStart, hour24: hour24 + i });
+    ensureWithinWorkingHoursOrThrow(
+      { cairoDateStart, hour24: hour24 + i },
+      lang,
+    );
   }
 
   const cairoSlot = parseCairoDateOrThrow(payload.date).set({
