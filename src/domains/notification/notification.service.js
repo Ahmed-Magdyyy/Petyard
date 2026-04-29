@@ -565,14 +565,14 @@ export async function sendNewServiceReservationNotificationToAdmins(
     if (!recipientIds.length) {
       return { skipped: true, reason: "no_recipients" };
     }
-
+console.log("reservation",reservation);
     const result = await dispatchNotificationToUsers({
       userIds: recipientIds,
       notification: {
         title_en: "New Service Reservation",
         title_ar: "حجز خدمة جديد",
-        body_en: `${ownerName} booked a ${serviceName} reservation on ${reservation.localDate} at ${reservation.localTime}.`,
-        body_ar: `قام ${ownerName} بحجز خدمة ${serviceName} ليوم ${reservation.localDate} في ${reservation.localTime}.`,
+        body_en: `${ownerName} booked a ${reservation.serviceName_en} reservation on ${reservation.localDate} at ${reservation.localTime}.`,
+        body_ar: `قام ${ownerName} بحجز خدمة ${reservation.serviceName_ar} ليوم ${reservation.localDate} في ${reservation.localTime}.`,
       },
       icon: "service",
       action: {
