@@ -533,3 +533,63 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
     return { skipped: true };
   }
 }
+
+/**
+ * Send notification to all superadmins and admins with "service_reservations"
+ * control enabled when a new service reservation is submitted.
+ *
+ * @param {Object} reservation - The reservation document (must have _id, serviceType, serviceName_en, serviceName_ar, ownerName)
+ */
+export async function sendNewServiceReservationNotificationToAdmins(reservation) {
+  if (!reservation) return { skipped: true };
+
+  try {
+    const serviceName = reservation.serviceName_en || reservation.serviceType || "";
+    const ownerName = reservation.ownerName || "";
+
+    // Find all superAdmins + admins with "service_reservations" control enabled
+    const admins = await UserModel.find({
+      active: true,
+      $or: [
+        { role: roles.SUPER_ADMIN },
+        { role: roles.ADMIN, enabledControls: enabledControls.SERVICE_RESERVATIONS },
+      ],
+    }).select("_id");
+
+    const recipientIds = [...new Set(admins.map((a) => String(a._id)))];
+
+    if (!recipientIds.length) {
+      return { skipped: true, reason: "no_recipients" };
+    }
+
+    const result = await dispatchNotificationToUsers({
+      userIds: recipientIds,
+      notification: {
+        title_en: "New Service Reservation",
+        title_ar: "حجز خدمة جديد",
+        body_en: `${ownerName} booked a ${serviceName} reservation.`,
+        body_ar: `قام ${ownerName} بحجز خدمة ${reservation.serviceName_ar || serviceName}.`,
+      },
+      icon: "service",
+      action: {
+        type: "service_reservation_detail",
+        screen: "ServiceReservationDetailScreen",
+        params: { reservationId: String(reservation._id) },
+      },
+      source: {
+        domain: "service_reservation",
+        event: "new_reservation",
+        referenceId: String(reservation._id),
+      },
+      channels: { push: true, inApp: true },
+    });
+
+    return result;
+  } catch (err) {
+    console.error(
+      "[Notification] Failed to send new service reservation notification to admins:",
+      err.message,
+    );
+    return { skipped: true };
+  }
+}

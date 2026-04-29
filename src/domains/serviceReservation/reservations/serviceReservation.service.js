@@ -31,6 +31,7 @@ import {
 } from "./serviceReservation.utils.js";
 import { getServiceLocationByIdService } from "../locations/serviceLocation.service.js";
 import { dispatchNotification } from "../../notification/notificationDispatcher.js";
+import { sendNewServiceReservationNotificationToAdmins } from "../../notification/notification.service.js";
 import {
   buildPagination,
   buildSort,
@@ -612,6 +613,17 @@ export async function createReservationService({
     throw new ApiError(
       lang === "en" ? "Failed to create reservation" : "فشل إنشاء الحجز",
       500,
+    );
+  }
+
+  // Fire-and-forget: notify admins about the new reservation(s)
+  const reservationsToNotify = Array.isArray(created) ? created : [created];
+  for (const res of reservationsToNotify) {
+    sendNewServiceReservationNotificationToAdmins(res).catch((err) =>
+      console.error(
+        "[ServiceReservation] Failed to send new reservation notification to admins:",
+        err.message,
+      ),
     );
   }
 
