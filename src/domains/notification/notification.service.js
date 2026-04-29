@@ -1,13 +1,13 @@
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { getFirebaseAdmin } from "../../config/firebase.js";
 import { NotificationDeviceModel } from "./notification.model.js";
-import { dispatchNotification, dispatchNotificationToUsers } from "./notificationDispatcher.js";
+import {
+  dispatchNotification,
+  dispatchNotificationToUsers,
+} from "./notificationDispatcher.js";
 import { UserModel } from "../user/user.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
-import {
-  roles,
-  enabledControls,
-} from "../../shared/constants/enums.js";
+import { roles, enabledControls } from "../../shared/constants/enums.js";
 
 function normalizePlatform(value) {
   const v = typeof value === "string" ? value.toLowerCase().trim() : "";
@@ -493,9 +493,7 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
     }
 
     // 3. Merge and deduplicate
-    const allRecipientIds = [
-      ...new Set([...adminIds, ...moderatorIds]),
-    ];
+    const allRecipientIds = [...new Set([...adminIds, ...moderatorIds])];
 
     if (!allRecipientIds.length) {
       return { skipped: true, reason: "no_recipients" };
@@ -540,11 +538,14 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
  *
  * @param {Object} reservation - The reservation document (must have _id, serviceType, serviceName_en, serviceName_ar, ownerName)
  */
-export async function sendNewServiceReservationNotificationToAdmins(reservation) {
+export async function sendNewServiceReservationNotificationToAdmins(
+  reservation,
+) {
   if (!reservation) return { skipped: true };
 
   try {
-    const serviceName = reservation.serviceName_en || reservation.serviceType || "";
+    const serviceName =
+      reservation.serviceName_en || reservation.serviceType || "";
     const ownerName = reservation.ownerName || "";
 
     // Find all superAdmins + admins with "service_reservations" control enabled
@@ -552,7 +553,10 @@ export async function sendNewServiceReservationNotificationToAdmins(reservation)
       active: true,
       $or: [
         { role: roles.SUPER_ADMIN },
-        { role: roles.ADMIN, enabledControls: enabledControls.SERVICE_RESERVATIONS },
+        {
+          role: roles.ADMIN,
+          enabledControls: enabledControls.SERVICE_RESERVATIONS,
+        },
       ],
     }).select("_id");
 
@@ -567,8 +571,8 @@ export async function sendNewServiceReservationNotificationToAdmins(reservation)
       notification: {
         title_en: "New Service Reservation",
         title_ar: "حجز خدمة جديد",
-        body_en: `${ownerName} booked a ${serviceName} reservation.`,
-        body_ar: `قام ${ownerName} بحجز خدمة ${reservation.serviceName_ar || serviceName}.`,
+        body_en: `${ownerName} booked a ${serviceName} reservation on ${reservation.localDate} at ${reservation.localTime}.`,
+        body_ar: `قام ${ownerName} بحجز خدمة ${serviceName} ليوم ${reservation.localDate} في ${reservation.localTime}.`,
       },
       icon: "service",
       action: {
