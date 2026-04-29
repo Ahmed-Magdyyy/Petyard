@@ -4,7 +4,7 @@ const { Schema, model } = mongoose;
 
 /**
  * In-App Notification Schema
- * 
+ *
  * Stores persistent notifications for users to view in-app.
  * Supports i18n (title_en/ar, body_en/ar) and deep linking via action object.
  */
@@ -37,7 +37,17 @@ const inAppNotificationSchema = new Schema(
     // Visual icon type for FE to display appropriate icon
     icon: {
       type: String,
-      enum: ["order", "promo", "appointment", "product", "pet", "wallet", "loyalty", "system"],
+      enum: [
+        "order",
+        "promo",
+        "appointment",
+        "product",
+        "pet",
+        "wallet",
+        "loyalty",
+        "service",
+        "system",
+      ],
       default: "system",
     },
 
@@ -89,7 +99,7 @@ const inAppNotificationSchema = new Schema(
       index: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Compound indexes for efficient user notification queries
@@ -98,5 +108,5 @@ inAppNotificationSchema.index({ user: 1, isRead: 1, createdAt: -1 });
 
 export const InAppNotificationModel = model(
   "InAppNotification",
-  inAppNotificationSchema
+  inAppNotificationSchema,
 );
