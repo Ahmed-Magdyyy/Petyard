@@ -2087,11 +2087,24 @@ export async function updateOrderStatusService({
       const payOnDeliveryMethods = [
         paymentMethodEnum.COD,
         paymentMethodEnum.POS_ON_DELIVERY,
-        paymentMethodEnum.INSTAPAY,
       ];
       if (
         newStatus === orderStatusEnum.DELIVERED &&
         payOnDeliveryMethods.includes(order.paymentMethod) &&
+        order.paymentStatus !== paymentStatusEnum.PAID
+      ) {
+        order.paymentStatus = paymentStatusEnum.PAID;
+      }
+
+      // Auto-mark InstaPay as paid when accepted (admin verified the screenshot)
+      const postPendingStatuses = [
+        orderStatusEnum.ACCEPTED,
+        orderStatusEnum.SHIPPED,
+        orderStatusEnum.DELIVERED,
+      ];
+      if (
+        postPendingStatuses.includes(newStatus) &&
+        order.paymentMethod === paymentMethodEnum.INSTAPAY &&
         order.paymentStatus !== paymentStatusEnum.PAID
       ) {
         order.paymentStatus = paymentStatusEnum.PAID;
@@ -2147,6 +2160,35 @@ export async function updateOrderStatusService({
           ],
           { session },
         );
+
+        // Explicitly deduct the loyalty deficit from the wallet for cancellations
+        // (Returns handle this by subtracting it from the wallet refund)
+        if (isCancelling && walletDeductedForPoints > 0) {
+          await UserModel.updateOne(
+            { _id: order.user },
+            { $inc: { walletBalance: -walletDeductedForPoints } },
+            { session },
+          );
+
+          const userAfterDeduct = await UserModel.findById(order.user)
+            .session(session)
+            .select("walletBalance");
+
+          await WalletTransactionModel.create(
+            [
+              {
+                user: order.user,
+                amount: -walletDeductedForPoints,
+                type: "ORDER_DEBIT",
+                referenceType: "ORDER",
+                referenceId: order._id,
+                balanceAfter: userAfterDeduct?.walletBalance ?? 0,
+                note: `Loyalty points deficit recovery for cancelled order ${order.orderNumber}`,
+              },
+            ],
+            { session },
+          );
+        }
       }
 
       // Return: refund order total (subtotal - discount) to wallet, minus loyalty wallet deduction

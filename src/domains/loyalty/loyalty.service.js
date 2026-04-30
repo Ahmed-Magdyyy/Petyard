@@ -116,13 +116,13 @@ export async function deductLoyaltyPointsOnReturnService({
       pointsDeficit / settings.pointsRedeemRate,
     );
 
-    // Deduct available points and wallet equivalent
+    // Deduct available points only — wallet offset is handled by the caller
+    // via the refund calculation (grossRefund - walletDeducted)
     await UserModel.updateOne(
       { _id: userId },
       {
         $inc: {
           loyaltyPoints: -currentPoints,
-          walletBalance: -walletDeduction,
         },
       },
       { session },
