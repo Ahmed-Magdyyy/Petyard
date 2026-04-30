@@ -25,11 +25,6 @@ export const createConditionValidator = [
 export const updateConditionValidator = [
   param("id").isMongoId().withMessage("Invalid condition id"),
 
-  body("slug")
-    .not()
-    .exists()
-    .withMessage("slug cannot be updated"),
-
   body("type")
     .optional()
     .isIn(conditionTypes)
