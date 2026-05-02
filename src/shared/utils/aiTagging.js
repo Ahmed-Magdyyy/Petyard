@@ -23,7 +23,7 @@ const GEMINI_MODEL = "gemini-2.0-flash";
 const BASELINE_CONDITION_TAGS = Object.freeze([
   // chronic
   "diabetic", "early-renal-support", "hepatitis", "joint-care",
-  "kidney-disease", "renal", "renal-support", "sterilised",
+  "renal-support", "sterilised",
   // temporary
   "anxiety", "digestive-disease", "ear-infection", "fungal-disease",
   "hair-loss", "hairball", "immunity", "obesity", "oral-care",
@@ -144,9 +144,11 @@ const SYNONYM_MAP = Object.freeze({
   "liver-disease": "hepatitis",
   "liver-support": "hepatitis",
 
-  // kidney-disease
-  "kidney": "kidney-disease",
-  "renal-disease": "kidney-disease",
+  // renal-support (replaces removed kidney-disease & renal slugs)
+  "kidney": "renal-support",
+  "kidney-disease": "renal-support",
+  "renal": "renal-support",
+  "renal-disease": "renal-support",
 
   // skin-allergy
   "allergy": "skin-allergy",
