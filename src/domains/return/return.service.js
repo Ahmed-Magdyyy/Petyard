@@ -14,7 +14,10 @@ import {
 } from "../../shared/constants/enums.js";
 import { restoreStockForOrder } from "../order/order.service.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
-import { sendReturnStatusChangedNotification } from "../notification/notification.service.js";
+import {
+  sendReturnStatusChangedNotification,
+  sendNewReturnRequestNotificationToAdminsAndModerators,
+} from "../notification/notification.service.js";
 import { deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
 import { refundTransaction } from "../payment/paymob.service.js";
 
@@ -165,6 +168,17 @@ export async function createReturnRequestService({
   }
 
   const returnRequest = await ReturnRequestModel.create(returnData);
+
+  // Fire-and-forget notification to admins and warehouse moderators
+  sendNewReturnRequestNotificationToAdminsAndModerators(
+    order,
+    returnRequest,
+  ).catch((e) =>
+    console.error(
+      "[Return] Failed to send new return request notification to admins/moderators:",
+      e.message,
+    ),
+  );
 
   return returnRequest;
 }
