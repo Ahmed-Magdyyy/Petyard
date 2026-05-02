@@ -183,5 +183,7 @@ productSchema.index({ type: 1, "variants.warehouseStocks.warehouse": 1 });
 // Search suggestion indexes — speeds up prefix-regex on name fields
 productSchema.index({ name_en: 1 });
 productSchema.index({ name_ar: 1 });
+// Recommendation engine — speeds up $all queries on the tags array
+productSchema.index({ tags: 1 });
 
 export const ProductModel = model("Product", productSchema);

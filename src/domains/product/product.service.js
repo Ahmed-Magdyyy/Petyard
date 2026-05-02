@@ -36,7 +36,10 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 import { getOrSetCache, deleteCacheKey } from "../../shared/utils/cache.js";
-import { escapeRegex, buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
+import {
+  escapeRegex,
+  buildFlexibleSearchPattern,
+} from "../../shared/utils/escapeRegex.js";
 import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
   autoHideExpiredCollections,
@@ -700,7 +703,12 @@ async function resolveCollectionFilter(collectionId) {
   return { $or: orConditions };
 }
 
-async function getProductsService(queryParams = {}, lang = "en", options = {}, userId = null) {
+async function getProductsService(
+  queryParams = {},
+  lang = "en",
+  options = {},
+  userId = null,
+) {
   const {
     page,
     limit,
@@ -769,12 +777,11 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}, u
   // Free-text search on name_en, name_ar, tags, and matched brands
   const orConditions = [];
   if (typeof q === "string" && q.trim()) {
-    const regex = { $regex: buildFlexibleSearchPattern(q.trim()), $options: "i" };
-    orConditions.push(
-      { name_en: regex },
-      { name_ar: regex },
-      { tags: regex },
-    );
+    const regex = {
+      $regex: buildFlexibleSearchPattern(q.trim()),
+      $options: "i",
+    };
+    orConditions.push({ name_en: regex }, { name_ar: regex }, { tags: regex });
 
     // Also search by brand name — find brands matching q, then include their products
     const matchedBrands = await BrandModel.find({
@@ -883,7 +890,7 @@ async function getProductsService(queryParams = {}, lang = "en", options = {}, u
   }
 
   const listSelect =
-    "_id slug type name_en name_ar price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
+    "_id slug type name_en name_ar tags price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
 
   const [totalProductsCount, products] = await Promise.all([
     countProducts(mongoFilter),
@@ -1208,8 +1215,11 @@ async function createProductService(payload, files = []) {
     subcategoryName = resolved.subcategoryName;
     categoryName = resolved.categoryName;
   } else if (categoryId) {
-    const categoryDoc = await CategoryModel.findById(categoryId).select("name_en").lean();
-    if (!categoryDoc) throw new ApiError(`No category found for this id: ${categoryId}`, 400);
+    const categoryDoc = await CategoryModel.findById(categoryId)
+      .select("name_en")
+      .lean();
+    if (!categoryDoc)
+      throw new ApiError(`No category found for this id: ${categoryId}`, 400);
     categoryName = categoryDoc.name_en;
   } else {
     throw new ApiError("category or subcategory is required", 400);
@@ -1233,7 +1243,7 @@ async function createProductService(payload, files = []) {
     categoryName,
     brandName,
   });
-  const finalTags = mergeTagsWithAI(normalizedTags, aiTags);
+  const finalTags = await mergeTagsWithAI(normalizedTags, aiTags);
   const normalizedOptions =
     normalizedType === productTypeEnum.VARIANT
       ? normalizeProductOptions(options)
@@ -1379,8 +1389,14 @@ async function updateProductService(id, payload, files = []) {
   let categoryName = null;
 
   if (payloadCategoryId !== undefined) {
-    const categoryDoc = await CategoryModel.findById(payloadCategoryId).select("name_en").lean();
-    if (!categoryDoc) throw new ApiError(`No category found for this id: ${payloadCategoryId}`, 400);
+    const categoryDoc = await CategoryModel.findById(payloadCategoryId)
+      .select("name_en")
+      .lean();
+    if (!categoryDoc)
+      throw new ApiError(
+        `No category found for this id: ${payloadCategoryId}`,
+        400,
+      );
     product.category = payloadCategoryId;
     categoryName = categoryDoc.name_en;
   }
@@ -1436,7 +1452,9 @@ async function updateProductService(id, payload, files = []) {
       subcategoryName = resolved.subcategoryName;
       categoryName = resolved.categoryName;
     } else if (!categoryName && product.category) {
-      const catDoc = await CategoryModel.findById(product.category).select("name_en").lean();
+      const catDoc = await CategoryModel.findById(product.category)
+        .select("name_en")
+        .lean();
       categoryName = catDoc?.name_en || null;
     }
     if (!brandName && product.brand) {
@@ -1456,7 +1474,7 @@ async function updateProductService(id, payload, files = []) {
       brandName,
     });
 
-    product.tags = mergeTagsWithAI(adminTags, aiTags);
+    product.tags = await mergeTagsWithAI(adminTags, aiTags);
   }
 
   if (options !== undefined) {
@@ -1796,7 +1814,8 @@ export async function searchProductsService({
         normalizedLang === "ar"
           ? brand.name_ar || brand.name_en
           : brand.name_en;
-      if (brandName && IGNORED_BRANDS.has(brandName.trim().toLowerCase())) continue;
+      if (brandName && IGNORED_BRANDS.has(brandName.trim().toLowerCase()))
+        continue;
       addSuggestion(brandName);
     }
 
@@ -1835,4 +1854,3 @@ export async function searchProductsService({
 
   return { suggestions, products: dtos };
 }
-

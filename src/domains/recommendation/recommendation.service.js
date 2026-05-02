@@ -152,9 +152,30 @@ async function loadConditionNamesBySlug(slugs) {
 }
 
 function formatTitleFromCondition(condition, lang) {
-  if (!condition) return null;
-  const normalizedLang = normalizeLang(lang);
-  return normalizedLang === "ar" ? condition.name_ar || condition.name_en : condition.name_en;
+  if (!condition) return { en: null, ar: null };
+  const en = condition.name_en || null;
+  const ar = condition.name_ar || condition.name_en || null;
+  return { en, ar };
+}
+
+/** Maps pet type slug → Arabic label */
+function petTypeAr(petType) {
+  const map = {
+    dog: "الكلاب",
+    cat: "القطط",
+    bird: "الطيور",
+    fish: "الأسماك",
+    hamster: "الهامستر",
+    rabbit: "الأرانب",
+    turtle: "السلاحف",
+    "small-animal": "الحيوانات الصغيرة",
+  };
+  return map[petType] || "حيوانك الأليف";
+}
+
+/** Maps life stage → Arabic label */
+function lifeStageAr(stage) {
+  return stage === "baby" ? "الصغار" : "البالغين";
 }
 
 export async function getHomeRecommendationsService({ userId, warehouseId, lang }) {
@@ -197,11 +218,10 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
       2
     )) {
       const condition = conditionsBySlug.get(slug) || null;
-      const title = formatTitleFromCondition(condition, normalizedLang) || slug;
 
       const products = await fetchProductsWithStock({
         filter: {
-          tags: { $in: [slug, petType].filter(Boolean) },
+          tags: { $all: [slug, petType].filter(Boolean) },
         },
         warehouseId,
         limit: 14,
@@ -211,10 +231,11 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
 
       const picked = pickUniqueProducts(usedIds, products, 10);
       if (picked.length) {
+        const { en, ar } = formatTitleFromCondition(condition, normalizedLang);
         sections.push({
           id: `chronic_${slug}`,
-          title: `${title} Support`,
-          titleAr: null,
+          title: `${en || slug} Support`,
+          titleAr: ar ? `دعم ${ar}` : null,
           priority: sections.length + 1,
           reason: `Based on ${pet.name || "your pet"}`,
           products: picked,
@@ -227,11 +248,10 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
       2
     )) {
       const condition = conditionsBySlug.get(slug) || null;
-      const title = formatTitleFromCondition(condition, normalizedLang) || slug;
 
       const products = await fetchProductsWithStock({
         filter: {
-          tags: { $in: [slug, petType].filter(Boolean) },
+          tags: { $all: [slug, petType].filter(Boolean) },
         },
         warehouseId,
         limit: 14,
@@ -241,10 +261,11 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
 
       const picked = pickUniqueProducts(usedIds, products, 10);
       if (picked.length) {
+        const { en, ar } = formatTitleFromCondition(condition, normalizedLang);
         sections.push({
           id: `issue_${slug}`,
-          title: `For ${title}`,
-          titleAr: null,
+          title: `For ${en || slug}`,
+          titleAr: ar ? `لعلاج ${ar}` : null,
           priority: sections.length + 1,
           reason: `Based on ${pet.name || "your pet"}`,
           products: picked,
@@ -255,7 +276,7 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
     {
       const products = await fetchProductsWithStock({
         filter: {
-          tags: { $in: [petType, lifeStage].filter(Boolean) },
+          tags: { $all: [petType, lifeStage].filter(Boolean) },
         },
         warehouseId,
         limit: 14,
@@ -271,7 +292,7 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
         sections.push({
           id: "life_stage",
           title: `${stageLabel} ${typeLabel} Essentials`,
-          titleAr: null,
+          titleAr: `أساسيات ${petTypeAr(petType)} ${lifeStageAr(lifeStage)}`,
           priority: sections.length + 1,
           reason: "Based on age category",
           products: picked,
@@ -285,7 +306,7 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
       if (breedTag) {
         const products = await fetchProductsWithStock({
           filter: {
-            tags: { $in: [petType, breedTag].filter(Boolean) },
+            tags: { $all: [petType, breedTag].filter(Boolean) },
           },
           warehouseId,
           limit: 14,
@@ -298,7 +319,7 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
           sections.push({
             id: "breed_specific",
             title: `Perfect for ${pet.breed || "your pet"}`,
-            titleAr: null,
+            titleAr: `مثالي لـ ${pet.breed || "حيوانك الأليف"}`,
             priority: sections.length + 1,
             reason: "Based on breed",
             products: picked,
