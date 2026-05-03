@@ -32,8 +32,8 @@ config({ path: path.resolve(__dirname, "../../.env") });
 
 // middlewares
 app.set("json replacer", egyptTimezoneReplacer);
-app.use(express.urlencoded({ extended: false, limit: "10kb" }));
-app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ extended: false, limit: "5mb" }));
+app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(__dirname, "uploads")));
 app.use(cookieParser());
 app.use(compression());

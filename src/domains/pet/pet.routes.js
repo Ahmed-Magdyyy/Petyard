@@ -62,7 +62,7 @@ router
     // allowedTo(roles.USER),
    getPets)
   .post(
-    allowedTo(roles.USER),
+    // allowedTo(roles.USER),
     uploadSingleImage("image"),
     createPetValidator,
     createPet
