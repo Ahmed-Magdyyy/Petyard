@@ -818,6 +818,25 @@ export async function adminListReservationsByDateService(query = {}) {
   return result;
 }
 
+export async function adminGetReservationByIdService({ id, lang }) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError("Invalid reservation ID", 400);
+  }
+
+  const reservation = await ServiceReservationModel.findById(id)
+    .populate(
+      "location",
+      "_id slug name_en name_ar city timezone googleMapsLink phone",
+    )
+    .lean();
+
+  if (!reservation) {
+    throw new ApiError("Reservation not found", 404);
+  }
+
+  return buildReservationDto(reservation, reservation.location, lang);
+}
+
 export async function listReservationsForGuestService({
   guestId,
   status,

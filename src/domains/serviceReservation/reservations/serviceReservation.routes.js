@@ -6,6 +6,7 @@ import {
 } from "../../auth/auth.middleware.js";
 import { roles, enabledControls as enabledControlsEnum } from "../../../shared/constants/enums.js";
 import {
+  adminGetReservationById,
   adminListReservationsByDate,
   adminUpdateReservationStatus,
   cancelReservationForGuest,
@@ -51,6 +52,12 @@ router.get(
   "/admin",
   adminListReservationsByDateQueryValidator,
   adminListReservationsByDate,
+);
+
+router.get(
+  "/admin/:id",
+  reservationIdParamValidator,
+  adminGetReservationById,
 );
 
 router.patch(
