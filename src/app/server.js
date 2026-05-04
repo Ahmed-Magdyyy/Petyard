@@ -1,6 +1,6 @@
+import "@dotenvx/dotenvx/config";
 import express from "express";
 import path from "path";
-import { config } from "dotenv";
 import { fileURLToPath } from "url";
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,8 +28,6 @@ import { egyptTimezoneReplacer } from "../shared/utils/egyptTimezone.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-config({ path: path.resolve(__dirname, "../../.env") });
-
 // middlewares
 app.set("json replacer", egyptTimezoneReplacer);
 app.use(express.urlencoded({ extended: false, limit: "5mb" }));
@@ -51,7 +49,12 @@ app.use(
         : []),
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization", "Accept-Language", "x-guest-id"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Accept-Language",
+      "x-guest-id",
+    ],
     credentials: true,
   }),
 );
