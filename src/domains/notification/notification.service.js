@@ -473,27 +473,35 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
   try {
     const orderNumber = order.orderNumber || "";
 
-    // 1. Find all superAdmins (full access) + admins with "orders" control enabled
+    // 1. Find all superAdmins + admins with "orders" control — fetch name & role too
     const admins = await UserModel.find({
       active: true,
       $or: [
         { role: roles.SUPER_ADMIN },
         { role: roles.ADMIN, enabledControls: enabledControls.ORDERS },
       ],
-    }).select("_id");
+    }).select("_id name email role");
+
+    // Build userId → { name, role } map from admins
+    const userDetailsMap = new Map(
+      admins.map((a) => [String(a._id), { name: a.name, role: a.role }])
+    );
 
     const adminIds = admins.map((a) => String(a._id));
 
     // 2. Find moderators for the order's warehouse (if any)
     let moderatorIds = [];
     if (order.warehouse) {
-      const warehouse = await WarehouseModel.findById(order.warehouse).select(
-        "moderators",
-      );
+      const warehouse = await WarehouseModel.findById(order.warehouse).select("moderators");
       if (warehouse && Array.isArray(warehouse.moderators)) {
-        moderatorIds = warehouse.moderators
-          .filter(Boolean)
-          .map((id) => String(id));
+        moderatorIds = warehouse.moderators.filter(Boolean).map((id) => String(id));
+
+        // Fetch name & role for moderators not already in the map
+        const unknownModIds = moderatorIds.filter((id) => !userDetailsMap.has(id));
+        if (unknownModIds.length) {
+          const mods = await UserModel.find({ _id: { $in: unknownModIds } }).select("_id email name role");
+          mods.forEach((m) => userDetailsMap.set(String(m._id), { name: m.name, role: m.role }));
+        }
       }
     }
 
@@ -504,7 +512,36 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
       return { skipped: true, reason: "no_recipients" };
     }
 
-    // 4. Dispatch notification
+    // 4. Fetch device tokens for all recipients and log the full picture
+    const devices = await NotificationDeviceModel.find({ user: { $in: allRecipientIds } }).select("user token platform");
+
+    // userId → [token, ...]
+    const userTokensMap = new Map();
+    for (const device of devices) {
+      if (!device.token) continue;
+      const uid = String(device.user);
+      if (!userTokensMap.has(uid)) userTokensMap.set(uid, []);
+      userTokensMap.get(uid).push({ token: `...${device.token.slice(-12)}`, platform: device.platform });
+    }
+
+    const recipients = allRecipientIds.map((uid) => {
+      const { name = "unknown", role = "unknown" } = userDetailsMap.get(uid) || {};
+      const tokens = userTokensMap.get(uid) || [];
+      return {
+        userId: uid,
+        name,
+        role,
+        deviceCount: tokens.length,
+        tokens: tokens.length ? tokens : "⚠️ no registered device",
+      };
+    });
+
+    console.log(
+      `[Push] New order #${orderNumber} — notifying ${allRecipientIds.length} recipient(s):\n` +
+      JSON.stringify(recipients, null, 2)
+    );
+
+    // 5. Dispatch notification
     const result = await dispatchNotificationToUsers({
       userIds: allRecipientIds,
       notification: {

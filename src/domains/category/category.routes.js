@@ -57,6 +57,6 @@ router.patch(
   updateCategory
 );
 
-router.delete("/:id", categoryIdParamValidator, deleteCategory);
+// router.delete("/:id", categoryIdParamValidator, deleteCategory);
 
 export default router;

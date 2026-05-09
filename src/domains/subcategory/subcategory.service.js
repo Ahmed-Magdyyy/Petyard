@@ -32,7 +32,7 @@ export async function getSubcategoriesService(
   const subcategories = await SubcategoryModel.find(filter)
     .populate("category", "_id slug name_en name_ar")
     .populate("parent", "_id slug name_en name_ar")
-    .sort({ category: 1, slug: 1 });
+    .sort({ createdAt: 1 });
 
   // Format each subcategory
   const formatSubcategory = (s) => ({

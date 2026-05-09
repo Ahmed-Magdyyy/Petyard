@@ -24,6 +24,46 @@ import {
 } from "./inAppNotification.service.js";
 
 /**
+ * Human-readable hints for common FCM error codes.
+ * Replaces the noisy raw Firebase SDK error messages in logs.
+ */
+const FCM_ERROR_HINTS = {
+  // ── Credential / project config errors ───────────────────────────────────
+  "messaging/third-party-auth-error":
+    "Firebase service-account credential is invalid or expired. " +
+    "ACTION: regenerate the private key JSON in Firebase Console → Project Settings → Service Accounts, " +
+    "update FIREBASE_SERVICE_ACCOUNT (or the key file) on the server, then restart the app.",
+  "messaging/invalid-credential":
+    "Firebase credential is invalid. ACTION: check FIREBASE_SERVICE_ACCOUNT env var / key file.",
+  "messaging/project-not-found":
+    "Firebase project not found. ACTION: verify the project_id in the service-account JSON matches your Firebase project.",
+
+  // ── Stale / invalid device tokens ────────────────────────────────────────
+  "messaging/registration-token-not-registered":
+    "Device token is no longer valid (app uninstalled or token rotated). Remove this token from the DB.",
+  "messaging/invalid-registration-token":
+    "Malformed device token. Remove this token from the DB.",
+  "messaging/invalid-argument":
+    "Invalid argument sent to FCM (possibly a bad token format). Check the token value.",
+
+  // ── Rate / quota errors ───────────────────────────────────────────────────
+  "messaging/quota-exceeded":
+    "FCM quota exceeded for this device. Back off and retry later.",
+  "messaging/too-many-requests":
+    "FCM rate limit hit. Reduce send frequency or implement exponential backoff.",
+  "messaging/message-rate-exceeded":
+    "Per-device message rate exceeded. Slow down notifications to this device.",
+
+  // ── Server / network errors ───────────────────────────────────────────────
+  "messaging/internal-error":
+    "FCM internal error. This is a transient Firebase issue — retry the request.",
+  "messaging/server-unavailable":
+    "FCM server is temporarily unavailable. Retry with exponential backoff.",
+  "messaging/unknown-error":
+    "FCM returned an unknown error. Check Firebase Console for more details.",
+};
+
+/**
  * Build FCM data payload (all values must be strings)
  */
 function buildDataPayload(data) {
@@ -39,7 +79,7 @@ function buildDataPayload(data) {
 /**
  * Send push notification to specific tokens
  */
-async function sendPushToTokens({ tokens, notification, data }) {
+async function sendPushToTokens({ tokens, notification, data, tokenMeta }) {
   const admin = getFirebaseAdmin();
   if (!admin) {
     return { skipped: true, successCount: 0, failureCount: 0 };
@@ -81,8 +121,23 @@ async function sendPushToTokens({ tokens, notification, data }) {
       totalSuccess += response.successCount;
       totalFailure += response.failureCount;
 
+      // Log per-token results
+      response.responses.forEach((r, i) => {
+        const token = batchTokens[i];
+        const userId = tokenMeta?.get(token)?.userId ?? "guest/unknown";
+        const shortToken = `...${token.slice(-12)}`;
+        if (r.success) {
+          console.log(`[Push] ✅ userId: ${userId} | token: ${shortToken}`);
+        } else {
+          const code = r.error?.code ?? "unknown";
+          const hint = FCM_ERROR_HINTS[code] ?? `Raw FCM error — ${r.error?.message ?? "no message"}`;
+          console.log(
+            `[Push] ❌ userId: ${userId} | token: ${shortToken} | code: ${code} | ${hint}`
+          );
+        }
+      });
     } catch (err) {
-      console.error("[Notification] Failed to send push batch:", err.message);
+      console.error("[Push] \u274c Batch send failed:", err.message);
       totalFailure += batchTokens.length;
     }
   }
@@ -261,6 +316,13 @@ export async function dispatchNotificationToUsers({
       const devices = await NotificationDeviceModel.find({ user: { $in: ids } });
       const tokens = devices.map((d) => d.token).filter(Boolean);
 
+      // Build token → userId map for logging
+      const tokenMeta = new Map(
+        devices
+          .filter((d) => d.token && d.user)
+          .map((d) => [d.token, { userId: String(d.user) }])
+      );
+
       const pushResult = await sendPushToTokens({
         tokens,
         notification: {
@@ -272,6 +334,7 @@ export async function dispatchNotificationToUsers({
           screen: action?.screen || "",
           ...(action?.params || {}),
         },
+        tokenMeta,
       });
 
       results.push = {

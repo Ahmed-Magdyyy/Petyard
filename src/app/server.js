@@ -45,7 +45,7 @@ app.use(
     origin: [
       "https://petyard.netlify.app",
       ...(process.env.NODE_ENV === "development"
-        ? ["http://localhost:3002"]
+        ? ["http://localhost:3002", "http://localhost:3001"]
         : []),
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],

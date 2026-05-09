@@ -87,6 +87,6 @@ router.patch(
   updateProduct,
 );
 
-router.delete("/:id", productIdParamValidator, deleteProduct);
+// router.delete("/:id", productIdParamValidator, deleteProduct);
 
 export default router;
