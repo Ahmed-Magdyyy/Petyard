@@ -32,58 +32,67 @@ import {
 
 import { uploadMultipleImages } from "../../shared/middlewares/uploadMiddleware.js";
 
+import {
+  scopeProductsToModeratorWarehouses,
+  restrictModeratorProductUpdate,
+} from "./product.middleware.js";
+
 import reviewRoutes from "../review/review.routes.js";
 
 const router = Router();
 
+// ─── Public routes ───────────────────────────────────────────────────────────
+
 router.get("/", optionalProtect, listProductsQueryValidator, getProducts);
+
+// ─── Admin listing — admins + moderators ─────────────────────────────────────
+// Must be before /:id to avoid Express treating "admin" as a product ID
 
 router.get(
   "/admin",
-
   protect,
-
-  allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
-
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
   enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
-
+  scopeProductsToModeratorWarehouses,
   listProductsQueryValidator,
-
   getProductsForAdmin,
 );
 
 // Must be before /:id to avoid Express treating "search" as a product ID
-router.get("/search", optionalProtect, searchProductsQueryValidator, searchProducts);
+router.get(
+  "/search",
+  optionalProtect,
+  searchProductsQueryValidator,
+  searchProducts,
+);
 
 router.get("/:id", optionalProtect, productIdParamValidator, getProduct);
 
 router.use("/:id/reviews", reviewRoutes);
 
-router.use(
-  protect,
-
-  allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
-
-  enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
-);
+// ─── Create product — admins only ────────────────────────────────────────────
 
 router.post(
   "/",
-
+  protect,
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+  enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
   uploadMultipleImages("images", 10),
-
   createProductValidator,
-
   createProduct,
 );
 
+// ─── Update product — admins + moderators (moderators restricted to stock) ───
+
 router.patch(
   "/:id",
-
+  protect,
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
+  enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
+  scopeProductsToModeratorWarehouses,
   uploadMultipleImages("images", 5),
-
+  restrictModeratorProductUpdate,
   updateProductValidator,
-
   updateProduct,
 );
 

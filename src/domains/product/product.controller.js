@@ -1,4 +1,5 @@
 import asyncHandler from "express-async-handler";
+import { ApiError } from "../../shared/utils/ApiError.js";
 
 import {
   getProductsService,
@@ -17,6 +18,38 @@ export const getProducts = asyncHandler(async (req, res) => {
 });
 
 export const getProductsForAdmin = asyncHandler(async (req, res) => {
+  // Moderators: enforce warehouse scope as a server-side safety net.
+  // The FE already sends ?warehouse=X, but we validate it here and
+  // force-inject a default if missing to prevent unscoped access.
+  const scope = req.productWarehouseScope;
+
+  if (Array.isArray(scope)) {
+    if (scope.length === 0) {
+      return res.status(200).json({
+        totalResults: 0,
+        totalPages: 1,
+        page: 1,
+        results: 0,
+        data: [],
+      });
+    }
+
+    const requestedWarehouse = req.query.warehouse;
+
+    if (requestedWarehouse) {
+      // Validate the requested warehouse is within the moderator's scope
+      const allowed = scope.some(
+        (w) => String(w) === String(requestedWarehouse),
+      );
+      if (!allowed) {
+        throw new ApiError("You are not allowed to access this route", 403);
+      }
+    } else {
+      // No warehouse specified — default to the moderator's first warehouse
+      req.query.warehouse = String(scope[0]);
+    }
+  }
+
   const result = await getProductsService(req.query, req.lang, {
     includeZeroStockInWarehouse: true,
   });
