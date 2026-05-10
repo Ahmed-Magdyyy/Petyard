@@ -454,6 +454,20 @@ export async function loginService({ identifier, password }) {
   }
 
   if (!user.phoneVerified) {
+    // Auto-send OTP so the user can verify without a separate resend step
+    const otp = generateOtp();
+    const hashedOtp = hashOtp(otp);
+
+    user.phoneVerificationCode = hashedOtp;
+    user.phoneVerificationExpires = new Date(Date.now() + 5 * 60 * 1000);
+    await user.save();
+
+    try {
+      await sendOtpSms(user.phone, otp);
+    } catch (err) {
+      console.error("Failed to send OTP SMS during login", err);
+    }
+
     throw new ApiError("Please verify your phone first", 401);
   }
 
