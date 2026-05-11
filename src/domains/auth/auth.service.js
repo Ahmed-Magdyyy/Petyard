@@ -1095,7 +1095,6 @@ export async function forgetPasswordService({ email }) {
 
   return {
     email: user.email,
-    resetCode,
   };
 }
 

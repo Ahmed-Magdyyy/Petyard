@@ -6,6 +6,7 @@ import {
   getProduct,
   createProduct,
   updateProduct,
+  updateProductStock,
   deleteProduct,
   searchProducts,
 } from "./product.controller.js";
@@ -25,6 +26,7 @@ import {
 import {
   createProductValidator,
   updateProductValidator,
+  updateProductStockValidator,
   productIdParamValidator,
   listProductsQueryValidator,
   searchProductsQueryValidator,
@@ -82,7 +84,21 @@ router.post(
   createProduct,
 );
 
-// ─── Update product — admins + moderators (moderators restricted to stock) ───
+// ─── Stock-only update (merge) — admins + moderators ─────────────────────────
+// FE should use this for stock adjustments. Only touches the specific
+// warehouse entries sent; all other variants/warehouses stay intact.
+
+router.patch(
+  "/:id/stock",
+  protect,
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
+  enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
+  scopeProductsToModeratorWarehouses,
+  updateProductStockValidator,
+  updateProductStock,
+);
+
+// ─── Full product update — admins + moderators (moderators restricted to stock)
 
 router.patch(
   "/:id",

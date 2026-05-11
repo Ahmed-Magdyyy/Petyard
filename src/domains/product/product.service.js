@@ -35,7 +35,7 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
-import { getOrSetCache, deleteCacheKey } from "../../shared/utils/cache.js";
+import { getOrSetCache, deleteCacheKey, deleteCachePattern } from "../../shared/utils/cache.js";
 import {
   escapeRegex,
   buildFlexibleSearchPattern,
@@ -67,6 +67,7 @@ export {
   getProductByIdService,
   createProductService,
   updateProductService,
+  updateProductStockService,
   deleteProductService,
   mapProductToCardDto,
 };
@@ -1626,9 +1627,8 @@ async function updateProductService(id, payload, files = []) {
       }
     }
 
-    // Invalidate cache for both languages
-    await deleteCacheKey(`product:${id}:en`);
-    await deleteCacheKey(`product:${id}:ar`);
+    // Invalidate all cached variants of this product (all langs, warehouse scopes)
+    await deleteCachePattern(`product:${id}:*`);
 
     return updated;
   } catch (err) {
@@ -1637,6 +1637,128 @@ async function updateProductService(id, payload, files = []) {
     }
     throw err;
   }
+}
+
+/**
+ * Merge-based stock update.
+ *
+ * Unlike the full `updateProductService` which replaces the entire variants
+ * array, this service only touches the specific warehouseStock entries sent
+ * in the request body. All other variants, warehouses, and product fields
+ * remain untouched.
+ *
+ * For SIMPLE products, the body should contain:
+ *   { warehouseStocks: [{ warehouse, quantity }] }
+ *
+ * For VARIANT products, the body should contain:
+ *   { variants: [{ _id, warehouseStocks: [{ warehouse, quantity }] }] }
+ *
+ * @param {string} id - Product ID
+ * @param {Object} payload - Stock-only payload
+ * @param {string[]|null} warehouseScope - If set (moderator), only these
+ *   warehouse IDs are allowed. null = no restriction (admin).
+ */
+async function updateProductStockService(id, payload, warehouseScope) {
+  const product = await findProductById(id);
+  if (!product) {
+    throw new ApiError(`No product found for this id: ${id}`, 404);
+  }
+
+  // Build allowed warehouse set (null = admin, no restriction)
+  const scopeSet = warehouseScope
+    ? new Set(warehouseScope.map(String))
+    : null;
+
+  if (product.type === productTypeEnum.SIMPLE) {
+    const incomingStocks = Array.isArray(payload.warehouseStocks)
+      ? payload.warehouseStocks
+      : [];
+
+    for (const entry of incomingStocks) {
+      if (!entry?.warehouse) continue;
+      const wid = String(entry.warehouse);
+
+      // Enforce scope for moderators
+      if (scopeSet && !scopeSet.has(wid)) {
+        throw new ApiError(
+          "Not allowed: stock update contains a warehouse outside your scope",
+          403,
+        );
+      }
+
+      const quantity =
+        typeof entry.quantity === "number"
+          ? entry.quantity
+          : Number(entry.quantity) || 0;
+
+      const idx = product.warehouseStocks.findIndex(
+        (ws) => String(ws.warehouse) === wid,
+      );
+
+      if (idx >= 0) {
+        product.warehouseStocks[idx].quantity = quantity;
+      } else {
+        product.warehouseStocks.push({ warehouse: entry.warehouse, quantity });
+      }
+    }
+  } else if (product.type === productTypeEnum.VARIANT) {
+    const incomingVariants = Array.isArray(payload.variants)
+      ? payload.variants
+      : [];
+
+    // Build lookup for incoming variant changes by _id
+    for (const incoming of incomingVariants) {
+      // Support both `_id` and `id` from FE
+      const variantId = String(incoming._id || incoming.id || "");
+      if (!variantId) continue;
+
+      const variant = product.variants.find(
+        (v) => String(v._id) === variantId,
+      );
+      if (!variant) continue;
+
+      const incomingStocks = Array.isArray(incoming.warehouseStocks)
+        ? incoming.warehouseStocks
+        : [];
+
+      for (const entry of incomingStocks) {
+        if (!entry?.warehouse) continue;
+        const wid = String(entry.warehouse);
+
+        if (scopeSet && !scopeSet.has(wid)) {
+          throw new ApiError(
+            "Not allowed: stock update contains a warehouse outside your scope",
+            403,
+          );
+        }
+
+        const quantity =
+          typeof entry.quantity === "number"
+            ? entry.quantity
+            : Number(entry.quantity) || 0;
+
+        const idx = variant.warehouseStocks.findIndex(
+          (ws) => String(ws.warehouse) === wid,
+        );
+
+        if (idx >= 0) {
+          variant.warehouseStocks[idx].quantity = quantity;
+        } else {
+          variant.warehouseStocks.push({
+            warehouse: entry.warehouse,
+            quantity,
+          });
+        }
+      }
+    }
+  }
+
+  const updated = await product.save();
+
+  // Invalidate all cached variants of this product (all langs, warehouse scopes)
+  await deleteCachePattern(`product:${id}:*`);
+
+  return updated;
 }
 
 async function deleteProductService(id) {
@@ -1673,9 +1795,8 @@ async function deleteProductService(id) {
 
   await deleteProductById(id);
 
-  // Invalidate cache for both languages
-  await deleteCacheKey(`product:${id}:en`);
-  await deleteCacheKey(`product:${id}:ar`);
+  // Invalidate all cached variants of this product (all langs, warehouse scopes)
+  await deleteCachePattern(`product:${id}:*`);
 }
 
 // ─── Search Suggestions ──────────────────────────────────────────────────────

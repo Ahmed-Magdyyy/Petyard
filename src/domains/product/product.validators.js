@@ -300,6 +300,47 @@ export const updateProductValidator = [
   validatorMiddleware,
 ];
 
+export const updateProductStockValidator = [
+  param("id").isMongoId().withMessage("Invalid product id"),
+
+  body("warehouseStocks")
+    .optional()
+    .isArray()
+    .withMessage("warehouseStocks must be an array"),
+
+  body("warehouseStocks.*.warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("warehouseStocks.*.warehouse must be a valid id"),
+
+  body("warehouseStocks.*.quantity")
+    .optional()
+    .isNumeric()
+    .withMessage("warehouseStocks.*.quantity must be a number"),
+
+  body("variants")
+    .optional()
+    .isArray()
+    .withMessage("variants must be an array"),
+
+  body("variants.*.warehouseStocks")
+    .optional()
+    .isArray()
+    .withMessage("variant warehouseStocks must be an array"),
+
+  body("variants.*.warehouseStocks.*.warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("variant warehouseStocks.*.warehouse must be a valid id"),
+
+  body("variants.*.warehouseStocks.*.quantity")
+    .optional()
+    .isNumeric()
+    .withMessage("variant warehouseStocks.*.quantity must be a number"),
+
+  validatorMiddleware,
+];
+
 export const productIdParamValidator = [
   param("id").isMongoId().withMessage("Invalid product id"),
 

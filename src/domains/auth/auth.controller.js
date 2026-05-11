@@ -155,12 +155,11 @@ export const logout = asyncHandler(async (req, res) => {
 
 // POST /auth/forget-password
 export const forgetPassword = asyncHandler(async (req, res) => {
-  const { resetCode } = await forgetPasswordService(req.body);
+  await forgetPasswordService(req.body);
 
   res.status(200).json({
     status: "success",
     message: "Reset code sent to email",
-    resetCode,
   });
 });
 

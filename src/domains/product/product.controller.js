@@ -6,6 +6,7 @@ import {
   getProductByIdService,
   createProductService,
   updateProductService,
+  updateProductStockService,
   deleteProductService,
   searchProductsService,
 } from "./product.service.js";
@@ -79,6 +80,16 @@ export const updateProduct = asyncHandler(async (req, res) => {
     req.params.id,
     req.body,
     req.files || [],
+  );
+
+  res.status(200).json({ data: updated });
+});
+
+export const updateProductStock = asyncHandler(async (req, res) => {
+  const updated = await updateProductStockService(
+    req.params.id,
+    req.body,
+    req.productWarehouseScope,
   );
 
   res.status(200).json({ data: updated });

@@ -84,3 +84,36 @@ export async function deleteCacheKey(key) {
     console.error("[Redis] DEL error for key", key, err.message);
   }
 }
+
+/**
+ * Delete all Redis keys matching a glob pattern.
+ * Uses SCAN (cursor-based) to avoid blocking Redis with KEYS in production.
+ *
+ * @param {string} pattern  Glob pattern, e.g. "product:64abc*"
+ */
+export async function deleteCachePattern(pattern) {
+  const redisClient = getRedisClient();
+  if (!redisClient) {
+    return;
+  }
+
+  try {
+    let cursor = "0";
+    do {
+      const [nextCursor, keys] = await redisClient.scan(
+        cursor,
+        "MATCH",
+        pattern,
+        "COUNT",
+        100,
+      );
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        await redisClient.del(...keys);
+      }
+    } while (cursor !== "0");
+  } catch (err) {
+    console.error("[Redis] Pattern DEL error for", pattern, err.message);
+  }
+}
+
