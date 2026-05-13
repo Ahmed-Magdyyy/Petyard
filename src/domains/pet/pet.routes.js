@@ -4,7 +4,7 @@ import {
   roles,
   enabledControls as enabledControlsEnum,
 } from "../../shared/constants/enums.js";
-import { protect, allowedTo } from "../auth/auth.middleware.js";
+import { protect, allowedTo, enabledControls } from "../auth/auth.middleware.js";
 
 import {
   getAllPets,
@@ -32,16 +32,18 @@ router.use(protect);
 
 // ----- Admin Routes -----
 
-router.get("/admin", allowedTo(roles.SUPER_ADMIN), getAllPets);
+router.get("/admin", allowedTo(roles.SUPER_ADMIN, roles.ADMIN), enabledControls(enabledControlsEnum.PETS), getAllPets);
 router.get(
   "/admin/user/:userId",
-  allowedTo(roles.SUPER_ADMIN),
+  allowedTo(roles.SUPER_ADMIN ,roles.ADMIN),
+  enabledControls(enabledControlsEnum.PETS),
   petUserIdParamValidator,
   getUserPets
 );
 router.post(
   "/admin/user/:userId",
-  allowedTo(roles.SUPER_ADMIN),
+  allowedTo(roles.SUPER_ADMIN ,roles.ADMIN),
+  enabledControls(enabledControlsEnum.PETS),
   petUserIdParamValidator,
   uploadSingleImage("image"),
   createPetValidator,
@@ -49,7 +51,8 @@ router.post(
 );
 router.delete(
   "/admin/:id",
-  allowedTo(roles.SUPER_ADMIN),
+  allowedTo(roles.SUPER_ADMIN ,roles.ADMIN),
+  enabledControls(enabledControlsEnum.PETS),
   petIdParamValidator,
   deletePetAdmin
 );
@@ -59,10 +62,10 @@ router.delete(
 router
   .route("/")
   .get(
-    // allowedTo(roles.USER),
+    allowedTo(roles.USER),
    getPets)
   .post(
-    // allowedTo(roles.USER),
+    allowedTo(roles.USER),
     uploadSingleImage("image"),
     createPetValidator,
     createPet

@@ -81,6 +81,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
     req.body,
     req.files || [],
   );
+  console.log("user updated this: " , req.user._id);
 
   res.status(200).json({ data: updated });
 });
@@ -91,6 +92,7 @@ export const updateProductStock = asyncHandler(async (req, res) => {
     req.body,
     req.productWarehouseScope,
   );
+  console.log("user updated this: " , req.user._id);
 
   res.status(200).json({ data: updated });
 });

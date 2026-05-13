@@ -1,13 +1,19 @@
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { getCacheString, getOrSetCache } from "../../shared/utils/cache.js";
-import { buildPetTags, resolveBreedTag } from "../../shared/utils/petTagging.js";
+import {
+  buildPetTags,
+  resolveBreedTag,
+} from "../../shared/utils/petTagging.js";
 import { normalizeTag } from "../../shared/utils/tagging.js";
 import { petLifeStageTags } from "../../shared/constants/petTags.js";
 import { productTypeEnum } from "../../shared/constants/enums.js";
 
 import { PetModel } from "../pet/pet.model.js";
 import { ConditionModel } from "../condition/condition.model.js";
-import { findProductById, findProducts } from "../product/product.repository.js";
+import {
+  findProductById,
+  findProducts,
+} from "../product/product.repository.js";
 import { mapProductToCardDto } from "../product/product.service.js";
 import { findActivePromotionsForProducts } from "../collection/collection.promotion.js";
 
@@ -93,7 +99,8 @@ async function fetchProductsWithStock({
     andConditions.push({ _id: { $nin: excludeIds } });
   }
 
-  const mongoFilter = andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
+  const mongoFilter =
+    andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
   const select =
     "_id slug type name_en name_ar price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
@@ -106,7 +113,10 @@ async function fetchProductsWithStock({
   });
 
   const now = new Date();
-  const promotionsByProductId = await findActivePromotionsForProducts(products, now);
+  const promotionsByProductId = await findActivePromotionsForProducts(
+    products,
+    now,
+  );
 
   return products.map((p) => {
     const promotion = promotionsByProductId.get(String(p._id)) || null;
@@ -135,13 +145,18 @@ function pickUniqueProducts(existingIdsSet, products, limit) {
 }
 
 async function resolveDefaultPetForUser(userId) {
-  const pet = await PetModel.findOne({ petOwner: userId, isDefault: true }).lean();
+  const pet = await PetModel.findOne({
+    petOwner: userId,
+    isDefault: true,
+  }).lean();
   if (pet) return pet;
   return PetModel.findOne({ petOwner: userId }).sort({ createdAt: -1 }).lean();
 }
 
 async function loadConditionNamesBySlug(slugs) {
-  const unique = [...new Set((slugs || []).map((s) => normalizeTag(s)).filter(Boolean))];
+  const unique = [
+    ...new Set((slugs || []).map((s) => normalizeTag(s)).filter(Boolean)),
+  ];
   if (!unique.length) return new Map();
 
   const conditions = await ConditionModel.find({ slug: { $in: unique } })
@@ -178,7 +193,11 @@ function lifeStageAr(stage) {
   return stage === "baby" ? "الصغار" : "البالغين";
 }
 
-export async function getHomeRecommendationsService({ userId, warehouseId, lang }) {
+export async function getHomeRecommendationsService({
+  userId,
+  warehouseId,
+  lang,
+}) {
   if (!warehouseId) {
     throw new ApiError("warehouse is required", 400);
   }
@@ -203,8 +222,12 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
       ? petLifeStageTags.BABY
       : petLifeStageTags.ADULT;
 
-    const chronicSlugs = Array.isArray(pet.chronic_conditions) ? pet.chronic_conditions : [];
-    const tempSlugs = Array.isArray(pet.temp_health_issues) ? pet.temp_health_issues : [];
+    const chronicSlugs = Array.isArray(pet.chronic_conditions)
+      ? pet.chronic_conditions
+      : [];
+    const tempSlugs = Array.isArray(pet.temp_health_issues)
+      ? pet.temp_health_issues
+      : [];
 
     const conditionsBySlug = await loadConditionNamesBySlug([
       ...chronicSlugs,
@@ -213,10 +236,9 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
 
     const sections = [];
 
-    for (const slug of [...new Set(chronicSlugs.map((s) => normalizeTag(s)).filter(Boolean))].slice(
-      0,
-      2
-    )) {
+    for (const slug of [
+      ...new Set(chronicSlugs.map((s) => normalizeTag(s)).filter(Boolean)),
+    ].slice(0, 2)) {
       const condition = conditionsBySlug.get(slug) || null;
 
       const products = await fetchProductsWithStock({
@@ -243,10 +265,9 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
       }
     }
 
-    for (const slug of [...new Set(tempSlugs.map((s) => normalizeTag(s)).filter(Boolean))].slice(
-      0,
-      2
-    )) {
+    for (const slug of [
+      ...new Set(tempSlugs.map((s) => normalizeTag(s)).filter(Boolean)),
+    ].slice(0, 2)) {
       const condition = conditionsBySlug.get(slug) || null;
 
       const products = await fetchProductsWithStock({
@@ -268,33 +289,6 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
           titleAr: ar ? `لعلاج ${ar}` : null,
           priority: sections.length + 1,
           reason: `Based on ${pet.name || "your pet"}`,
-          products: picked,
-        });
-      }
-    }
-
-    {
-      const products = await fetchProductsWithStock({
-        filter: {
-          tags: { $all: [petType, lifeStage].filter(Boolean) },
-        },
-        warehouseId,
-        limit: 14,
-        sort: { ratingAverage: -1, createdAt: -1 },
-        lang: normalizedLang,
-      });
-
-      const picked = pickUniqueProducts(usedIds, products, 10);
-      if (picked.length) {
-        const typeLabel = petType ? petType.charAt(0).toUpperCase() + petType.slice(1) : "Pet";
-        const stageLabel = lifeStage === petLifeStageTags.BABY ? "Baby" : "Adult";
-
-        sections.push({
-          id: "life_stage",
-          title: `${stageLabel} ${typeLabel} Essentials`,
-          titleAr: `أساسيات ${petTypeAr(petType)} ${lifeStageAr(lifeStage)}`,
-          priority: sections.length + 1,
-          reason: "Based on age category",
           products: picked,
         });
       }
@@ -325,6 +319,36 @@ export async function getHomeRecommendationsService({ userId, warehouseId, lang 
             products: picked,
           });
         }
+      }
+    }
+
+    {
+      const products = await fetchProductsWithStock({
+        filter: {
+          tags: { $all: [petType, lifeStage].filter(Boolean) },
+        },
+        warehouseId,
+        limit: 14,
+        sort: { ratingAverage: -1, createdAt: -1 },
+        lang: normalizedLang,
+      });
+
+      const picked = pickUniqueProducts(usedIds, products, 10);
+      if (picked.length) {
+        const typeLabel = petType
+          ? petType.charAt(0).toUpperCase() + petType.slice(1)
+          : "Pet";
+        const stageLabel =
+          lifeStage === petLifeStageTags.BABY ? "Baby" : "Adult";
+
+        sections.push({
+          id: "life_stage",
+          title: `${stageLabel} ${typeLabel} Essentials`,
+          titleAr: `أساسيات ${petTypeAr(petType)} ${lifeStageAr(lifeStage)}`,
+          priority: sections.length + 1,
+          reason: "Based on age category",
+          products: picked,
+        });
       }
     }
 
@@ -410,7 +434,11 @@ export async function getRelatedProductsService({
 
     results.push(...pickUniqueProducts(usedIds, tier1, 6));
 
-    if (results.length < 10 && Array.isArray(currentProduct.tags) && currentProduct.tags.length) {
+    if (
+      results.length < 10 &&
+      Array.isArray(currentProduct.tags) &&
+      currentProduct.tags.length
+    ) {
       const tier2 = await fetchProductsWithStock({
         filter: {
           category: currentProduct.category,
