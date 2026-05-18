@@ -265,6 +265,7 @@ export async function getStatsService({ from, to }) {
     serviceIncomeResult,
     returnStatusDocs,
     returnAmountsResult,
+    manualReturnResult,
     customerTotal,
     customerNew,
     productCounts,
@@ -312,6 +313,44 @@ export async function getStatsService({ from, to }) {
           _id: null,
           totalRefundAmount: { $sum: "$refundAmount" },
           totalWalletRefund: { $sum: "$walletRefund" },
+        },
+      },
+    ]),
+
+    // Manual returns — orders marked "returned" by admin without a ReturnRequest
+    OrderModel.aggregate([
+      {
+        $match: {
+          ...dateFilter,
+          status: orderStatusEnum.RETURNED,
+        },
+      },
+      {
+        $lookup: {
+          from: "returnrequests",
+          localField: "_id",
+          foreignField: "order",
+          as: "returnReq",
+        },
+      },
+      { $match: { returnReq: { $size: 0 } } },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          totalRefundAmount: {
+            $sum: {
+              $max: [
+                0,
+                {
+                  $subtract: [
+                    { $ifNull: ["$subtotal", 0] },
+                    { $ifNull: ["$discountAmount", 0] },
+                  ],
+                },
+              ],
+            },
+          },
         },
       },
     ]),
@@ -397,6 +436,17 @@ export async function getStatsService({ from, to }) {
     totalRefundAmount: 0,
     totalWalletRefund: 0,
   });
+
+  // Include admin-manual returns (orders returned without a ReturnRequest)
+  const manualReturns = firstOr(manualReturnResult, {
+    count: 0,
+    totalRefundAmount: 0,
+  });
+  returnStatusMap[returnStatusEnum.APPROVED] =
+    (returnStatusMap[returnStatusEnum.APPROVED] || 0) + manualReturns.count;
+  returnAmounts.totalRefundAmount += manualReturns.totalRefundAmount;
+  returnAmounts.totalWalletRefund += manualReturns.totalRefundAmount;
+
   const totalReturnRequests = Object.values(returnStatusMap).reduce(
     (a, b) => a + b,
     0,

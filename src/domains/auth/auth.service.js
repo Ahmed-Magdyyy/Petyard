@@ -215,12 +215,13 @@ export async function resendOtpService({ identifier }) {
   };
 }
 
-export async function verifyPhoneService({ identifier, otp }) {
-  if (!identifier || !otp) {
-    throw new ApiError("identifier and otp are required", 400);
+export async function verifyPhoneService({ identifier, phone, otp }) {
+  const resolvedIdentifier = identifier || phone;
+  if (!resolvedIdentifier || !otp) {
+    throw new ApiError("identifier (or phone) and otp are required", 400);
   }
 
-  const query = buildIdentifierQuery(identifier);
+  const query = buildIdentifierQuery(resolvedIdentifier);
   const user = await UserModel.findOne(query).select("+password");
 
   if (!user) {
@@ -965,6 +966,7 @@ export async function refreshTokenService({ refreshToken }) {
   try {
     decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
   } catch (err) {
+    console.log("Invalid refresh token error", err);
     throw new ApiError("Invalid refresh token", 401);
   }
 

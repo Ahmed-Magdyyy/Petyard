@@ -66,8 +66,7 @@ export const resendOtpValidator = [
 
 export const verifyPhoneValidator = [
   body("identifier")
-    .notEmpty()
-    .withMessage("Identifier is required (email or phone)")
+    .optional()
     .custom((value) => {
       const trimmed = String(value).trim();
       const isEmail = /.+@.+\..+/.test(trimmed);
@@ -81,6 +80,11 @@ export const verifyPhoneValidator = [
       return true;
     }),
 
+  body("phone")
+    .optional()
+    .matches(egyptianPhoneRegex)
+    .withMessage("Phone must be a valid Egyptian mobile number"),
+
   body("otp")
     .notEmpty()
     .withMessage("OTP is required")
@@ -88,6 +92,14 @@ export const verifyPhoneValidator = [
     .withMessage("OTP must be 6 digits")
     .matches(/^[0-9]+$/)
     .withMessage("OTP must be numeric"),
+
+  // Ensure at least one of identifier or phone is provided
+  body().custom((_, { req }) => {
+    if (!req.body.identifier && !req.body.phone) {
+      throw new Error("Either identifier or phone is required");
+    }
+    return true;
+  }),
 
   validatorMiddleware,
 ];

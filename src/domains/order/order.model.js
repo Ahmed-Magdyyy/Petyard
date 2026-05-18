@@ -194,6 +194,11 @@ const orderSchema = new Schema(
       type: [historyEntrySchema],
       default: [],
     },
+    checkoutKey: {
+      type: String,
+      index: true,
+      select: false,
+    },
     notes: { type: String },
   },
   { timestamps: true }

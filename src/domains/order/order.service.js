@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { randomUUID } from "crypto";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { OrderModel } from "./order.model.js";
 import { CartModel } from "../cart/cart.model.js";
@@ -52,6 +53,10 @@ import {
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
+}
+
+function generateCheckoutKey() {
+  return randomUUID();
 }
 
 function normalizePaymentMethod(method) {
@@ -1014,6 +1019,7 @@ async function processOrderCreationWithCart({
     sideEffectsCommitted: !isCard,
     history: [historyEntry],
     notes: notes || undefined,
+    ...(isCard && cart.checkoutKey ? { checkoutKey: cart.checkoutKey } : {}),
   };
 
   // ── Card: create skeleton order only (no side effects) ──
@@ -1170,38 +1176,49 @@ export async function createOrderForUserService({
     }
   }
 
-  // ── Card: check for concurrent pending payment ──
+  // ── Card: idempotency check via checkoutKey ──
   if (pm === paymentMethodEnum.CARD) {
-    const existingPending = await OrderModel.findOne({
-      user: userId,
-      status: orderStatusEnum.AWAITING_PAYMENT,
-      sideEffectsCommitted: false,
-    });
-    if (existingPending) {
-      const ageMs = Date.now() - existingPending.createdAt.getTime();
-      const oneMinute = 60 * 1000;
+    // Fetch cart to get checkoutKey (should always exist from getCart, fallback if not)
+    const userCart = await CartModel.findOne({ user: userId });
+    if (userCart && !userCart.checkoutKey) {
+      userCart.checkoutKey = generateCheckoutKey();
+      await userCart.save();
+    }
 
-      if (ageMs < oneMinute) {
-        const remainingSec = Math.ceil((oneMinute - ageMs) / 1000);
-        throw new ApiError(
-          lang === "en"
-            ? `You have a recent pending order. Please retry after ${remainingSec} seconds`
-            : `لديك طلب معلق حديث. يرجى إعادة المحاولة بعد ${remainingSec} ثانية`,
-          409,
-        );
-      }
+    const checkoutKey = userCart?.checkoutKey;
 
-      // Stale skeleton order — auto-cancel it so user can retry
-      try {
-        await failOrderPaymentService(existingPending._id);
-        console.log(
-          `[createOrder] Auto-cancelled stale skeleton order ${existingPending.orderNumber}`,
-        );
-      } catch (cancelErr) {
-        console.error(
-          `[createOrder] Failed to auto-cancel ${existingPending.orderNumber}:`,
-          cancelErr.message,
-        );
+    if (checkoutKey) {
+      const existingPending = await OrderModel.findOne({
+        checkoutKey,
+        status: orderStatusEnum.AWAITING_PAYMENT,
+      });
+
+      if (existingPending) {
+        const ageMs = Date.now() - existingPending.createdAt.getTime();
+        const fiveMinutes = 5 * 60 * 1000;
+
+        if (ageMs < fiveMinutes) {
+          const remainingSec = Math.ceil((fiveMinutes - ageMs) / 1000);
+          throw new ApiError(
+            lang === "en"
+              ? `You have a payment in progress. Please retry after ${remainingSec} seconds`
+              : `لديك عملية دفع قيد التنفيذ. يرجى إعادة المحاولة بعد ${remainingSec} ثانية`,
+            409,
+          );
+        }
+
+        // Stale (>5 min, no webhook arrived) — auto-cancel
+        try {
+          await failOrderPaymentService(existingPending._id);
+          console.log(
+            `[createOrder] Auto-cancelled stale skeleton order ${existingPending.orderNumber}`,
+          );
+        } catch (cancelErr) {
+          console.error(
+            `[createOrder] Failed to auto-cancel ${existingPending.orderNumber}:`,
+            cancelErr.message,
+          );
+        }
       }
     }
   }
@@ -1333,37 +1350,49 @@ export async function createOrderForGuestService({
     }
   }
 
-  // ── Card: check for concurrent pending payment ──
+  // ── Card: idempotency check via checkoutKey ──
   if (pm === paymentMethodEnum.CARD) {
-    const existingPending = await OrderModel.findOne({
-      guestId,
-      status: orderStatusEnum.AWAITING_PAYMENT,
-      sideEffectsCommitted: false,
-    });
-    if (existingPending) {
-      const ageMs = Date.now() - existingPending.createdAt.getTime();
-      const twoMinutes = 2 * 60 * 1000;
+    // Fetch cart to get checkoutKey (should always exist from getCart, fallback if not)
+    const guestCart = await CartModel.findOne({ guestId });
+    if (guestCart && !guestCart.checkoutKey) {
+      guestCart.checkoutKey = generateCheckoutKey();
+      await guestCart.save();
+    }
 
-      if (ageMs < twoMinutes) {
-        throw new ApiError(
-          lang === "en"
-            ? "You already have a payment in progress"
-            : "لديك عملية دفع قيد التنفيذ بالفعل",
-          409,
-        );
-      }
+    const checkoutKey = guestCart?.checkoutKey;
 
-      // Stale skeleton order — auto-cancel it so user can retry
-      try {
-        await failOrderPaymentService(existingPending._id);
-        console.log(
-          `[createOrder] Auto-cancelled stale guest skeleton order ${existingPending.orderNumber}`,
-        );
-      } catch (cancelErr) {
-        console.error(
-          `[createOrder] Failed to auto-cancel ${existingPending.orderNumber}:`,
-          cancelErr.message,
-        );
+    if (checkoutKey) {
+      const existingPending = await OrderModel.findOne({
+        checkoutKey,
+        status: orderStatusEnum.AWAITING_PAYMENT,
+      });
+
+      if (existingPending) {
+        const ageMs = Date.now() - existingPending.createdAt.getTime();
+        const fiveMinutes = 5 * 60 * 1000;
+
+        if (ageMs < fiveMinutes) {
+          const remainingSec = Math.ceil((fiveMinutes - ageMs) / 1000);
+          throw new ApiError(
+            lang === "en"
+              ? `You have a payment in progress. Please retry after ${remainingSec} seconds`
+              : `لديك عملية دفع قيد التنفيذ. يرجى إعادة المحاولة بعد ${remainingSec} ثانية`,
+            409,
+          );
+        }
+
+        // Stale (>5 min, no webhook arrived) — auto-cancel
+        try {
+          await failOrderPaymentService(existingPending._id);
+          console.log(
+            `[createOrder] Auto-cancelled stale guest skeleton order ${existingPending.orderNumber}`,
+          );
+        } catch (cancelErr) {
+          console.error(
+            `[createOrder] Failed to auto-cancel ${existingPending.orderNumber}:`,
+            cancelErr.message,
+          );
+        }
       }
     }
   }
@@ -2497,6 +2526,14 @@ export async function confirmOrderPaymentService({
         paymobTransactionId,
         paymobOrderId,
       });
+
+      // Rotate checkoutKey on cart so user can place new orders
+      const cartFilter = order.user
+        ? { user: order.user }
+        : { guestId: order.guestId };
+      await CartModel.updateOne(cartFilter, {
+        $set: { checkoutKey: generateCheckoutKey() },
+      });
     } catch (err) {
       // Side effects failed (stock exhausted, wallet insufficient, etc.)
       console.error(
@@ -2584,6 +2621,14 @@ export async function confirmOrderPaymentService({
   });
 
   await order.save();
+
+  // Rotate checkoutKey on cart so user can place new orders
+  const cartFilter = order.user
+    ? { user: order.user }
+    : { guestId: order.guestId };
+  await CartModel.updateOne(cartFilter, {
+    $set: { checkoutKey: generateCheckoutKey() },
+  });
 
   sendOrderStatusChangedNotification(order).catch((err) =>
     console.error(

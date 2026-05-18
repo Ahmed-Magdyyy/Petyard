@@ -3,6 +3,7 @@ import {
   verifyWebhookHmac,
   extractTransactionData,
   verifyPaymentAmount,
+  refundTransaction,
 } from "./paymob.service.js";
 import {
   confirmOrderPaymentService,
@@ -14,6 +15,12 @@ import {
   saveCardFromTransaction,
 } from "./savedCard.service.js";
 import { OrderModel } from "../order/order.model.js";
+import { UserModel } from "../user/user.model.js";
+import { WalletTransactionModel } from "../wallet/walletTransaction.model.js";
+import {
+  orderStatusEnum,
+  paymentStatusEnum,
+} from "../../shared/constants/enums.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -90,6 +97,19 @@ async function handleTransaction(transactionObj, receivedHmac, fullBody) {
 
   // ── Confirm or fail ──
   if (txData.success) {
+    // Check if order was already cancelled (late webhook scenario)
+    if (
+      order.status === orderStatusEnum.CANCELLED &&
+      order.paymentStatus === paymentStatusEnum.FAILED &&
+      order.sideEffectsCommitted === false
+    ) {
+      console.warn(
+        `[Paymob Webhook] LATE SUCCESS for cancelled order ${order.orderNumber} — initiating refund`,
+      );
+      await handleLateSuccessfulPayment(order, txData);
+      return { status: 200, message: "Late payment — refund initiated" };
+    }
+
     await confirmOrderPaymentService({
       orderId: order._id,
       paymobTransactionId: txData.transactionId,
@@ -155,6 +175,79 @@ async function handleTokenWebhook(body) {
   console.log(
     `[Paymob Webhook] TOKEN processed — saving card for order ${orderId}`,
   );
+}
+
+// ─── Late Successful Payment Handler ────────────────────────────────────────
+
+async function handleLateSuccessfulPayment(order, txData) {
+  if (order.user) {
+    // Registered user — refund to wallet
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      order.user,
+      { $inc: { walletBalance: order.total } },
+      { new: true },
+    );
+
+    await WalletTransactionModel.create({
+      user: order.user,
+      amount: order.total,
+      type: "ORDER_REFUND",
+      referenceType: "ORDER",
+      referenceId: order._id,
+      balanceAfter: updatedUser?.walletBalance ?? 0,
+      note: `Auto-refund: late payment for cancelled order ${order.orderNumber}`,
+    });
+
+    order.paymentStatus = paymentStatusEnum.REFUNDED;
+    order.paymobTransactionId = String(txData.transactionId);
+    order.history = Array.isArray(order.history) ? order.history : [];
+    order.history.push({
+      at: new Date(),
+      description: `Late payment received after cancellation — ${order.total} EGP refunded to wallet`,
+      visibleToUser: false,
+    });
+    await order.save();
+
+    console.log(
+      `[Paymob Webhook] Refunded ${order.total} EGP to wallet for late payment on ${order.orderNumber}`,
+    );
+  } else {
+    // Guest — refund to card via Paymob API
+    try {
+      const amountCents = Math.round(order.total * 100);
+      await refundTransaction({
+        transactionId: txData.transactionId,
+        amountCents,
+      });
+
+      order.paymentStatus = paymentStatusEnum.REFUNDED;
+      order.paymobTransactionId = String(txData.transactionId);
+      order.history = Array.isArray(order.history) ? order.history : [];
+      order.history.push({
+        at: new Date(),
+        description: `Late payment received after cancellation — ${order.total} EGP refunded to card`,
+        visibleToUser: false,
+      });
+      await order.save();
+
+      console.log(
+        `[Paymob Webhook] Card refund initiated for late payment on ${order.orderNumber}`,
+      );
+    } catch (refundErr) {
+      console.error(
+        `[Paymob Webhook] CRITICAL: Card refund FAILED for ${order.orderNumber}:`,
+        refundErr.message,
+      );
+
+      order.history = Array.isArray(order.history) ? order.history : [];
+      order.history.push({
+        at: new Date(),
+        description: `CRITICAL: Late payment card refund failed — manual refund required. Transaction: ${txData.transactionId}`,
+        visibleToUser: false,
+      });
+      await order.save();
+    }
+  }
 }
 
 // ─── POST webhook (server-to-server callback) ──────────────────────────────

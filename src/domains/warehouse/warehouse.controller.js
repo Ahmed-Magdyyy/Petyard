@@ -38,7 +38,10 @@ export const toggleWarehouseActive = asyncHandler(async (req, res) => {
   const warehouse = await toggleWarehouseActiveService(req.params.id);
   res
     .status(200)
-    .json({ message: "Warehouse active status changed successfully", data: warehouse });
+    .json({
+      message: "Warehouse active status changed successfully",
+      data: warehouse,
+    });
 });
 
 // DELETE /warehouses/:id

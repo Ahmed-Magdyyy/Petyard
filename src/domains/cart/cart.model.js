@@ -115,6 +115,11 @@ const cartSchema = new Schema(
       details: String,
     },
 
+    checkoutKey: {
+      type: String,
+      index: true,
+    },
+
     status: {
       type: String,
       enum: Object.values(cartStatusEnum),

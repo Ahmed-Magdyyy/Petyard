@@ -133,6 +133,7 @@ export async function updateWarehouseService(id, payload) {
     active,
     isDefault,
     moderators,
+    defaultShippingPrice,
   } = payload;
 
   if (name !== undefined) warehouse.name = name;
@@ -142,6 +143,7 @@ export async function updateWarehouseService(id, payload) {
   if (address !== undefined) warehouse.address = address;
   if (email !== undefined) warehouse.email = email;
   if (phone !== undefined) warehouse.phone = phone;
+  if (defaultShippingPrice !== undefined) warehouse.defaultShippingPrice = defaultShippingPrice;
 
   if (location !== undefined) {
     if (

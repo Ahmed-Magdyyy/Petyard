@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import {
   findProductById,
   findProductsByIds,
@@ -37,6 +38,10 @@ let autoHideExpiredCollectionsInFlight = null;
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
+}
+
+function generateCheckoutKey() {
+  return randomUUID();
 }
 
 async function autoHideExpiredCollectionsThrottled() {
@@ -92,7 +97,12 @@ async function getOrCreateCart({ userId, guestId, warehouseId }) {
       totalCartPrice: 0,
       status: cartStatusEnum.ACTIVE,
       lastActivityAt: new Date(),
+      checkoutKey: generateCheckoutKey(),
     });
+  } else if (!cart.checkoutKey) {
+    // Backfill existing carts that were created before checkoutKey existed
+    cart.checkoutKey = generateCheckoutKey();
+    await cart.save();
   }
 
   return cart;
