@@ -9,13 +9,14 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
 
 export async function getSubcategoriesService(
   query = {},
   lang = "en",
   user = null,
 ) {
-  const { category, subcategory: parentId } = query;
+  const { category, subcategory: parentId, q } = query;
   const normalizedLang = lang === "ar" ? "ar" : "en";
   const includeAllLanguages =
     user &&
@@ -29,10 +30,69 @@ export async function getSubcategoriesService(
   }
 
   // Fetch all subcategories for the category (we need the full list to build the tree)
-  const subcategories = await SubcategoryModel.find(filter)
+  const allSubcategories = await SubcategoryModel.find(filter)
     .populate("category", "_id slug name_en name_ar")
     .populate("parent", "_id slug name_en name_ar")
     .sort({ createdAt: 1 });
+
+  // When q is provided, determine which subcategories match and which
+  // ancestors are needed to preserve the tree structure.
+  let matchFilter = null;
+  if (typeof q === "string" && q.trim()) {
+    const regex = new RegExp(
+      buildFlexibleSearchPattern(q.trim()),
+      "i",
+    );
+    // Collect IDs of subcategories whose name matches the query
+    const matchedIds = new Set();
+    for (const s of allSubcategories) {
+      if (regex.test(s.name_en) || regex.test(s.name_ar)) {
+        matchedIds.add(String(s._id));
+      }
+    }
+    // Also include all ancestors of matched nodes so the tree stays intact
+    const allById = new Map();
+    for (const s of allSubcategories) {
+      allById.set(String(s._id), s);
+    }
+    const includedIds = new Set(matchedIds);
+    for (const id of matchedIds) {
+      let current = allById.get(id);
+      while (current) {
+        const pid = current.parent?._id
+          ? String(current.parent._id)
+          : current.parent
+            ? String(current.parent)
+            : null;
+        if (!pid || includedIds.has(pid)) break;
+        includedIds.add(pid);
+        current = allById.get(pid);
+      }
+    }
+    // Also include all descendants of matched nodes
+    const addDescendants = (parentIdStr) => {
+      for (const s of allSubcategories) {
+        const pid = s.parent?._id
+          ? String(s.parent._id)
+          : s.parent
+            ? String(s.parent)
+            : null;
+        if (pid === parentIdStr && !includedIds.has(String(s._id))) {
+          includedIds.add(String(s._id));
+          addDescendants(String(s._id));
+        }
+      }
+    };
+    for (const id of matchedIds) {
+      addDescendants(id);
+    }
+    matchFilter = includedIds;
+  }
+
+  // Filter the list if q was provided
+  const subcategories = matchFilter
+    ? allSubcategories.filter((s) => matchFilter.has(String(s._id)))
+    : allSubcategories;
 
   // Format each subcategory
   const formatSubcategory = (s) => ({

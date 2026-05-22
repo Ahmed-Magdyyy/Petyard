@@ -8,8 +8,10 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
 
-export async function getBrandsService(lang = "en", user = null) {
+export async function getBrandsService(query = {}, lang = "en", user = null) {
+  const { q } = query;
   const normalizedLang = lang === "ar" ? "ar" : "en";
   const includeAllLanguages =
     user &&
@@ -17,7 +19,16 @@ export async function getBrandsService(lang = "en", user = null) {
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.BRANDS)));
 
-  const brands = await BrandModel.find({}).sort({ slug: 1 });
+  const filter = {};
+  if (typeof q === "string" && q.trim()) {
+    const regex = {
+      $regex: buildFlexibleSearchPattern(q.trim()),
+      $options: "i",
+    };
+    filter.$or = [{ name_en: regex }, { name_ar: regex }];
+  }
+
+  const brands = await BrandModel.find(filter).sort({ slug: 1 });
 
   return brands.map((b) => ({
     id: b._id,

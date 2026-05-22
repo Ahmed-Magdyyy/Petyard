@@ -9,7 +9,7 @@ import {
 
 // GET /brands
 export const getBrands = asyncHandler(async (req, res) => {
-  const data = await getBrandsService(req.lang, req.user || null);
+  const data = await getBrandsService(req.query, req.lang, req.user || null);
   res.status(200).json({ data });
 });
 
