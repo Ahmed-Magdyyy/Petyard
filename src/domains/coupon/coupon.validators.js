@@ -94,6 +94,16 @@ export const createCouponValidator = [
     .isMongoId()
     .withMessage("each allowedUserIds item must be a valid id"),
 
+  body("excludedBrandIds")
+    .optional()
+    .isArray()
+    .withMessage("excludedBrandIds must be an array"),
+
+  body("excludedBrandIds.*")
+    .optional()
+    .isMongoId()
+    .withMessage("each excludedBrandIds item must be a valid id"),
+
   body("discountType").custom((value, { req }) => {
     const { discountType, discountValue, maxDiscountAmount, freeShipping } =
       req.body;
@@ -220,6 +230,16 @@ export const updateCouponValidator = [
     .optional()
     .isMongoId()
     .withMessage("each allowedUserIds item must be a valid id"),
+
+  body("excludedBrandIds")
+    .optional()
+    .isArray()
+    .withMessage("excludedBrandIds must be an array"),
+
+  body("excludedBrandIds.*")
+    .optional()
+    .isMongoId()
+    .withMessage("each excludedBrandIds item must be a valid id"),
 
   body("discountType").custom((value, { req }) => {
     const { discountType, discountValue, maxDiscountAmount } = req.body;

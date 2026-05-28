@@ -107,6 +107,7 @@ export async function getCouponsService(query = {}) {
       typeof c.maxUsagePerUser === "number" ? c.maxUsagePerUser : null,
     usageCount: typeof c.usageCount === "number" ? c.usageCount : 0,
     firstOrderOnly: !!c.firstOrderOnly,
+    excludedBrandIds: Array.isArray(c.excludedBrandIds) ? c.excludedBrandIds : [],
   }));
 
   const totalPages = Math.ceil(totalCount / limitNum) || 1;
@@ -143,6 +144,7 @@ export async function createCouponService(payload) {
     maxUsagePerUser,
     firstOrderOnly,
     allowedUserIds,
+    excludedBrandIds,
   } = payload;
 
   const normalizedCode = normalizeCouponCode(code);
@@ -189,6 +191,7 @@ export async function createCouponService(payload) {
       maxUsagePerUser != null ? Number(maxUsagePerUser) || 0 : undefined,
     firstOrderOnly: !!firstOrderOnly,
     allowedUserIds: Array.isArray(allowedUserIds) ? allowedUserIds : [],
+    excludedBrandIds: Array.isArray(excludedBrandIds) ? excludedBrandIds : [],
   };
 
   const coupon = await CouponModel.create(doc);
@@ -215,6 +218,7 @@ export async function updateCouponService(id, payload) {
     maxUsagePerUser,
     firstOrderOnly,
     allowedUserIds,
+    excludedBrandIds,
   } = payload;
 
   const next = {
@@ -301,6 +305,10 @@ export async function updateCouponService(id, payload) {
 
   if (allowedUserIds !== undefined) {
     coupon.allowedUserIds = Array.isArray(allowedUserIds) ? allowedUserIds : [];
+  }
+
+  if (excludedBrandIds !== undefined) {
+    coupon.excludedBrandIds = Array.isArray(excludedBrandIds) ? excludedBrandIds : [];
   }
 
   const updated = await coupon.save();

@@ -85,6 +85,13 @@ const couponSchema = new Schema(
         ref: "User",
       },
     ],
+
+    excludedBrandIds: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Brand",
+      },
+    ],
   },
   { timestamps: true }
 );

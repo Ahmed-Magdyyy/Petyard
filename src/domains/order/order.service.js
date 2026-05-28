@@ -16,10 +16,7 @@ import {
 } from "../../shared/constants/enums.js";
 import { deleteCacheKey } from "../../shared/utils/cache.js";
 import { escapeRegex } from "../../shared/utils/escapeRegex.js";
-import {
-  findActiveCouponByCodeService,
-  computeCouponEffect,
-} from "../coupon/coupon.service.js";
+import { validateAndApplyCoupon } from "../coupon/coupon.application.js";
 import { sendOrderStatusChangedNotification, sendNewOrderNotificationToAdminsAndModerators } from "../notification/notification.service.js";
 import { dispatchNotification } from "../notification/notificationDispatcher.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
@@ -324,6 +321,7 @@ async function buildOrderItemsWithPromotions({ session, cart, lang = "en" }) {
     orderItems,
     subtotal: typeof subtotal === "number" && subtotal > 0 ? subtotal : 0,
     hasPromotionalItems,
+    productById,
   };
 }
 
@@ -701,132 +699,21 @@ export async function restoreStockForOrder({ session, order }) {
 async function applyCouponIfAny({
   couponCode,
   userId,
+  cartItems,
+  productBrandMap,
   subtotal,
   shippingFee,
   lang = "en",
 }) {
-  if (!couponCode) {
-    const total = subtotal + shippingFee;
-    return {
-      couponCode: null,
-      discountAmount: 0,
-      shippingDiscount: 0,
-      totalDiscount: 0,
-      total,
-    };
-  }
-
-  const trimmedCode =
-    typeof couponCode === "string" && couponCode.trim()
-      ? couponCode.trim()
-      : null;
-  if (!trimmedCode) {
-    throw new ApiError(
-      lang === "en" ? "couponCode is required" : "كود الكوبون مطلوب",
-      400,
-    );
-  }
-
-  const coupon = await findActiveCouponByCodeService(trimmedCode);
-
-  const allowedUserIds = Array.isArray(coupon.allowedUserIds)
-    ? coupon.allowedUserIds
-    : [];
-
-  if (allowedUserIds.length > 0) {
-    if (!userId) {
-      throw new ApiError(
-        lang === "en"
-          ? "This coupon is only available to specific users"
-          : "هذا الكوبون متاح فقط لمستخدمين محددين",
-        403,
-      );
-    }
-
-    const isAllowed = allowedUserIds.some(
-      (id) => String(id) === String(userId),
-    );
-
-    if (!isAllowed) {
-      throw new ApiError(
-        lang === "en"
-          ? "This coupon is not valid for this user"
-          : "هذا الكوبون غير صالح لهذا المستخدم",
-        403,
-      );
-    }
-  }
-
-  if (
-    typeof coupon.minOrderTotal === "number" &&
-    coupon.minOrderTotal > 0 &&
-    subtotal < coupon.minOrderTotal
-  ) {
-    throw new ApiError(
-      lang === "en"
-        ? `This coupon requires a minimum order total of ${coupon.minOrderTotal}`
-        : `هذا الكوبون يتطلب حد أدنى للطلب بقيمة ${coupon.minOrderTotal}`,
-      400,
-    );
-  }
-
-  if (
-    typeof coupon.maxOrderTotal === "number" &&
-    coupon.maxOrderTotal > 0 &&
-    subtotal > coupon.maxOrderTotal
-  ) {
-    throw new ApiError(
-      lang === "en"
-        ? `This coupon can only be applied to orders up to ${coupon.maxOrderTotal}`
-        : `هذا الكوبون يمكن تطبيقه فقط على الطلبات التي تصل إلى ${coupon.maxOrderTotal}`,
-      400,
-    );
-  }
-
-  if (
-    typeof coupon.maxUsageTotal === "number" &&
-    coupon.maxUsageTotal >= 0 &&
-    typeof coupon.usageCount === "number" &&
-    coupon.usageCount >= coupon.maxUsageTotal
-  ) {
-    throw new ApiError(
-      lang === "en"
-        ? "This coupon has reached its maximum usage limit"
-        : "هذا الكوبون وصل إلى الحد الأقصى للاستخدام",
-      400,
-    );
-  }
-
-  if (userId && typeof coupon.maxUsagePerUser === "number") {
-    if (coupon.maxUsagePerUser >= 0) {
-      const userUsage = await OrderModel.countDocuments({
-        user: userId,
-        couponCode: coupon.code,
-      });
-
-      if (userUsage >= coupon.maxUsagePerUser) {
-        throw new ApiError(
-          lang === "en"
-            ? "You have already used this coupon"
-            : "لقد استخدمت هذا الكوبون بالفعل",
-          400,
-        );
-      }
-    }
-  }
-
-  const effect = computeCouponEffect(coupon, {
-    orderSubtotal: subtotal,
+  return validateAndApplyCoupon({
+    couponCode,
+    userId,
+    cartItems,
+    productBrandMap,
+    subtotal,
     shippingFee,
+    lang,
   });
-
-  return {
-    couponCode: coupon.code,
-    discountAmount: effect.discountAmount,
-    shippingDiscount: effect.shippingDiscount,
-    totalDiscount: effect.totalDiscount,
-    total: effect.finalTotal,
-  };
 }
 
 async function applyWalletIfUser({ session, userId, netSubtotal }) {
@@ -870,7 +757,7 @@ async function processOrderCreationWithCart({
   historyByUserId,
   instapayScreenshotUrl,
 }) {
-  const { orderItems, subtotal, hasPromotionalItems } =
+  const { orderItems, subtotal, hasPromotionalItems, productById } =
     await buildOrderItemsWithPromotions({ session, cart, lang });
 
   if (cart.items.length === 0 || cart.items < 1) {
@@ -911,18 +798,23 @@ async function processOrderCreationWithCart({
   // Free shipping for orders with items subtotal >= threshold
   const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
 
-  if (couponCode && hasPromotionalItems) {
-    throw new ApiError(
-      lang === "en"
-        ? "Coupons cannot be applied when the cart contains promotional items"
-        : "لا يمكن تطبيق الكوبون عندما تحتوي السلة على عناصر ترويجية",
-      400,
-    );
+  // Build coupon context from order items + product brand data
+  const couponCartItems = orderItems.map((item) => ({
+    product: item.product,
+    lineTotal: typeof item.lineTotal === "number" ? item.lineTotal : 0,
+    hasPromotion: !!item.promotion,
+  }));
+
+  const productBrandMap = new Map();
+  for (const [pid, product] of productById) {
+    productBrandMap.set(pid, product.brand ? String(product.brand) : null);
   }
 
   const couponResult = await applyCouponIfAny({
     couponCode,
     userId: couponUserId,
+    cartItems: couponCartItems,
+    productBrandMap,
     subtotal,
     shippingFee,
     lang,
