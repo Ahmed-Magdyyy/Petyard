@@ -32,7 +32,7 @@ export const createUserValidator = [
     .withMessage("Password is required")
     .isLength({ min: 8 })
     .withMessage("Password must be at least 8 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{8,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   body("role")
@@ -124,7 +124,7 @@ export const updateUserPasswordByAdminValidator = [
     .withMessage("Password is required")
     .isLength({ min: 8 })
     .withMessage("Password must be at least 8 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{8,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   validatorMiddleware,
@@ -140,7 +140,7 @@ export const updateLoggedUserPasswordValidator = [
     .withMessage("New password is required")
     .isLength({ min: 8 })
     .withMessage("Password must be at least 8 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\s]{8,}$/)
     .withMessage("Password must contain uppercase, lowercase, and number"),
 
   body("cNewPassword")
