@@ -48,6 +48,7 @@ import {
   deleteAddressValidator,
   setDefaultAddressValidator,
 } from "../address/address.validators.js";
+import userActivityRoutes from "../userActivity/userActivity.routes.js";
 
 const router = Router();
 
@@ -103,6 +104,8 @@ router.use(
   allowedTo(roles.ADMIN, roles.SUPER_ADMIN),
   enabledControlsMiddleware(enabledControlsEnum.USERS),
 );
+
+router.use("/:id/activity", userActivityRoutes);
 
 router.route("/").get(getUsers).post(createUserValidator, createUser);
 
