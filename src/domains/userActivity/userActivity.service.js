@@ -235,6 +235,29 @@ function aggregateLoyalty(userId) {
   });
 }
 
+function getWalletHistory(userId) {
+  return WalletTransactionModel.find({ user: toObjectId(userId) })
+    .sort({ createdAt: -1 })
+    .select("-_id amount type referenceType referenceId balanceAfter note createdAt")
+    .lean();
+}
+
+function getLoyaltyHistory(userId, lang = "en") {
+  return LoyaltyTransactionModel.find({ user: toObjectId(userId) })
+    .sort({ createdAt: -1 })
+    .select("-_id points type referenceType referenceId balanceAfter description_en description_ar createdAt")
+    .lean()
+    .then((transactions) =>
+      transactions.map((t) => {
+        const { description_en, description_ar, ...rest } = t;
+        return {
+          ...rest,
+          description: lang === "ar" ? (description_ar || description_en) : (description_en || description_ar),
+        };
+      }),
+    );
+}
+
 function getCartSummary(userId) {
   return CartModel.findOne({
     user: toObjectId(userId),
@@ -354,7 +377,7 @@ function getAddressCount(userId) {
 
 // ─── Main service ───────────────────────────────────────────────────
 
-export async function getUserActivityService(userId) {
+export async function getUserActivityService(userId, lang = "en") {
   // First, fetch the user to verify existence and extract metadata
   const user = await UserModel.findById(userId)
     .select(
@@ -372,6 +395,8 @@ export async function getUserActivityService(userId) {
     returns,
     walletAgg,
     loyaltyAgg,
+    walletHistory,
+    loyaltyHistory,
     cart,
     serviceReservations,
     pets,
@@ -383,6 +408,8 @@ export async function getUserActivityService(userId) {
     aggregateReturns(userId),
     aggregateWallet(userId),
     aggregateLoyalty(userId),
+    getWalletHistory(userId),
+    getLoyaltyHistory(userId, lang),
     getCartSummary(userId),
     aggregateServiceReservations(userId),
     getPetsSummary(userId),
@@ -412,10 +439,12 @@ export async function getUserActivityService(userId) {
     wallet: {
       currentBalance: user.walletBalance || 0,
       ...walletAgg,
+      history: walletHistory,
     },
     loyalty: {
       currentPoints: user.loyaltyPoints || 0,
       ...loyaltyAgg,
+      history: loyaltyHistory,
     },
     cart,
     returns,

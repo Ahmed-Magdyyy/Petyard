@@ -4,6 +4,6 @@ import { getUserActivityService } from "./userActivity.service.js";
 
 // GET /users/:id/activity
 export const getUserActivity = asyncHandler(async (req, res) => {
-  const data = await getUserActivityService(req.params.id);
+  const data = await getUserActivityService(req.params.id, req.lang);
   res.status(200).json({ message: "Success", data });
 });
