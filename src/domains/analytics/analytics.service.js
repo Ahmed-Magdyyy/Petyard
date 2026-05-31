@@ -41,11 +41,18 @@ const MONTH_LABELS = [
 function buildDateFilter(from, to, field = "createdAt") {
   if (!from || !to) return {};
 
-  const start = new Date(from);
-  start.setUTCHours(0, 0, 0, 0);
+  const fromStr = String(from).trim();
+  const toStr = String(to).trim();
 
-  const end = new Date(to);
-  end.setUTCHours(23, 59, 59, 999);
+  // Append T00:00:00 / T23:59:59.999 so date-only strings are parsed as local
+  // (Cairo) time, not UTC. If a full datetime with "T" is already provided, use as-is.
+  const start = fromStr.includes("T")
+    ? new Date(fromStr)
+    : new Date(fromStr + "T00:00:00");
+
+  const end = toStr.includes("T")
+    ? new Date(toStr)
+    : new Date(toStr + "T23:59:59.999");
 
   return { [field]: { $gte: start, $lte: end } };
 }

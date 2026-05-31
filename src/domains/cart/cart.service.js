@@ -1139,10 +1139,16 @@ export async function listCartsForAdminService(query = {}) {
   if (from || to) {
     filter.lastActivityAt = {};
     if (from) {
-      filter.lastActivityAt.$gte = new Date(from);
+      const fromStr = String(from).trim();
+      filter.lastActivityAt.$gte = fromStr.includes("T")
+        ? new Date(fromStr)
+        : new Date(fromStr + "T00:00:00");
     }
     if (to) {
-      filter.lastActivityAt.$lte = new Date(to);
+      const toStr = String(to).trim();
+      filter.lastActivityAt.$lte = toStr.includes("T")
+        ? new Date(toStr)
+        : new Date(toStr + "T23:59:59.999");
     }
   }
 

@@ -1784,8 +1784,20 @@ export async function listOrdersForAdminService(query = {}) {
 
   if (from || to) {
     filter.createdAt = {};
-    if (from) filter.createdAt.$gte = new Date(from);
-    if (to) filter.createdAt.$lte = new Date(to);
+    if (from) {
+      // Append T00:00:00 so the date is parsed as local (Cairo) time, not UTC
+      const fromStr = String(from).trim();
+      filter.createdAt.$gte = fromStr.includes("T")
+        ? new Date(fromStr)
+        : new Date(fromStr + "T00:00:00");
+    }
+    if (to) {
+      // Append T23:59:59.999 so the filter includes the entire end day in local time
+      const toStr = String(to).trim();
+      filter.createdAt.$lte = toStr.includes("T")
+        ? new Date(toStr)
+        : new Date(toStr + "T23:59:59.999");
+    }
   }
 
   const extraFilter = buildRegexFilter(rest, []);
