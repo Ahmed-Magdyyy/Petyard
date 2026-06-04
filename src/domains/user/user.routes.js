@@ -49,6 +49,7 @@ import {
   setDefaultAddressValidator,
 } from "../address/address.validators.js";
 import userActivityRoutes from "../userActivity/userActivity.routes.js";
+import { productOrderHistoryRouter } from "../userActivity/userActivity.routes.js";
 
 const router = Router();
 
@@ -105,6 +106,7 @@ router.use(
   enabledControlsMiddleware(enabledControlsEnum.USERS),
 );
 
+router.use("/product", productOrderHistoryRouter);
 router.use("/:id/activity", userActivityRoutes);
 
 router.route("/").get(getUsers).post(createUserValidator, createUser);

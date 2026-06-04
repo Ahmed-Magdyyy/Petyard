@@ -7,3 +7,9 @@ export const getUserActivityValidator = [
 
   validatorMiddleware,
 ];
+
+export const getProductOrderHistoryValidator = [
+  param("productId").isMongoId().withMessage("Invalid product id"),
+
+  validatorMiddleware,
+];

@@ -12,6 +12,7 @@ import { FavoriteModel } from "../favorite/favorite.model.js";
 import { ReviewModel } from "../review/review.model.js";
 import { AddressModel } from "../address/address.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
+import { ProductModel } from "../product/product.model.js";
 import {
   orderStatusEnum,
   cartStatusEnum,
@@ -272,6 +273,7 @@ function getCartSummary(userId) {
           itemCount: 0,
           cartTotal: 0,
           lastActivityAt: null,
+          items: [],
         };
       }
       const items = Array.isArray(cart.items) ? cart.items : [];
@@ -280,6 +282,7 @@ function getCartSummary(userId) {
         itemCount: items.length,
         cartTotal: cart.totalCartPrice || 0,
         lastActivityAt: cart.lastActivityAt || null,
+        items,
       };
     });
 }
@@ -375,6 +378,63 @@ function getAddressCount(userId) {
   );
 }
 
+function getOrderHistory(userId) {
+  return OrderModel.aggregate([
+    { $match: { user: toObjectId(userId) } },
+    { $sort: { createdAt: -1 } },
+    {
+      $project: {
+        orderNumber: 1,
+        total: 1,
+        status: 1,
+        paymentMethod: 1,
+        paymentStatus: 1,
+        itemCount: { $size: { $ifNull: ["$items", []] } },
+        createdAt: 1,
+      },
+    },
+  ]);
+}
+
+function aggregateProductsPurchased(userId) {
+  const excludedStatuses = [
+    orderStatusEnum.CANCELLED,
+    orderStatusEnum.RETURNED,
+  ];
+
+  return OrderModel.aggregate([
+    {
+      $match: {
+        user: toObjectId(userId),
+        status: { $nin: excludedStatuses },
+      },
+    },
+    { $unwind: "$items" },
+    {
+      $group: {
+        _id: "$items.product",
+        productName: { $last: "$items.productName" },
+        productImageUrl: { $last: "$items.productImageUrl" },
+        totalQuantity: { $sum: "$items.quantity" },
+        orderCount: { $sum: 1 },
+        totalSpent: { $sum: "$items.lineTotal" },
+      },
+    },
+    { $sort: { orderCount: -1, totalSpent: -1 } },
+    {
+      $project: {
+        _id: 0,
+        product: "$_id",
+        productName: 1,
+        productImageUrl: 1,
+        totalQuantity: 1,
+        orderCount: 1,
+        totalSpent: 1,
+      },
+    },
+  ]);
+}
+
 // ─── Main service ───────────────────────────────────────────────────
 
 export async function getUserActivityService(userId, lang = "en") {
@@ -403,6 +463,8 @@ export async function getUserActivityService(userId, lang = "en") {
     favorites,
     reviews,
     addresses,
+    orderHistory,
+    productsPurchased,
   ] = await Promise.all([
     aggregateOrders(userId),
     aggregateReturns(userId),
@@ -416,6 +478,8 @@ export async function getUserActivityService(userId, lang = "en") {
     getFavoritesCount(userId),
     aggregateReviews(userId),
     getAddressCount(userId),
+    getOrderHistory(userId),
+    aggregateProductsPurchased(userId),
   ]);
 
   return {
@@ -435,6 +499,8 @@ export async function getUserActivityService(userId, lang = "en") {
     orders: {
       ...orders,
       totalRefunded: returns.totalRefundAmount,
+      orderHistory,
+      productsPurchased,
     },
     wallet: {
       currentBalance: user.walletBalance || 0,
@@ -453,5 +519,108 @@ export async function getUserActivityService(userId, lang = "en") {
     favorites,
     reviews,
     addresses,
+  };
+}
+
+// ─── Product Order History (Admin) ──────────────────────────────────
+
+export async function getProductOrderHistoryService(productId) {
+  const product = await ProductModel.findById(productId)
+    .select("name_en images")
+    .lean();
+
+  if (!product) {
+    throw new ApiError("Product not found", 404);
+  }
+
+  const productObjId = toObjectId(productId);
+  const excludedStatuses = [
+    orderStatusEnum.CANCELLED,
+    orderStatusEnum.RETURNED,
+  ];
+
+  const [statsResult, usersResult] = await Promise.all([
+    // Global stats for this product
+    OrderModel.aggregate([
+      {
+        $match: {
+          "items.product": productObjId,
+          status: { $nin: excludedStatuses },
+        },
+      },
+      { $unwind: "$items" },
+      { $match: { "items.product": productObjId } },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: "$items.lineTotal" },
+          orderCount: { $sum: 1 },
+          totalQuantitySold: { $sum: "$items.quantity" },
+        },
+      },
+    ]),
+
+    // Per-user breakdown
+    OrderModel.aggregate([
+      {
+        $match: {
+          "items.product": productObjId,
+          status: { $nin: excludedStatuses },
+          user: { $ne: null },
+        },
+      },
+      { $unwind: "$items" },
+      { $match: { "items.product": productObjId } },
+      {
+        $group: {
+          _id: "$user",
+          orderCount: { $sum: 1 },
+          totalQuantity: { $sum: "$items.quantity" },
+          totalSpent: { $sum: "$items.lineTotal" },
+        },
+      },
+      { $sort: { orderCount: -1, totalSpent: -1 } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "userDoc",
+        },
+      },
+      { $unwind: { path: "$userDoc", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          name: { $ifNull: ["$userDoc.name", "Deleted User"] },
+          phone: { $ifNull: ["$userDoc.phone", null] },
+          orderCount: 1,
+          totalQuantity: 1,
+          totalSpent: 1,
+        },
+      },
+    ]),
+  ]);
+
+  const stats = statsResult[0] || {
+    totalSales: 0,
+    orderCount: 0,
+    totalQuantitySold: 0,
+  };
+
+  const mainImage = Array.isArray(product.images) && product.images.length > 0
+    ? (product.images.find((img) => img.isMain) || product.images[0])?.url || null
+    : null;
+
+  return {
+    product: {
+      _id: product._id,
+      name: product.name_en,
+      imageUrl: mainImage,
+    },
+    totalSales: Math.round((stats.totalSales || 0) * 100) / 100,
+    orderCount: stats.orderCount,
+    totalQuantitySold: stats.totalQuantitySold,
+    users: usersResult,
   };
 }

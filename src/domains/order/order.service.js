@@ -38,6 +38,7 @@ import {
 import {
   createPaymentIntention,
   getPublicKey,
+  refundTransaction,
 } from "../payment/paymob.service.js";
 import {
   getSavedCardTokenService,
@@ -1737,6 +1738,7 @@ export async function listOrdersForAdminService(query = {}) {
   const hasWarehouseScope = Array.isArray(warehouseScope);
   if (hasWarehouseScope && warehouseScope.length === 0) {
     return {
+      totalOrders: 0,
       totalPages: 1,
       page: pageNum,
       results: 0,
@@ -1848,7 +1850,16 @@ export async function listOrdersForAdminService(query = {}) {
     }
   }
 
-  const [totalCount, orders] = await Promise.all([
+  // When no status filter is applied, also compute per-status counts
+  // Uses countDocuments (not aggregate) so Mongoose auto-casts ObjectIds
+  const includeStatusCounts = !status;
+  const allStatuses = Object.values(orderStatusEnum).filter(
+    (s) =>
+      s !== orderStatusEnum.AWAITING_PAYMENT &&
+      s !== orderStatusEnum.FAILED,
+  );
+
+  const promises = [
     OrderModel.countDocuments(filter),
     OrderModel.find(filter)
       .sort(sortOrder)
@@ -1858,16 +1869,36 @@ export async function listOrdersForAdminService(query = {}) {
       .populate({ path: "warehouse", select: "name governorate address" })
       .populate({ path: "history.byUserId", select: "name role" })
       .lean(),
-  ]);
+  ];
+
+  if (includeStatusCounts) {
+    for (const s of allStatuses) {
+      promises.push(OrderModel.countDocuments({ ...filter, status: s }));
+    }
+  }
+
+  const [totalCount, orders, ...statusCountResults] =
+    await Promise.all(promises);
 
   await rebindOrdersLocalization(orders, lang);
 
-  return {
+  const response = {
+    totalOrders: totalCount,
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     page: pageNum,
     results: orders.length,
     data: orders,
   };
+
+  if (includeStatusCounts) {
+    const countsMap = {};
+    allStatuses.forEach((s, i) => {
+      countsMap[s] = statusCountResults[i];
+    });
+    response.statusCounts = countsMap;
+  }
+
+  return response;
 }
 
 export async function getOrderByIdForAdminService(
@@ -2124,6 +2155,66 @@ export async function updateOrderStatusService({
         }
       }
 
+      // Cancellation: refund the payment-method portion (card / instapay)
+      // The walletUsed portion is already refunded above; this handles what
+      // was actually charged via card or instapay.
+      const paidMethods = [paymentMethodEnum.CARD, paymentMethodEnum.INSTAPAY];
+      const shouldRefundPaymentMethod =
+        isCancelling &&
+        order.sideEffectsCommitted !== false &&
+        order.paymentStatus === paymentStatusEnum.PAID &&
+        paidMethods.includes(order.paymentMethod);
+
+      if (shouldRefundPaymentMethod) {
+        const isGuest = !order.user;
+        const paymentPortion = Math.max(
+          0,
+          (typeof order.total === "number" ? order.total : 0) -
+            (typeof order.walletUsed === "number" ? order.walletUsed : 0),
+        );
+
+        if (!isGuest && paymentPortion > 0) {
+          // Registered user: credit the card/instapay portion to wallet
+          const netRefund = Math.max(
+            0,
+            paymentPortion - walletDeductedForPoints,
+          );
+
+          if (netRefund > 0) {
+            await UserModel.updateOne(
+              { _id: order.user },
+              { $inc: { walletBalance: netRefund } },
+              { session },
+            );
+
+            const userAfterPaymentRefund = await UserModel.findById(order.user)
+              .session(session)
+              .select("walletBalance");
+
+            await WalletTransactionModel.create(
+              [
+                {
+                  user: order.user,
+                  amount: netRefund,
+                  type: "ORDER_REFUND",
+                  referenceType: "ORDER",
+                  referenceId: order._id,
+                  balanceAfter: userAfterPaymentRefund?.walletBalance ?? 0,
+                  note:
+                    walletDeductedForPoints > 0
+                      ? `Refund of ${order.paymentMethod} payment for cancelled order ${order.orderNumber} (${paymentPortion} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
+                      : `Refund of ${order.paymentMethod} payment for cancelled order ${order.orderNumber}`,
+                },
+              ],
+              { session },
+            );
+          }
+        }
+
+        // Mark as refunded (for both users and guests, for analytics tracking)
+        order.paymentStatus = paymentStatusEnum.REFUNDED;
+      }
+
       // Return: refund order total (subtotal - discount) to wallet, minus loyalty wallet deduction
       if (isReturning && order.user) {
         const subtotal =
@@ -2191,6 +2282,41 @@ export async function updateOrderStatusService({
   ) {
     const productIds = (updated.items || []).map((i) => i.product);
     await invalidateProductCaches(productIds);
+  }
+
+  // Guest + card cancellation: refund via Paymob (external API, outside txn)
+  if (
+    updated &&
+    updated.status === orderStatusEnum.CANCELLED &&
+    !updated.user &&
+    updated.paymentMethod === paymentMethodEnum.CARD &&
+    updated.paymentStatus === paymentStatusEnum.REFUNDED &&
+    updated.paymobTransactionId
+  ) {
+    const refundAmountCents = Math.round(updated.total * 100);
+    try {
+      const result = await refundTransaction({
+        transactionId: updated.paymobTransactionId,
+        amountCents: refundAmountCents,
+      });
+
+      if (result.refundTransactionId) {
+        await OrderModel.updateOne(
+          { _id: updated._id },
+          { paymobRefundTransactionId: result.refundTransactionId },
+        );
+      }
+
+      console.log(
+        `[Order] Card refund successful for cancelled order ${updated.orderNumber} — refund txn ${result.refundTransactionId}`,
+      );
+    } catch (err) {
+      console.error(
+        `[Order] Card refund FAILED for cancelled order ${updated.orderNumber}:`,
+        err.message,
+      );
+      // The cancellation is already committed. Admin must manually resolve.
+    }
   }
 
   if (updated) {

@@ -3,6 +3,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 const app = express();
+app.set("trust proxy", 1); // Trust first proxy so rate limiters use real client IPs
 const PORT = process.env.PORT || 3000;
 import morgan from "morgan";
 import helmet from "helmet";
@@ -59,10 +60,7 @@ app.use(
   }),
 );
 
-if (process.env.NODE_ENV === "development") {
-  app.use(morgan("dev"));
-  console.log(`mode: ${process.env.NODE_ENV}`);
-}
+app.use(morgan("dev"));
 
 //helmet
 app.use(helmet());
