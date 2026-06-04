@@ -36,10 +36,10 @@ export const paymentLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ── Guest limiter — unauthenticated routes ───────────────────────────────────
+// ── Guest limiter — unauthenticated routes ───────────────────────────────
 export const guestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // 1000 requests per window
+  max: 1500, // 1500 requests per user per window
   message: {
     status: "error",
     message: "Too many requests, please try again later.",
@@ -48,10 +48,10 @@ export const guestLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ── Global API limiter — catch-all for all routes ────────────────────────────
+// ── Global API limiter — catch-all for all routes ────────────────────────
 export const globalApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // 1000 requests per window
+  max: 2000, // 2000 requests per user per window
   message: {
     status: "error",
     message: "Too many requests, please try again later.",
