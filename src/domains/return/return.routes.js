@@ -58,7 +58,7 @@ router.get(
   "/admin",
   protect,
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
-  enabledControlsMiddleware([enabledControlsEnum.ORDERS]),
+  enabledControlsMiddleware([enabledControlsEnum.RETURNS]),
   listReturnRequestsValidator,
   listReturnRequestsForAdmin,
 );
@@ -67,7 +67,7 @@ router.get(
   "/admin/:returnId",
   protect,
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
-  enabledControlsMiddleware([enabledControlsEnum.ORDERS]),
+  enabledControlsMiddleware([enabledControlsEnum.RETURNS]),
   getReturnRequestValidator,
   getReturnRequestForAdmin,
 );
@@ -75,8 +75,7 @@ router.get(
 router.patch(
   "/admin/:returnId/status",
   protect,
-  allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
-  enabledControlsMiddleware([enabledControlsEnum.ORDERS]),
+  allowedTo(roles.SUPER_ADMIN),
   processReturnRequestValidator,
   processReturnRequest,
 );
