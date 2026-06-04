@@ -11,7 +11,7 @@ import { ConditionModel } from "../../domains/condition/condition.model.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 /**
  * BASELINE condition slugs — the known conditions that should always be
