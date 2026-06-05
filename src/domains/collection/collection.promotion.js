@@ -1,6 +1,42 @@
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { ProductModel } from "../product/product.model.js";
 import { CollectionModel } from "./collection.model.js";
+import { SubcategoryModel } from "../subcategory/subcategory.model.js";
+import { getSubcategoryChildrenIds } from "../subcategory/subcategory.service.js";
+
+/**
+ * Load all subcategories in a single query and build a parentId map.
+ * Returns a Map<string, string|null> of subcategoryId → parentId.
+ */
+async function loadSubcategoryParentMap() {
+  const all = await SubcategoryModel.find({}, { _id: 1, parent: 1 }).lean();
+  const map = new Map();
+  for (const s of all) {
+    map.set(String(s._id), s.parent ? String(s.parent) : null);
+  }
+  return map;
+}
+
+/**
+ * Walk up the parent chain in memory and return all ancestor IDs.
+ * parentMap must be pre-loaded via loadSubcategoryParentMap().
+ */
+function getAncestorIdsFromMap(subcategoryId, parentMap) {
+  const ancestors = [];
+  const visited = new Set();
+  let currentId = String(subcategoryId);
+
+  while (currentId) {
+    if (visited.has(currentId)) break;
+    visited.add(currentId);
+    const parentId = parentMap.get(currentId);
+    if (!parentId) break;
+    ancestors.push(parentId);
+    currentId = parentId;
+  }
+
+  return ancestors;
+}
 
 function isValidDate(d) {
   return d instanceof Date && !Number.isNaN(d.getTime());
@@ -56,8 +92,17 @@ export async function resolveProductIdsForSelector(selector) {
   }
 
   if (subcategoryIds.length > 0) {
+    // Expand parent subcategories to include all nested children
+    const expandedIds = new Set(subcategoryIds.map(String));
+    await Promise.all(
+      subcategoryIds.map(async (id) => {
+        const childIds = await getSubcategoryChildrenIds(id);
+        childIds.forEach((cid) => expandedIds.add(String(cid)));
+      }),
+    );
+
     const products = await ProductModel.find(
-      { subcategory: { $in: subcategoryIds } },
+      { subcategory: { $in: [...expandedIds] } },
       { _id: 1 }
     ).lean();
 
@@ -176,7 +221,12 @@ export async function findActivePromotionForProduct(
   }
 
   if (subcategoryId) {
-    or.push({ "selector.subcategoryIds": subcategoryId });
+    // Include the product's subcategory AND all its ancestors
+    // so a collection targeting a parent subcategory matches child products
+    const parentMap = await loadSubcategoryParentMap();
+    const ancestorIds = getAncestorIdsFromMap(subcategoryId, parentMap);
+    const allSubcatIds = [subcategoryId, ...ancestorIds];
+    or.push({ "selector.subcategoryIds": { $in: allSubcatIds } });
   }
 
   if (brandId) {
@@ -217,6 +267,9 @@ export async function findActivePromotionsForProducts(products = [], now = new D
   const list = Array.isArray(products) ? products : [];
   if (list.length === 0) return new Map();
 
+  // Single query to load all subcategory parents for ancestor lookups
+  const parentMap = await loadSubcategoryParentMap();
+
   const productIds = [];
   const subcategoryIds = [];
   const brandIds = [];
@@ -228,6 +281,10 @@ export async function findActivePromotionsForProducts(products = [], now = new D
     const subId = p?.subcategory?._id || p?.subcategory;
     if (subId) {
       subcategoryIds.push(subId);
+      // Walk up ancestors in memory — no extra DB calls
+      for (const aid of getAncestorIdsFromMap(subId, parentMap)) {
+        subcategoryIds.push(aid);
+      }
     }
     const brandId = p?.brand?._id || p?.brand;
     if (brandId) {
@@ -306,6 +363,17 @@ export async function findActivePromotionsForProducts(products = [], now = new D
       const key = id != null ? String(id) : "";
       if (key && !promoBySubcategoryId.has(key)) {
         promoBySubcategoryId.set(key, promo);
+      }
+      // Also map all child subcategories to this promotion
+      // so products under child subcategories get the discount
+      if (key) {
+        const childIds = await getSubcategoryChildrenIds(id);
+        for (const childId of childIds) {
+          const childKey = String(childId);
+          if (!promoBySubcategoryId.has(childKey)) {
+            promoBySubcategoryId.set(childKey, promo);
+          }
+        }
       }
     }
 

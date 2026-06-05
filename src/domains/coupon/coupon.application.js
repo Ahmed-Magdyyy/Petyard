@@ -14,7 +14,7 @@ import { OrderModel } from "../order/order.model.js";
  * @param {Object}  opts
  * @param {string}  opts.couponCode       – raw code from the request
  * @param {string|null} opts.userId       – authenticated user, or null for guests
- * @param {Array}   opts.cartItems        – [{ product: ObjectId, lineTotal: number, hasPromotion: boolean }]
+ * @param {Array}   opts.cartItems        – [{ product: ObjectId, lineTotal: number, hasDiscount: boolean }]
  * @param {Map<string,string>} opts.productBrandMap – Map<productId, brandId>
  * @param {number}  opts.subtotal         – full cart / order subtotal
  * @param {number}  opts.shippingFee      – resolved shipping fee
@@ -166,8 +166,8 @@ export async function validateAndApplyCoupon({
   let eligibleSubtotal = 0;
 
   for (const item of items) {
-    // Item is ineligible if it has a collection promotion
-    if (item.hasPromotion) {
+    // Item is ineligible if it already has any discount (manual or promotion)
+    if (item.hasDiscount) {
       continue;
     }
 

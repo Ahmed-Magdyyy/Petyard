@@ -43,6 +43,8 @@ export const createCollection = asyncHandler(async (req, res) => {
 });
 
 export const updateCollection = asyncHandler(async (req, res) => {
+  console.log("collection req.body: ", req.body);
+  
   const updated = await updateCollectionService(
     req.params.id,
     req.body,

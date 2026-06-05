@@ -165,6 +165,7 @@ export const updateOrderStatusForAdmin = asyncHandler(async (req, res) => {
     orderId,
     newStatus: status,
     actorUserId: req.user._id,
+    actorRole: req.user.role,
     warehouseScope: req.orderWarehouseScope,
     lang,
   });

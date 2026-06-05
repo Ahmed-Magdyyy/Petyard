@@ -13,13 +13,6 @@ import { FREE_SHIPPING_THRESHOLD } from "../../shared/constants/enums.js";
  * Fetches product brands in a single query.
  */
 async function buildCouponContext(items) {
-  const cartItems = items.map((it) => ({
-    product: it.productId,
-    lineTotal:
-      typeof it.lineTotal === "number" && it.lineTotal > 0 ? it.lineTotal : 0,
-    hasPromotion: !!it.promotion,
-  }));
-
   const productIds = [
     ...new Set(
       items
@@ -29,12 +22,56 @@ async function buildCouponContext(items) {
   ];
 
   const products = await ProductModel.find({ _id: { $in: productIds } })
-    .select("_id brand")
+    .select("_id brand price discountedPrice variants")
     .lean();
 
   const productBrandMap = new Map(
     products.map((p) => [String(p._id), p.brand ? String(p.brand) : null]),
   );
+
+  const productMap = new Map(
+    products.map((p) => [String(p._id), p]),
+  );
+
+  const cartItems = items.map((it) => {
+    const pid = it.productId ? String(it.productId) : null;
+    const product = pid ? productMap.get(pid) : null;
+
+    // Detect admin-set discounted price
+    let hasAdminDiscount = false;
+    if (product) {
+      if (it.variantId) {
+        const variant = Array.isArray(product.variants)
+          ? product.variants.find((v) => String(v._id) === String(it.variantId))
+          : null;
+        if (
+          variant &&
+          typeof variant.discountedPrice === "number" &&
+          variant.discountedPrice > 0 &&
+          variant.discountedPrice < variant.price
+        ) {
+          hasAdminDiscount = true;
+        }
+      } else {
+        if (
+          typeof product.discountedPrice === "number" &&
+          product.discountedPrice > 0 &&
+          product.discountedPrice < product.price
+        ) {
+          hasAdminDiscount = true;
+        }
+      }
+    }
+
+    return {
+      product: it.productId,
+      lineTotal:
+        typeof it.lineTotal === "number" && it.lineTotal > 0
+          ? it.lineTotal
+          : 0,
+      hasDiscount: !!it.promotion || hasAdminDiscount,
+    };
+  });
 
   return { cartItems, productBrandMap };
 }

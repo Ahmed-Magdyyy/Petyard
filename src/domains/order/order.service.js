@@ -13,6 +13,7 @@ import {
   paymentMethodEnum,
   paymentStatusEnum,
   FREE_SHIPPING_THRESHOLD,
+  roles,
 } from "../../shared/constants/enums.js";
 import { deleteCacheKey } from "../../shared/utils/cache.js";
 import { escapeRegex } from "../../shared/utils/escapeRegex.js";
@@ -800,11 +801,39 @@ async function processOrderCreationWithCart({
   const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
 
   // Build coupon context from order items + product brand data
-  const couponCartItems = orderItems.map((item) => ({
-    product: item.product,
-    lineTotal: typeof item.lineTotal === "number" ? item.lineTotal : 0,
-    hasPromotion: !!item.promotion,
-  }));
+  const couponCartItems = orderItems.map((item) => {
+    const product = productById.get(String(item.product));
+    let hasAdminDiscount = false;
+    if (product) {
+      if (item.variantId) {
+        const variant = Array.isArray(product.variants)
+          ? product.variants.find((v) => String(v._id) === String(item.variantId))
+          : null;
+        if (
+          variant &&
+          typeof variant.discountedPrice === "number" &&
+          variant.discountedPrice > 0 &&
+          variant.discountedPrice < variant.price
+        ) {
+          hasAdminDiscount = true;
+        }
+      } else {
+        if (
+          typeof product.discountedPrice === "number" &&
+          product.discountedPrice > 0 &&
+          product.discountedPrice < product.price
+        ) {
+          hasAdminDiscount = true;
+        }
+      }
+    }
+
+    return {
+      product: item.product,
+      lineTotal: typeof item.lineTotal === "number" ? item.lineTotal : 0,
+      hasDiscount: !!item.promotion || hasAdminDiscount,
+    };
+  });
 
   const productBrandMap = new Map();
   for (const [pid, product] of productById) {
@@ -1944,6 +1973,7 @@ export async function updateOrderStatusService({
   orderId,
   newStatus,
   actorUserId,
+  actorRole,
   warehouseScope,
   lang = "en",
 }) {
@@ -1952,6 +1982,20 @@ export async function updateOrderStatusService({
     throw new ApiError(
       lang === "en" ? "Invalid order status" : "حالة طلب غير صحيحة",
       400,
+    );
+  }
+
+  // Only SUPER_ADMIN can cancel or return orders
+  if (
+    (newStatus === orderStatusEnum.CANCELLED ||
+      newStatus === orderStatusEnum.RETURNED) &&
+    actorRole !== roles.SUPER_ADMIN
+  ) {
+    throw new ApiError(
+      lang === "en"
+        ? "Only super admin can cancel or return orders"
+        : "فقط المدير الأعلى يمكنه إلغاء أو إرجاع الطلبات",
+      403,
     );
   }
 
@@ -2155,17 +2199,17 @@ export async function updateOrderStatusService({
         }
       }
 
-      // Cancellation: refund the payment-method portion (card / instapay)
-      // The walletUsed portion is already refunded above; this handles what
-      // was actually charged via card or instapay.
-      const paidMethods = [paymentMethodEnum.CARD, paymentMethodEnum.INSTAPAY];
-      const shouldRefundPaymentMethod =
+      // Cancellation: refund the payment-method portion (card only)
+      // Card → wallet for users, Paymob refund for guests (handled after txn)
+      // InstaPay → manual refund (admin contacts customer)
+      // COD / POS → nothing to refund (not paid yet)
+      const shouldRefundCardPayment =
         isCancelling &&
         order.sideEffectsCommitted !== false &&
         order.paymentStatus === paymentStatusEnum.PAID &&
-        paidMethods.includes(order.paymentMethod);
+        order.paymentMethod === paymentMethodEnum.CARD;
 
-      if (shouldRefundPaymentMethod) {
+      if (shouldRefundCardPayment) {
         const isGuest = !order.user;
         const paymentPortion = Math.max(
           0,
@@ -2174,7 +2218,7 @@ export async function updateOrderStatusService({
         );
 
         if (!isGuest && paymentPortion > 0) {
-          // Registered user: credit the card/instapay portion to wallet
+          // Registered user: credit the card portion to wallet
           const netRefund = Math.max(
             0,
             paymentPortion - walletDeductedForPoints,
@@ -2202,8 +2246,8 @@ export async function updateOrderStatusService({
                   balanceAfter: userAfterPaymentRefund?.walletBalance ?? 0,
                   note:
                     walletDeductedForPoints > 0
-                      ? `Refund of ${order.paymentMethod} payment for cancelled order ${order.orderNumber} (${paymentPortion} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
-                      : `Refund of ${order.paymentMethod} payment for cancelled order ${order.orderNumber}`,
+                      ? `Refund of card payment for cancelled order ${order.orderNumber} (${paymentPortion} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
+                      : `Refund of card payment for cancelled order ${order.orderNumber}`,
                 },
               ],
               { session },
@@ -2211,52 +2255,62 @@ export async function updateOrderStatusService({
           }
         }
 
-        // Mark as refunded (for both users and guests, for analytics tracking)
+        // Mark as refunded for card payments
         order.paymentStatus = paymentStatusEnum.REFUNDED;
       }
 
-      // Return: refund order total (subtotal - discount) to wallet, minus loyalty wallet deduction
-      if (isReturning && order.user) {
-        const subtotal =
-          typeof order.subtotal === "number" ? order.subtotal : 0;
-        const discountAmount =
-          typeof order.discountAmount === "number" ? order.discountAmount : 0;
-        const grossRefund = Math.max(0, subtotal - discountAmount);
-        const refundToWallet = Math.max(
-          0,
-          grossRefund - walletDeductedForPoints,
-        );
-
-        if (refundToWallet > 0) {
-          await UserModel.updateOne(
-            { _id: order.user },
-            { $inc: { walletBalance: refundToWallet } },
-            { session },
+      // Return: refund to wallet only for Card users
+      // Card (user) → subtotal - discount → wallet
+      // Card (guest) → Paymob refund (handled after txn)
+      // COD / POS / InstaPay → manual refund (admin contacts customer)
+      if (
+        isReturning &&
+        order.paymentMethod === paymentMethodEnum.CARD
+      ) {
+        if (order.user) {
+          // Registered user: credit items value to wallet
+          const subtotal =
+            typeof order.subtotal === "number" ? order.subtotal : 0;
+          const discountAmount =
+            typeof order.discountAmount === "number" ? order.discountAmount : 0;
+          const grossRefund = Math.max(0, subtotal - discountAmount);
+          const refundToWallet = Math.max(
+            0,
+            grossRefund - walletDeductedForPoints,
           );
 
-          const userAfterRefund = await UserModel.findById(order.user)
-            .session(session)
-            .select("walletBalance");
+          if (refundToWallet > 0) {
+            await UserModel.updateOne(
+              { _id: order.user },
+              { $inc: { walletBalance: refundToWallet } },
+              { session },
+            );
 
-          await WalletTransactionModel.create(
-            [
-              {
-                user: order.user,
-                amount: refundToWallet,
-                type: "ORDER_REFUND",
-                referenceType: "ORDER",
-                referenceId: order._id,
-                balanceAfter: userAfterRefund?.walletBalance ?? 0,
-                note:
-                  walletDeductedForPoints > 0
-                    ? `Refund for returned order ${order.orderNumber} (${grossRefund} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
-                    : `Refund for returned order ${order.orderNumber}`,
-              },
-            ],
-            { session },
-          );
+            const userAfterRefund = await UserModel.findById(order.user)
+              .session(session)
+              .select("walletBalance");
+
+            await WalletTransactionModel.create(
+              [
+                {
+                  user: order.user,
+                  amount: refundToWallet,
+                  type: "ORDER_REFUND",
+                  referenceType: "ORDER",
+                  referenceId: order._id,
+                  balanceAfter: userAfterRefund?.walletBalance ?? 0,
+                  note:
+                    walletDeductedForPoints > 0
+                      ? `Refund for returned order ${order.orderNumber} (${grossRefund} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
+                      : `Refund for returned order ${order.orderNumber}`,
+                },
+              ],
+              { session },
+            );
+          }
         }
 
+        // Mark as refunded for card payments (user + guest)
         order.paymentStatus = paymentStatusEnum.REFUNDED;
       }
 
@@ -2284,16 +2338,27 @@ export async function updateOrderStatusService({
     await invalidateProductCaches(productIds);
   }
 
-  // Guest + card cancellation: refund via Paymob (external API, outside txn)
+  // Guest + card: refund via Paymob (external API, outside txn)
+  // Applies to both cancelled and returned orders
   if (
     updated &&
-    updated.status === orderStatusEnum.CANCELLED &&
+    (updated.status === orderStatusEnum.CANCELLED ||
+      updated.status === orderStatusEnum.RETURNED) &&
     !updated.user &&
     updated.paymentMethod === paymentMethodEnum.CARD &&
     updated.paymentStatus === paymentStatusEnum.REFUNDED &&
     updated.paymobTransactionId
   ) {
-    const refundAmountCents = Math.round(updated.total * 100);
+    // Cancelled = refund full total; Returned = refund items only (no shipping)
+    const refundAmount =
+      updated.status === orderStatusEnum.RETURNED
+        ? Math.max(
+            0,
+            (updated.subtotal || 0) - (updated.discountAmount || 0),
+          )
+        : updated.total || 0;
+
+    const refundAmountCents = Math.round(refundAmount * 100);
     try {
       const result = await refundTransaction({
         transactionId: updated.paymobTransactionId,
@@ -2308,14 +2373,14 @@ export async function updateOrderStatusService({
       }
 
       console.log(
-        `[Order] Card refund successful for cancelled order ${updated.orderNumber} — refund txn ${result.refundTransactionId}`,
+        `[Order] Card refund successful for ${updated.status} order ${updated.orderNumber} (${refundAmount} EGP) — refund txn ${result.refundTransactionId}`,
       );
     } catch (err) {
       console.error(
-        `[Order] Card refund FAILED for cancelled order ${updated.orderNumber}:`,
+        `[Order] Card refund FAILED for ${updated.status} order ${updated.orderNumber}:`,
         err.message,
       );
-      // The cancellation is already committed. Admin must manually resolve.
+      // The status change is already committed. Admin must manually resolve.
     }
   }
 

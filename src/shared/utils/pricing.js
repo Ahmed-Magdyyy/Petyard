@@ -36,7 +36,7 @@ export function computeFinalDiscountedPrice({ price, discountedPrice, promoPerce
 
   const promoPrice =
     typeof promoPercent === "number"
-      ? applyPercentDiscount(basePrice, promoPercent)
+      ? Math.round(applyPercentDiscount(basePrice, promoPercent))
       : null;
 
   const candidates = [basePrice];
