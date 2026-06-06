@@ -21,6 +21,7 @@ import {
   orderStatusEnum,
   paymentStatusEnum,
 } from "../../shared/constants/enums.js";
+import { dispatchNotification } from "../notification/notificationDispatcher.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -210,6 +211,34 @@ async function handleLateSuccessfulPayment(order, txData) {
 
     console.log(
       `[Paymob Webhook] Refunded ${order.total} EGP to wallet for late payment on ${order.orderNumber}`,
+    );
+
+    // Notify user about the refund
+    dispatchNotification({
+      userId: order.user,
+      notification: {
+        title_en: "Payment Refunded",
+        title_ar: "تم استرداد المبلغ",
+        body_en: `Your payment of ${order.total} EGP for order ${order.orderNumber} was received after the order was cancelled. The amount has been refunded to your wallet.`,
+        body_ar: `تم استلام دفعتك بمبلغ ${order.total} جنيه للطلب ${order.orderNumber} بعد إلغاء الطلب. تم استرداد المبلغ إلى محفظتك.`,
+      },
+      icon: "wallet",
+      action: {
+        type: "screen",
+        screen: "WalletScreen",
+        params: {},
+      },
+      source: {
+        domain: "order",
+        event: "late_payment_refunded",
+        referenceId: String(order._id),
+      },
+      channels: { push: true, inApp: true },
+    }).catch((err) =>
+      console.error(
+        `[Paymob Webhook] Failed to send late payment refund notification for ${order.orderNumber}:`,
+        err.message,
+      ),
     );
   } else {
     // Guest — refund to card via Paymob API

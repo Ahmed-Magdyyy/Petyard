@@ -125,6 +125,7 @@ export async function createPaymentIntention({
     })),
     merchant_order_id: merchantOrderId,
     special_reference: merchantOrderId,
+    expiration: 600,
     extras: { merchant_order_id: merchantOrderId },
     ...(config.webhookUrl && { notification_url: config.webhookUrl }),
     ...(cardTokens && cardTokens.length > 0 && { card_tokens: cardTokens }),

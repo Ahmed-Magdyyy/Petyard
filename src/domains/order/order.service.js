@@ -1117,10 +1117,10 @@ export async function createOrderForUserService({
 
       if (existingPending) {
         const ageMs = Date.now() - existingPending.createdAt.getTime();
-        const fiveMinutes = 5 * 60 * 1000;
+        const blockMs = 10 * 60 * 1000;
 
-        if (ageMs < fiveMinutes) {
-          const remainingSec = Math.ceil((fiveMinutes - ageMs) / 1000);
+        if (ageMs < blockMs) {
+          const remainingSec = Math.ceil((blockMs - ageMs) / 1000);
           throw new ApiError(
             lang === "en"
               ? `You have a payment in progress. Please retry after ${remainingSec} seconds`
@@ -1129,7 +1129,7 @@ export async function createOrderForUserService({
           );
         }
 
-        // Stale (>5 min, no webhook arrived) — auto-cancel
+        // Stale (>15 min, no webhook arrived) — auto-cancel
         try {
           await failOrderPaymentService(existingPending._id);
           console.log(
@@ -1291,10 +1291,10 @@ export async function createOrderForGuestService({
 
       if (existingPending) {
         const ageMs = Date.now() - existingPending.createdAt.getTime();
-        const fiveMinutes = 5 * 60 * 1000;
+        const blockMs = 10 * 60 * 1000;
 
-        if (ageMs < fiveMinutes) {
-          const remainingSec = Math.ceil((fiveMinutes - ageMs) / 1000);
+        if (ageMs < blockMs) {
+          const remainingSec = Math.ceil((blockMs - ageMs) / 1000);
           throw new ApiError(
             lang === "en"
               ? `You have a payment in progress. Please retry after ${remainingSec} seconds`
@@ -1303,7 +1303,7 @@ export async function createOrderForGuestService({
           );
         }
 
-        // Stale (>5 min, no webhook arrived) — auto-cancel
+        // Stale (>15 min, no webhook arrived) — auto-cancel
         try {
           await failOrderPaymentService(existingPending._id);
           console.log(
