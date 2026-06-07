@@ -840,6 +840,15 @@ async function processOrderCreationWithCart({
     productBrandMap.set(pid, product.brand ? String(product.brand) : null);
   }
 
+  // Log brand map when coupon is present — helps diagnose brand exclusion issues
+  if (couponCode) {
+    const brandMapEntries = Object.fromEntries(productBrandMap);
+    console.log(
+      `[Order] Coupon "${couponCode}" — productBrandMap: ${JSON.stringify(brandMapEntries)}, ` +
+      `couponCartItems: ${JSON.stringify(couponCartItems.map((ci) => ({ product: String(ci.product), hasDiscount: ci.hasDiscount, lineTotal: ci.lineTotal })))}`,
+    );
+  }
+
   const couponResult = await applyCouponIfAny({
     couponCode,
     userId: couponUserId,

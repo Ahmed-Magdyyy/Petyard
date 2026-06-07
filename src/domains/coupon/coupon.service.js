@@ -304,11 +304,11 @@ export async function updateCouponService(id, payload) {
   }
 
   if (allowedUserIds !== undefined) {
-    coupon.allowedUserIds = Array.isArray(allowedUserIds) ? allowedUserIds : [];
+    coupon.allowedUserIds = Array.isArray(allowedUserIds) ? allowedUserIds : coupon.allowedUserIds;
   }
 
   if (excludedBrandIds !== undefined) {
-    coupon.excludedBrandIds = Array.isArray(excludedBrandIds) ? excludedBrandIds : [];
+    coupon.excludedBrandIds = Array.isArray(excludedBrandIds) ? excludedBrandIds : coupon.excludedBrandIds;
   }
 
   const updated = await coupon.save();

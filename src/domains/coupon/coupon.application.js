@@ -163,20 +163,24 @@ export async function validateAndApplyCoupon({
 
   const items = Array.isArray(cartItems) ? cartItems : [];
 
+  // Track per-item eligibility for logging and guardrail verification
+  const eligibilityLog = [];
   let eligibleSubtotal = 0;
 
   for (const item of items) {
+    const productId = String(item.product);
+    const itemBrandId = productBrandMap.get(productId) || null;
+
     // Item is ineligible if it already has any discount (manual or promotion)
     if (item.hasDiscount) {
+      eligibilityLog.push({ productId, brandId: itemBrandId, lineTotal: item.lineTotal, reason: "has_discount" });
       continue;
     }
 
     // Item is ineligible if its product brand is in the coupon's excluded list
-    if (excludedBrandIds.size > 0) {
-      const itemBrandId = productBrandMap.get(String(item.product));
-      if (itemBrandId && excludedBrandIds.has(String(itemBrandId))) {
-        continue;
-      }
+    if (excludedBrandIds.size > 0 && itemBrandId && excludedBrandIds.has(String(itemBrandId))) {
+      eligibilityLog.push({ productId, brandId: itemBrandId, lineTotal: item.lineTotal, reason: "brand_excluded" });
+      continue;
     }
 
     // Item is eligible
@@ -185,6 +189,17 @@ export async function validateAndApplyCoupon({
         ? item.lineTotal
         : 0;
     eligibleSubtotal += lineTotal;
+    eligibilityLog.push({ productId, brandId: itemBrandId, lineTotal, reason: "eligible" });
+  }
+
+  // Log eligibility decisions when brand exclusions are active
+  if (excludedBrandIds.size > 0) {
+    console.log(
+      `[Coupon] Brand exclusion audit for ${coupon.code}: ` +
+      `excludedBrands=[${[...excludedBrandIds]}], ` +
+      `eligibleSubtotal=${eligibleSubtotal}, fullSubtotal=${subtotal}, ` +
+      `items=${JSON.stringify(eligibilityLog)}`,
+    );
   }
 
   // If nothing is eligible for price discount AND coupon has a price discount, reject.
@@ -196,6 +211,36 @@ export async function validateAndApplyCoupon({
         : "هذا الكوبون غير صالح للمنتجات الموجودة في سلة التسوق",
       400,
     );
+  }
+
+  // ── Guardrail: re-verify no excluded-brand item leaked into eligibleSubtotal ──
+  if (excludedBrandIds.size > 0 && eligibleSubtotal > 0 && coupon.discountType) {
+    let verifiedEligible = 0;
+    for (const entry of eligibilityLog) {
+      if (entry.reason === "eligible") {
+        // Double-check the brand is genuinely not excluded
+        if (entry.brandId && excludedBrandIds.has(String(entry.brandId))) {
+          console.error(
+            `[Coupon] GUARDRAIL TRIGGERED: item ${entry.productId} with brand ${entry.brandId} ` +
+            `leaked through brand exclusion for coupon ${coupon.code}. Zeroing discount.`,
+          );
+          verifiedEligible = 0;
+          break;
+        }
+        verifiedEligible += entry.lineTotal || 0;
+      }
+    }
+    eligibleSubtotal = verifiedEligible;
+
+    // Re-check after guardrail correction
+    if (eligibleSubtotal <= 0) {
+      throw new ApiError(
+        lang === "en"
+          ? "This coupon is not valid for the items in your cart"
+          : "هذا الكوبون غير صالح للمنتجات الموجودة في سلة التسوق",
+        400,
+      );
+    }
   }
 
   // ── 7. Compute discount on eligible subtotal only ──────────────────
