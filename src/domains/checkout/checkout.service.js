@@ -39,20 +39,24 @@ async function buildCouponContext(items) {
 
     // Detect admin-set discounted price
     let hasAdminDiscount = false;
+    let basePrice = 0;
     if (product) {
       if (it.variantId) {
         const variant = Array.isArray(product.variants)
           ? product.variants.find((v) => String(v._id) === String(it.variantId))
           : null;
-        if (
-          variant &&
-          typeof variant.discountedPrice === "number" &&
-          variant.discountedPrice > 0 &&
-          variant.discountedPrice < variant.price
-        ) {
-          hasAdminDiscount = true;
+        if (variant) {
+          basePrice = typeof variant.price === "number" ? variant.price : 0;
+          if (
+            typeof variant.discountedPrice === "number" &&
+            variant.discountedPrice > 0 &&
+            variant.discountedPrice < variant.price
+          ) {
+            hasAdminDiscount = true;
+          }
         }
       } else {
+        basePrice = typeof product.price === "number" ? product.price : 0;
         if (
           typeof product.discountedPrice === "number" &&
           product.discountedPrice > 0 &&
@@ -63,13 +67,18 @@ async function buildCouponContext(items) {
       }
     }
 
+    // Catch-all: if the item is sold below its base price for ANY reason
+    // (admin discount, collection promotion, or otherwise), flag it.
+    const itemPrice = typeof it.itemPrice === "number" ? it.itemPrice : 0;
+    const sellingBelowBase = basePrice > 0 && itemPrice > 0 && itemPrice < basePrice;
+
     return {
       product: it.productId,
       lineTotal:
         typeof it.lineTotal === "number" && it.lineTotal > 0
           ? it.lineTotal
           : 0,
-      hasDiscount: !!it.promotion || hasAdminDiscount,
+      hasDiscount: !!it.promotion || hasAdminDiscount || sellingBelowBase,
     };
   });
 

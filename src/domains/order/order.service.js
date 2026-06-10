@@ -804,20 +804,24 @@ async function processOrderCreationWithCart({
   const couponCartItems = orderItems.map((item) => {
     const product = productById.get(String(item.product));
     let hasAdminDiscount = false;
+    let basePrice = 0;
     if (product) {
       if (item.variantId) {
         const variant = Array.isArray(product.variants)
           ? product.variants.find((v) => String(v._id) === String(item.variantId))
           : null;
-        if (
-          variant &&
-          typeof variant.discountedPrice === "number" &&
-          variant.discountedPrice > 0 &&
-          variant.discountedPrice < variant.price
-        ) {
-          hasAdminDiscount = true;
+        if (variant) {
+          basePrice = typeof variant.price === "number" ? variant.price : 0;
+          if (
+            typeof variant.discountedPrice === "number" &&
+            variant.discountedPrice > 0 &&
+            variant.discountedPrice < variant.price
+          ) {
+            hasAdminDiscount = true;
+          }
         }
       } else {
+        basePrice = typeof product.price === "number" ? product.price : 0;
         if (
           typeof product.discountedPrice === "number" &&
           product.discountedPrice > 0 &&
@@ -828,10 +832,15 @@ async function processOrderCreationWithCart({
       }
     }
 
+    // Catch-all: if the item is sold below its base price for ANY reason
+    // (admin discount, collection promotion, or otherwise), flag it.
+    const sellingBelowBase =
+      basePrice > 0 && typeof item.itemPrice === "number" && item.itemPrice < basePrice;
+
     return {
       product: item.product,
       lineTotal: typeof item.lineTotal === "number" ? item.lineTotal : 0,
-      hasDiscount: !!item.promotion || hasAdminDiscount,
+      hasDiscount: !!item.promotion || hasAdminDiscount || sellingBelowBase,
     };
   });
 

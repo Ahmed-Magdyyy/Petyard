@@ -54,7 +54,7 @@ export function computeFinalDiscountedPrice({ price, discountedPrice, promoPerce
     typeof promoPrice === "number" &&
     promoPrice === finalEffective &&
     promoPrice < basePrice &&
-    (baseDiscounted == null || promoPrice <= baseDiscounted);
+    (baseDiscounted == null || baseDiscounted <= 0 || promoPrice <= baseDiscounted);
 
   return {
     basePrice,
