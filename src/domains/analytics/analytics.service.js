@@ -362,8 +362,8 @@ export async function getStatsService({ from, to }) {
       },
     ]),
 
-    // Customers — total active users
-    UserModel.countDocuments({ role: "user", active: true }),
+    // Customers — total users (includes deactivated / deleted accounts)
+    UserModel.countDocuments({ role: "user" }),
 
     // Customers — registered in period
     from && to
