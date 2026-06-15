@@ -1239,12 +1239,6 @@ export async function createOrderForUserService({
     : [];
   await invalidateProductCaches(productIds);
 
-  sendOrderStatusChangedNotification(createdOrder).catch((err) =>
-    console.error(
-      "[Order] Failed to send order created notification:",
-      err.message,
-    ),
-  );
 
   sendNewOrderNotificationToAdminsAndModerators(createdOrder).catch((err) =>
     console.error(
@@ -2599,15 +2593,9 @@ async function commitOrderSideEffects(
   const productIds = (order.items || []).map((i) => i.product);
   await invalidateProductCaches(productIds);
 
-  // Notify user
+  // Notify admins/moderators about the new order
   const updatedOrder = await OrderModel.findById(order._id);
   if (updatedOrder) {
-    sendOrderStatusChangedNotification(updatedOrder).catch((err) =>
-      console.error(
-        "[Order] Failed to send payment confirmed notification:",
-        err.message,
-      ),
-    );
 
     sendNewOrderNotificationToAdminsAndModerators(updatedOrder).catch((err) =>
       console.error(
@@ -2743,12 +2731,6 @@ export async function confirmOrderPaymentService({
     $set: { checkoutKey: generateCheckoutKey() },
   });
 
-  sendOrderStatusChangedNotification(order).catch((err) =>
-    console.error(
-      "[Order] Failed to send payment confirmed notification:",
-      err.message,
-    ),
-  );
 
   sendNewOrderNotificationToAdminsAndModerators(order).catch((err) =>
     console.error(

@@ -12,7 +12,7 @@ import {
   toCairoHour24,
   formatHourLabel12,
 } from "../serviceReservation/reservations/serviceReservation.utils.js";
-import { roles, enabledControls } from "../../shared/constants/enums.js";
+import { roles, enabledControls, paymentMethodEnum, orderStatusEnum } from "../../shared/constants/enums.js";
 
 function normalizePlatform(value) {
   const v = typeof value === "string" ? value.toLowerCase().trim() : "";
@@ -274,12 +274,64 @@ export async function sendOrderStatusChangedNotification(order) {
 
   const orderNumber = order.orderNumber || "";
   const status = order.status || "";
+  const isGuest = !order.user;
+  const paymentMethod = order.paymentMethod || "";
 
-  // i18n messages
-  const title_en = `Order ${orderNumber}`.trim();
-  const title_ar = `طلب ${orderNumber}`.trim();
-  const body_en = `Your order is now ${status}`;
-  const body_ar = `طلبك الآن ${status}`;
+  // Build personalized i18n messages based on the current status
+  let title_en, title_ar, body_en, body_ar;
+
+  switch (status) {
+    case orderStatusEnum.ACCEPTED:
+      title_en = `Order #${orderNumber} Confirmed`;
+      title_ar = `تم تأكيد الطلب #${orderNumber}`;
+      body_en = `Your order has been placed and is being processed. We'll notify you when it's on its way!`;
+      body_ar = `تم استلام طلبك وجاري تجهيزه. هنبلغك أول ما يطلع للتوصيل! 🐾`;
+      break;
+
+    case orderStatusEnum.SHIPPED:
+      title_en = `Order #${orderNumber} Out for Delivery`;
+      title_ar = `طلبك #${orderNumber} في الطريق إليك`;
+      body_en = `Your order is out for delivery. It will arrive soon!`;
+      body_ar = `طلبك طلع للتوصيل وفي الطريق إليك. و هيوصلك قريب! 🚚`;
+      break;
+
+    case orderStatusEnum.DELIVERED:
+      title_en = `Order #${orderNumber} Delivered`;
+      title_ar = `تم توصيل الطلب #${orderNumber}`;
+      body_en = `Your order has been delivered. We hope your pet enjoys it! 🐾`;
+      body_ar = `طلبك وصل! نتمنى يعجب أليفك ويستمتع بيه 🐾❤️`;
+      break;
+
+    case orderStatusEnum.CANCELLED:
+      title_en = `Order #${orderNumber} Cancelled`;
+      title_ar = `تم إلغاء الطلب #${orderNumber}`;
+      body_en = `Your order has been cancelled. We hope to see you again soon!`;
+      body_ar = `للأسف تم إلغاء طلبك. نتمنى نشوفك تاني قريب! 🙏`;
+      break;
+
+    case orderStatusEnum.RETURNED:
+      title_en = `Order #${orderNumber} Returned`;
+      title_ar = `تم إرجاع الطلب #${orderNumber}`;
+
+      if (isGuest && paymentMethod === paymentMethodEnum.CARD) {
+        // Guest paid with card → refund to card
+        body_en = `Your order has been returned. The refund will be returned to your payment card.`;
+        body_ar = `تم إرجاع طلبك. المبلغ هيترد على الكارت اللي دفعت بيه.`;
+      } else if (!isGuest && paymentMethod === paymentMethodEnum.CARD) {
+        // Registered user paid with card → refund to wallet
+        body_en = `Your order has been returned. The refund has been credited to your wallet.`;
+        body_ar = `تم إرجاع طلبك. المبلغ اترد إلى محفظتك في التطبيق.`;
+      } else {
+        // Guest or user paid with COD/POS/InstaPay → manual refund
+        body_en = `Your order has been returned. Our team will contact you regarding the refund.`;
+        body_ar = `تم إرجاع طلبك. فريقنا هيتواصل معاك بخصوص استرداد المبلغ.`;
+      }
+      break;
+
+    default:
+      // No push for pending/awaiting_payment/failed — FE already handles these
+      return { skipped: true, reason: "no_notification_for_status" };
+  }
 
   try {
     // For registered users: dispatch both push and in-app
