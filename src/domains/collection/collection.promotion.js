@@ -65,18 +65,21 @@ export function isPromotionActiveNow(promotion, now = new Date()) {
   return startsAt <= now && now < endsAt;
 }
 
-export async function autoHideExpiredCollections() {
+export async function deactivateExpiredPromotions() {
   const now = new Date();
 
   await CollectionModel.updateMany(
     {
-      isVisible: true,
       "promotion.enabled": true,
+      "promotion.isActive": true,
       "promotion.endsAt": { $lte: now },
     },
-    { $set: { isVisible: false } }
+    { $set: { "promotion.isActive": false } }
   );
 }
+
+// Backward-compatible alias
+export const autoHideExpiredCollections = deactivateExpiredPromotions;
 
 export async function resolveProductIdsForSelector(selector) {
   const ids = new Set();
