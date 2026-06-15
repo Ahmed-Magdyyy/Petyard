@@ -393,21 +393,25 @@ export async function getStatsService({ from, to }) {
       ? PetModel.countDocuments(buildDateFilter(from, to))
       : Promise.resolve(null),
 
-    // Coupons — active now
+    // Coupons — active now (includes coupons that never expire, i.e. no expiresAt)
     CouponModel.countDocuments({
       isActive: true,
-      expiresAt: { $gte: new Date() },
+      $or: [
+        { expiresAt: { $exists: false } },
+        { expiresAt: null },
+        { expiresAt: { $gte: new Date() } },
+      ],
     }),
 
-    // Coupons — usage in period
+    // Coupons — usage in period (count orders that actually used a coupon)
     from && to
-      ? CouponModel.aggregate([
-          { $match: dateFilter },
-          { $group: { _id: null, totalUsage: { $sum: "$usageCount" } } },
-        ])
-      : CouponModel.aggregate([
-          { $group: { _id: null, totalUsage: { $sum: "$usageCount" } } },
-        ]),
+      ? OrderModel.countDocuments({
+          ...buildDateFilter(from, to),
+          couponCode: { $exists: true, $nin: [null, ""] },
+        })
+      : OrderModel.countDocuments({
+          couponCode: { $exists: true, $nin: [null, ""] },
+        }),
 
     // Reviews — product
     ReviewModel.aggregate([
@@ -473,8 +477,8 @@ export async function getStatsService({ from, to }) {
   // Assemble carts
   const cartMap = toKeyCountMap(cartCounts);
 
-  // Assemble coupon usage
-  const couponUsageVal = firstOr(couponUsage, { totalUsage: 0 }).totalUsage;
+  // Assemble coupon usage (couponUsage is now a plain count from countDocuments)
+  const couponUsageVal = couponUsage;
 
   return {
     sales: {
