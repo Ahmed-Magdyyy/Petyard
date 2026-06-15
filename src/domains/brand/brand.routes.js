@@ -28,6 +28,14 @@ const router = Router();
 router.get("/", optionalProtect, getBrands);
 router.get("/:id", optionalProtect, brandIdParamValidator, getBrand);
 
+router.delete(
+  "/:id",
+  protect,
+  allowedTo(roles.SUPER_ADMIN),
+  brandIdParamValidator,
+  deleteBrand
+);
+
 // Admin-only routes
 router.use(
   protect,
@@ -49,6 +57,6 @@ router.patch(
   updateBrand
 );
 
-router.delete("/:id", brandIdParamValidator, deleteBrand);
+
 
 export default router;

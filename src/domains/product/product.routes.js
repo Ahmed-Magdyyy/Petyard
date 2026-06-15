@@ -112,6 +112,12 @@ router.patch(
   updateProduct,
 );
 
-// router.delete("/:id", productIdParamValidator, deleteProduct);
+router.delete(
+  "/:id",
+  protect,
+  allowedTo(roles.SUPER_ADMIN),
+  productIdParamValidator,
+  deleteProduct,
+);
 
 export default router;

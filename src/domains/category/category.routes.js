@@ -30,6 +30,14 @@ const router = Router();
 router.get("/", optionalProtect, getCategories);
 router.get("/:id", optionalProtect, categoryIdParamValidator, getCategory);
 
+router.delete(
+  "/:id",
+  protect,
+  allowedTo(roles.SUPER_ADMIN),
+  categoryIdParamValidator,
+  deleteCategory
+);
+
 // Admin-only routes
 router.use(
   protect,
@@ -57,6 +65,6 @@ router.patch(
   updateCategory
 );
 
-// router.delete("/:id", categoryIdParamValidator, deleteCategory);
+
 
 export default router;
