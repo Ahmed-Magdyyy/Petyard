@@ -190,6 +190,7 @@ export async function listReturnRequestsService({
   guestId,
   status,
   orderNumber,
+  warehouseScope,
   page = 1,
   limit = 20,
 }) {
@@ -214,12 +215,16 @@ export async function listReturnRequestsService({
     }
   }
 
-  // Search by order number (admin use case)
-  if (orderNumber) {
-    const matchingOrders = await OrderModel.find(
-      { orderNumber: { $regex: orderNumber, $options: "i" } },
-      "_id",
-    ).lean();
+  // Warehouse scoping for moderators + optional order number search
+  if (warehouseScope || orderNumber) {
+    const orderFilter = {};
+    if (warehouseScope) {
+      orderFilter.warehouse = { $in: warehouseScope };
+    }
+    if (orderNumber) {
+      orderFilter.orderNumber = { $regex: orderNumber, $options: "i" };
+    }
+    const matchingOrders = await OrderModel.find(orderFilter, "_id").lean();
     filter.order = { $in: matchingOrders.map((o) => o._id) };
   }
 
@@ -257,6 +262,7 @@ export async function getReturnRequestByIdService({
   returnId,
   userId,
   guestId,
+  warehouseScope,
 }) {
   const returnRequest = await ReturnRequestModel.findById(returnId)
     .populate("order")
@@ -273,6 +279,15 @@ export async function getReturnRequestByIdService({
 
   if (guestId && returnRequest.guestId !== guestId) {
     throw new ApiError("Return request not found", 404);
+  }
+
+  // Moderator warehouse scoping — verify the order belongs to an allowed warehouse
+  if (warehouseScope && returnRequest.order) {
+    const orderWarehouse = String(returnRequest.order.warehouse);
+    const allowed = warehouseScope.some((w) => String(w) === orderWarehouse);
+    if (!allowed) {
+      throw new ApiError("Return request not found", 404);
+    }
   }
 
   // Strip the opposite identity field from the response

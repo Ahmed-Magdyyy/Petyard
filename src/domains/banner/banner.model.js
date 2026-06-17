@@ -6,7 +6,6 @@ const bannerTargetSchema = new Schema(
   {
     type: {
       type: String,
-      required: true,
       trim: true,
     },
     screen: { type: String },
@@ -27,7 +26,6 @@ const bannerSchema = new Schema(
     },
     target: {
       type: bannerTargetSchema,
-      required: true,
     },
     isActive: {
       type: Boolean,

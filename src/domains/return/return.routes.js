@@ -13,6 +13,7 @@ import {
   allowedTo,
   enabledControls as enabledControlsMiddleware,
 } from "../auth/auth.middleware.js";
+import { scopeOrdersToModeratorWarehouses } from "../order/order.middleware.js";
 import {
   roles,
   enabledControls as enabledControlsEnum,
@@ -59,6 +60,7 @@ router.get(
   protect,
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
   enabledControlsMiddleware([enabledControlsEnum.RETURNS]),
+  scopeOrdersToModeratorWarehouses,
   listReturnRequestsValidator,
   listReturnRequestsForAdmin,
 );
@@ -68,6 +70,7 @@ router.get(
   protect,
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
   enabledControlsMiddleware([enabledControlsEnum.RETURNS]),
+  scopeOrdersToModeratorWarehouses,
   getReturnRequestValidator,
   getReturnRequestForAdmin,
 );

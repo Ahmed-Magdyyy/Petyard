@@ -87,6 +87,7 @@ export const listReturnRequestsForAdmin = asyncHandler(async (req, res, next) =>
   const result = await listReturnRequestsService({
     status,
     orderNumber,
+    warehouseScope: req.orderWarehouseScope,
     page: page ? parseInt(page, 10) : 1,
     limit: limit ? parseInt(limit, 10) : 20,
   });
@@ -99,6 +100,7 @@ export const getReturnRequestForAdmin = asyncHandler(async (req, res, next) => {
 
   const returnRequest = await getReturnRequestByIdService({
     returnId,
+    warehouseScope: req.orderWarehouseScope,
   });
 
   res.status(200).json({ data: returnRequest });

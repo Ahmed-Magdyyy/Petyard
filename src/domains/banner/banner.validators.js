@@ -3,8 +3,7 @@ import { validatorMiddleware } from "../../shared/middlewares/validatorMiddlewar
 
 export const createBannerValidator = [
   body("targetType")
-    .notEmpty()
-    .withMessage("targetType is required")
+    .optional()
     .isString()
     .withMessage("targetType must be a string"),
 

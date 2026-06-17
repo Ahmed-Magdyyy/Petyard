@@ -12,6 +12,10 @@ function normalizeCouponCode(code) {
   return str ? str.toUpperCase() : "";
 }
 
+function hasMeaningfulDiscountValue(value) {
+  return value != null && Number(value) !== 0;
+}
+
 function ensureCouponInvariants(payload) {
   const {
     discountType,
@@ -40,7 +44,10 @@ function ensureCouponInvariants(payload) {
       );
     }
   } else {
-    if (discountValue != null || maxDiscountAmount != null) {
+    if (
+      hasMeaningfulDiscountValue(discountValue) ||
+      maxDiscountAmount != null
+    ) {
       throw new ApiError(
         "discountValue and maxDiscountAmount must be omitted when discountType is not set",
         400,
@@ -173,9 +180,13 @@ export async function createCouponService(payload) {
     code: normalizedCode,
     discountType: discountType || undefined,
     discountValue:
-      discountValue != null ? Number(discountValue) || 0 : undefined,
+      discountType && discountValue != null
+        ? Number(discountValue) || 0
+        : undefined,
     maxDiscountAmount:
-      maxDiscountAmount != null ? Number(maxDiscountAmount) || 0 : undefined,
+      discountType && maxDiscountAmount != null
+        ? Number(maxDiscountAmount) || 0
+        : undefined,
     freeShipping: !!freeShipping,
     minOrderTotal:
       minOrderTotal != null ? Number(minOrderTotal) || 0 : undefined,
@@ -221,13 +232,28 @@ export async function updateCouponService(id, payload) {
     excludedBrandIds,
   } = payload;
 
+  const nextDiscountType =
+    discountType !== undefined
+      ? discountType || undefined
+      : coupon.discountType;
+  const shouldIgnoreZeroDiscountValue =
+    discountType === undefined &&
+    discountValue !== undefined &&
+    !!nextDiscountType &&
+    Number(discountValue) === 0;
+  const shouldOmitZeroDiscountValue =
+    discountValue !== undefined &&
+    !nextDiscountType &&
+    Number(discountValue) === 0;
+
   const next = {
-    discountType:
-      discountType !== undefined
-        ? discountType || undefined
-        : coupon.discountType,
+    discountType: nextDiscountType,
     discountValue:
-      discountValue !== undefined
+      shouldIgnoreZeroDiscountValue
+        ? coupon.discountValue
+        : shouldOmitZeroDiscountValue
+        ? undefined
+        : discountValue !== undefined
         ? discountValue != null
           ? Number(discountValue) || 0
           : undefined
@@ -259,7 +285,7 @@ export async function updateCouponService(id, payload) {
   if (discountType !== undefined) {
     coupon.discountType = next.discountType;
   }
-  if (discountValue !== undefined) {
+  if (discountValue !== undefined && !shouldIgnoreZeroDiscountValue) {
     coupon.discountValue = next.discountValue;
   }
   if (maxDiscountAmount !== undefined) {

@@ -1,6 +1,10 @@
 import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 
+function hasMeaningfulDiscountValue(value) {
+  return value != null && Number(value) !== 0;
+}
+
 export const createCouponValidator = [
   body("code").notEmpty().withMessage("code is required"),
 
@@ -124,7 +128,10 @@ export const createCouponValidator = [
         );
       }
     } else {
-      if (discountValue != null || maxDiscountAmount != null) {
+      if (
+        hasMeaningfulDiscountValue(discountValue) ||
+        maxDiscountAmount != null
+      ) {
         throw new Error(
           "discountValue and maxDiscountAmount must be omitted when discountType is not set",
         );
@@ -261,7 +268,10 @@ export const updateCouponValidator = [
         );
       }
     } else {
-      if (discountValue != null || maxDiscountAmount != null) {
+      if (
+        hasMeaningfulDiscountValue(discountValue) ||
+        maxDiscountAmount != null
+      ) {
         throw new Error(
           "discountValue and maxDiscountAmount must be omitted when discountType is not set",
         );

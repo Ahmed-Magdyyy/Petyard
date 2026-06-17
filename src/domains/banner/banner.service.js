@@ -38,9 +38,6 @@ export async function createBannerService(payload, file) {
     isActive,
   } = payload;
 
-  if (!targetType) {
-    throw new ApiError("targetType is required", 400);
-  }
 
   let image;
   let uploadedPublicId;
@@ -54,10 +51,8 @@ export async function createBannerService(payload, file) {
     uploadedPublicId = image?.public_id;
   }
 
-  const target = {
-    type: targetType,
-  };
-
+  const target = {};
+  if (targetType !== undefined) target.type = targetType;
   if (targetScreen !== undefined) target.screen = targetScreen;
   if (targetProductId !== undefined) target.productId = targetProductId;
   if (targetCategoryId !== undefined) target.categoryId = targetCategoryId;
@@ -101,8 +96,17 @@ export async function updateBannerService(id, payload, file) {
     isActive,
   } = payload;
 
-  if (!banner.target) {
-    banner.target = { type: banner.target?.type || "generic" };
+  const hasTargetUpdates =
+    targetType !== undefined ||
+    targetScreen !== undefined ||
+    targetProductId !== undefined ||
+    targetCategoryId !== undefined ||
+    targetSubcategoryId !== undefined ||
+    targetBrandId !== undefined ||
+    targetUrl !== undefined;
+
+  if (hasTargetUpdates && !banner.target) {
+    banner.target = {};
   }
 
   if (targetType !== undefined) banner.target.type = targetType;

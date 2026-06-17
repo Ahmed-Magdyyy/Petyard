@@ -284,10 +284,17 @@ export async function getStatsService({ from, to }) {
     serviceReviewAgg,
     cartCounts,
   ] = await Promise.all([
-    // Sales — order total
+    // Sales — order total, totalOrders, avgOrderValue
     OrderModel.aggregate([
       { $match: { ...dateFilter, status: { $nin: revenueStatuses } } },
-      { $group: { _id: null, total: { $sum: "$total" } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$total" },
+          totalOrders: { $sum: 1 },
+          avgOrderValue: { $avg: "$total" },
+        },
+      },
     ]),
 
     // Sales — service income
@@ -480,10 +487,18 @@ export async function getStatsService({ from, to }) {
   // Assemble coupon usage (couponUsage is now a plain count from countDocuments)
   const couponUsageVal = couponUsage;
 
+  const orderSales = firstOr(orderSalesResult, {
+    total: 0,
+    totalOrders: 0,
+    avgOrderValue: 0,
+  });
+
   return {
     sales: {
-      totalOrderSales: firstOr(orderSalesResult, { total: 0 }).total,
+      totalOrderSales: orderSales.total,
       totalServiceIncome: firstOr(serviceIncomeResult, { total: 0 }).total,
+      totalOrders: orderSales.totalOrders,
+      avgOrderValue: Math.round((orderSales.avgOrderValue || 0) * 100) / 100,
     },
     refunds: {
       totalReturnRequests,
