@@ -9,6 +9,7 @@ import {
   updateProductStock,
   deleteProduct,
   searchProducts,
+  searchProductsForAdmin,
 } from "./product.controller.js";
 
 import {
@@ -30,6 +31,7 @@ import {
   productIdParamValidator,
   listProductsQueryValidator,
   searchProductsQueryValidator,
+  adminSearchProductsQueryValidator,
 } from "./product.validators.js";
 
 import { uploadMultipleImages } from "../../shared/middlewares/uploadMiddleware.js";
@@ -66,6 +68,16 @@ router.get(
   optionalProtect,
   searchProductsQueryValidator,
   searchProducts,
+);
+
+router.get(
+  "/search/admin",
+  protect,
+  allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
+  enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
+  scopeProductsToModeratorWarehouses,
+  adminSearchProductsQueryValidator,
+  searchProductsForAdmin,
 );
 
 router.get("/:id", optionalProtect, productIdParamValidator, getProduct);

@@ -5,6 +5,7 @@ import {
   createBannerService,
   updateBannerService,
   deleteBannerService,
+  reorderBannersService,
 } from "./banner.service.js";
 
 export const getActiveBanners = asyncHandler(async (req, res) => {
@@ -34,4 +35,9 @@ export const updateBanner = asyncHandler(async (req, res) => {
 export const deleteBanner = asyncHandler(async (req, res) => {
   await deleteBannerService(req.params.id);
   res.status(200).json({ message: "Banner deleted successfully" });
+});
+
+export const reorderBanners = asyncHandler(async (req, res) => {
+  const result = await reorderBannersService(req.body.banners);
+  res.status(200).json({ message: "Banners reordered successfully", data: result });
 });

@@ -37,12 +37,6 @@ export const createBannerValidator = [
     .isString()
     .withMessage("targetUrl must be a string"),
 
-  body("position")
-    .optional()
-    .isInt()
-    .withMessage("position must be an integer")
-    .toInt(),
-
   body("isActive")
     .optional()
     .isBoolean()
@@ -90,11 +84,6 @@ export const updateBannerValidator = [
     .isString()
     .withMessage("targetUrl must be a string"),
 
-  body("position")
-    .optional()
-    .isInt()
-    .withMessage("position must be an integer"),
-
   body("isActive")
     .optional()
     .isBoolean()
@@ -105,6 +94,22 @@ export const updateBannerValidator = [
 
 export const bannerIdParamValidator = [
   param("id").isMongoId().withMessage("Invalid banner id"),
+
+  validatorMiddleware,
+];
+
+export const reorderBannersValidator = [
+  body("banners")
+    .isArray({ min: 1 })
+    .withMessage("banners must be a non-empty array"),
+
+  body("banners.*.id")
+    .isMongoId()
+    .withMessage("Each banner must have a valid id"),
+
+  body("banners.*.position")
+    .isInt({ min: 0 })
+    .withMessage("Each banner must have a valid position (integer >= 0)"),
 
   validatorMiddleware,
 ];

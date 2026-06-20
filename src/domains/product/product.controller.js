@@ -76,6 +76,7 @@ export const createProduct = asyncHandler(async (req, res) => {
 });
 
 export const updateProduct = asyncHandler(async (req, res) => {
+  console.log("updateProduct req.body:", req.body);
   const updated = await updateProductService(
     req.params.id,
     req.body,
@@ -113,6 +114,41 @@ export const searchProducts = asyncHandler(async (req, res) => {
     limit,
     lang: req.lang,
     userId,
+  });
+
+  res.status(200).json(result);
+});
+
+export const searchProductsForAdmin = asyncHandler(async (req, res) => {
+  const scope = req.productWarehouseScope;
+
+  if (Array.isArray(scope)) {
+    if (scope.length === 0) {
+      return res.status(200).json({ suggestions: [], products: [] });
+    }
+
+    const requestedWarehouse = req.query.warehouse;
+
+    if (requestedWarehouse) {
+      const allowed = scope.some(
+        (w) => String(w) === String(requestedWarehouse),
+      );
+      if (!allowed) {
+        throw new ApiError("You are not allowed to access this route", 403);
+      }
+    } else {
+      req.query.warehouse = String(scope[0]);
+    }
+  }
+
+  const { q, warehouse, limit } = req.query;
+
+  const result = await searchProductsService({
+    q,
+    warehouse,
+    limit,
+    lang: req.lang,
+    includeZeroStock: true,
   });
 
   res.status(200).json(result);

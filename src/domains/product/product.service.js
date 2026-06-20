@@ -487,6 +487,23 @@ function computeDetailPricingForProduct(product, promoPercent, warehouseId) {
         0,
       );
 
+      // Reverse-map variant image to product-level imageIndex so the FE
+      // can round-trip it on subsequent updates.
+      let imageIndex = null;
+      if (
+        Array.isArray(v.images) &&
+        v.images.length > 0 &&
+        Array.isArray(product.images)
+      ) {
+        const variantImageId = v.images[0]?.public_id;
+        if (variantImageId) {
+          const idx = product.images.findIndex(
+            (img) => img.public_id === variantImageId,
+          );
+          if (idx >= 0) imageIndex = idx;
+        }
+      }
+
       return {
         id: v._id || null,
         index,
@@ -495,6 +512,7 @@ function computeDetailPricingForProduct(product, promoPercent, warehouseId) {
         discountedPrice:
           typeof pricing.final === "number" ? pricing.final : null,
         options: Array.isArray(v.options) ? v.options : [],
+        imageIndex,
         images: Array.isArray(v.images)
           ? v.images.map((img) => ({
               // public_id: img.public_id,
@@ -1819,6 +1837,7 @@ export async function searchProductsService({
   limit = 10,
   lang = "en",
   userId = null,
+  includeZeroStock = false,
 }) {
   const normalizedLang = normalizeLang(lang);
   const trimmedQ = typeof q === "string" ? q.trim() : "";
@@ -1835,7 +1854,7 @@ export async function searchProductsService({
   autoHideExpiredCollectionsThrottled().catch(() => {});
 
   // Cache key excludes userId — isFavorite is injected after cache hit
-  const cacheKey = `search:v4:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}`;
+  const cacheKey = `search:v4:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}${includeZeroStock ? ":admin" : ""}`;
 
   // ── Cached core: suggestions + product DTOs (without isFavorite) ────────────
   const { suggestions, dtos } = await getOrSetCache(cacheKey, 15, async () => {
@@ -1890,7 +1909,7 @@ export async function searchProductsService({
     // findProducts() already populates brand with name_en, name_ar — we use
     // this to extract brand suggestion text from REAL, in-stock products.
     const rawProducts = await findProducts(
-      { $and: [productQFilter, warehouseStockFilter] },
+      { $and: [productQFilter, ...(includeZeroStock ? [] : [warehouseStockFilter])] },
       { limit: limitNum, select: listSelect, lean: true },
     );
 

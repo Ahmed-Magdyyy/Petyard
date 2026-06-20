@@ -5,6 +5,7 @@ import {
   createBanner,
   updateBanner,
   deleteBanner,
+  reorderBanners,
 } from "./banner.controller.js";
 import {
   protect,
@@ -19,6 +20,7 @@ import {
   createBannerValidator,
   updateBannerValidator,
   bannerIdParamValidator,
+  reorderBannersValidator,
 } from "./banner.validators.js";
 import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
 
@@ -40,6 +42,8 @@ router.post(
   createBannerValidator,
   createBanner
 );
+
+router.patch("/reorder", reorderBannersValidator, reorderBanners);
 
 router.patch(
   "/:id",

@@ -453,3 +453,25 @@ export const searchProductsQueryValidator = [
 
   validatorMiddleware,
 ];
+
+export const adminSearchProductsQueryValidator = [
+  query("q")
+    .notEmpty()
+    .withMessage("q is required")
+    .isString()
+    .withMessage("q must be a string")
+    .isLength({ min: 1 })
+    .withMessage("q must be at least 1 character"),
+
+  query("warehouse")
+    .optional()
+    .isMongoId()
+    .withMessage("warehouse must be a valid id"),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 20 })
+    .withMessage("limit must be an integer between 1 and 20"),
+
+  validatorMiddleware,
+];

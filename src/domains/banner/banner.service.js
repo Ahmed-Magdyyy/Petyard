@@ -34,9 +34,12 @@ export async function createBannerService(payload, file) {
     targetSubcategoryId,
     targetBrandId,
     targetUrl,
-    position,
     isActive,
   } = payload;
+
+  // Auto-calculate position: next after the current max
+  const lastBanner = await BannerModel.findOne({}).sort({ position: -1 }).lean();
+  const nextPosition = lastBanner?.position != null ? lastBanner.position + 1 : 0;
 
 
   let image;
@@ -64,7 +67,7 @@ export async function createBannerService(payload, file) {
   try {
     const banner = await BannerModel.create({
       target,
-      ...(typeof position === "number" && { position }),
+      position: nextPosition,
       ...(typeof isActive === "boolean" && { isActive }),
       ...(image && { image }),
     });
@@ -92,7 +95,6 @@ export async function updateBannerService(id, payload, file) {
     targetSubcategoryId,
     targetBrandId,
     targetUrl,
-    position,
     isActive,
   } = payload;
 
@@ -118,7 +120,6 @@ export async function updateBannerService(id, payload, file) {
   if (targetBrandId !== undefined) banner.target.brandId = targetBrandId;
   if (targetUrl !== undefined) banner.target.url = targetUrl;
 
-  if (position !== undefined) banner.position = position;
   if (isActive !== undefined) banner.isActive = isActive;
 
   let newImage;
@@ -161,4 +162,28 @@ export async function deleteBannerService(id) {
   }
 
   await BannerModel.deleteOne({ _id: id });
+}
+
+export async function reorderBannersService(banners) {
+  if (!banners || !banners.length) {
+    throw new ApiError("banners array is required", 400);
+  }
+
+  const bulkOps = banners.map(({ id, position }) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: { $set: { position } },
+    },
+  }));
+
+  const result = await BannerModel.bulkWrite(bulkOps);
+
+  if (result.matchedCount !== banners.length) {
+    throw new ApiError(
+      `Some banner IDs were not found. Expected ${banners.length}, matched ${result.matchedCount}`,
+      400
+    );
+  }
+
+  return { updated: result.modifiedCount };
 }

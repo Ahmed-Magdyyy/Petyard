@@ -11,7 +11,7 @@ import { ConditionModel } from "../../domains/condition/condition.model.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.1-flash-lite";
 
 /**
  * BASELINE condition slugs — the known conditions that should always be
@@ -376,7 +376,24 @@ export async function generateProductTags(productData) {
     const raw = response.text;
     if (!raw) return [];
 
-    const parsed = JSON.parse(raw);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // Fallback: try to extract a JSON array from prose text
+      const match = raw.match(/\[\s*[\s\S]*?\]/);
+      if (match) {
+        try {
+          parsed = JSON.parse(match[0]);
+        } catch {
+          console.error("[AI Tagging] Could not extract JSON from response:", raw.slice(0, 120));
+          return [];
+        }
+      } else {
+        console.error("[AI Tagging] Response is not JSON:", raw.slice(0, 120));
+        return [];
+      }
+    }
 
     if (!Array.isArray(parsed)) return [];
 
@@ -399,14 +416,20 @@ export async function generateProductTags(productData) {
 
 /**
  * Merges admin-provided tags with AI-generated tags.
- * Admin tags are run through the synonym + allowlist pipeline first,
- * so typos like "diabetes" auto-correct to "diabetic".
+ * Admin tags go through synonym mapping (so "renal" → "renal-support",
+ * "diabetes" → "diabetic", etc.) to avoid semantic duplicates with AI tags,
+ * but are NOT filtered against the allowlist — this preserves brand names,
+ * custom labels, and other free-form tags that admins intentionally add.
  * AI tags are already validated inside generateProductTags().
  * Returns a deduplicated array.
  */
 export async function mergeTagsWithAI(adminTags, aiTags) {
-  const validatedAdminTags = await validateAndFilterTags(adminTags);
-  return [...new Set([...validatedAdminTags, ...aiTags])];
+  // Step 1: Normalize (slugify) admin tags
+  const normalized = adminTags.map((t) => normalizeTag(t)).filter(Boolean);
+  // Step 2: Apply synonym mapping to align with canonical slugs (avoids duplicates)
+  const synonymResolved = applySynonyms(normalized);
+  // Step 3: Merge with AI tags — Set deduplicates exact matches
+  return [...new Set([...synonymResolved, ...aiTags])];
 }
 
 // ---------------------------------------------------------------------------

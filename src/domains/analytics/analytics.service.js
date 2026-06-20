@@ -9,6 +9,7 @@ import { CouponModel } from "../coupon/coupon.model.js";
 import { CartModel } from "../cart/cart.model.js";
 import { ReviewModel } from "../review/review.model.js";
 import { ServiceReviewModel } from "../serviceReservation/reviews/serviceReview.model.js";
+import { getAppDownloadsStatsService } from "../appDownloads/appDownloads.service.js";
 import {
   orderStatusEnum,
   serviceReservationStatusEnum,
@@ -283,6 +284,7 @@ export async function getStatsService({ from, to }) {
     productReviewAgg,
     serviceReviewAgg,
     cartCounts,
+    appDownloads,
   ] = await Promise.all([
     // Sales — order total, totalOrders, avgOrderValue
     OrderModel.aggregate([
@@ -446,6 +448,9 @@ export async function getStatsService({ from, to }) {
 
     // Carts — active vs abandoned
     CartModel.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+
+    // App downloads — delegated to the appDownloads domain.
+    getAppDownloadsStatsService({ from, to }),
   ]);
 
   // Assemble refunds
@@ -535,6 +540,7 @@ export async function getStatsService({ from, to }) {
       active: cartMap[cartStatusEnum.ACTIVE] || 0,
       abandoned: cartMap[cartStatusEnum.ABANDONED] || 0,
     },
+    appDownloads,
   };
 }
 
