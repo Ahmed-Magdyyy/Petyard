@@ -28,8 +28,19 @@ import homeLayoutRoutes from "../domains/homeLayout/homeLayout.routes.js";
 import paymentRoutes from "../domains/payment/payment.routes.js";
 import bankAccountRoutes from "../domains/bankAccount/bankAccount.routes.js";
 import standaloneProfileBannerRoutes from "../domains/standaloneProfileBanner/standaloneProfileBanner.routes.js";
+import appRedirectRoutes from "../domains/appRedirect/appRedirect.routes.js";
 
 export function mountRoutes(app) {
+  // ── App Redirect (only for app.petyardstores.com) ──────────
+  // Intercepts all requests to the app subdomain and redirects
+  // to the correct app store based on the user's device.
+  app.use((req, res, next) => {
+    if (req.hostname === "app.petyardstores.com") {
+      return appRedirectRoutes(req, res, next);
+    }
+    next();
+  });
+
   app.use("/api/v1/analytics", analyticsRoutes);
   app.use("/api/v1/auth", authRoutes);
   app.use("/api/v1/users", userRoutes);
