@@ -34,7 +34,12 @@ function smartRedirect(req, res) {
   return res.redirect(302, FALLBACK_URL);
 }
 
-// Catch-all: any path on app.petyardstores.com triggers the smart redirect
-router.get("*", smartRedirect);
+// Only root path redirects to store (temporary — for FE testing)
+router.get("/", smartRedirect);
+
+// All other paths: no redirect (temporary)
+router.get("*", (req, res) => {
+  res.status(200).send("Deep link path received — redirect disabled for testing.");
+});
 
 export default router;

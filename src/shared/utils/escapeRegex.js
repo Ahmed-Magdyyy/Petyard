@@ -8,19 +8,21 @@ export function escapeRegex(str) {
 
 /**
  * Build a regex pattern that treats common separators (hyphens, underscores,
- * dots, forward slashes) as optional between characters.
+ * dots, forward slashes, apostrophes, and whitespace) as optional between
+ * characters.
  *
  * This gives Shopify-like search behaviour where both "xs" and "x-s" match
- * a product named "X-S", and "royal-canin" matches "Royal Canin".
+ * a product named "X-S", "royal-canin" matches "Royal Canin", and
+ * "cats white" matches "Cat's White".
  *
  * Steps:
- *  1. Strip hyphens / underscores / dots / slashes from the query.
+ *  1. Strip separators from the query.
  *  2. Escape each remaining character for regex safety.
- *  3. Join them with `[-_./\s]?` so any single separator is optional.
+ *  3. Join them with a separator class so any single separator is optional.
  */
 export function buildFlexibleSearchPattern(str) {
-  const normalized = str.replace(/[-_./]/g, "");
+  const normalized = str.replace(/[-_./'’\s]/g, "");
   if (!normalized) return escapeRegex(str);
   const chars = [...normalized].map((c) => escapeRegex(c));
-  return chars.join("[-_./\\s]?");
+  return chars.join("[-_./'’\\s]?");
 }

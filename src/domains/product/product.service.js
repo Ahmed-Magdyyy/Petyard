@@ -36,10 +36,7 @@ import {
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 import { getOrSetCache, deleteCacheKey, deleteCachePattern } from "../../shared/utils/cache.js";
-import {
-  escapeRegex,
-  buildFlexibleSearchPattern,
-} from "../../shared/utils/escapeRegex.js";
+import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
 import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
 import {
   autoHideExpiredCollections,
@@ -1404,6 +1401,21 @@ async function updateProductService(id, payload, files = []) {
     isFeatured,
   } = payload;
 
+  // Infer SIMPLE -> VARIANT conversion from the actual FE payload. PATCH does
+  // not accept `type`, so options + variants are the conversion signal.
+  const isSimpleToVariantChange =
+    product.type === productTypeEnum.SIMPLE &&
+    options !== undefined &&
+    Array.isArray(variants) &&
+    variants.length > 0;
+
+  if (isSimpleToVariantChange) {
+    product.type = productTypeEnum.VARIANT;
+    product.price = undefined;
+    product.discountedPrice = undefined;
+    product.warehouseStocks = [];
+  }
+
   let subcategoryName = null;
   let categoryName = null;
 
@@ -1921,13 +1933,15 @@ export async function searchProductsService({
 
     // ── Build suggestions from ACTUAL product results only ────────────────
     // Every suggestion is backed by real, in-stock products.
-    // A name only qualifies as a suggestion if the query actually appears
-    // somewhere in that name (contains match). This filters out products
-    // that only matched via tags — their names wouldn't contain the query
-    // text, so they'd produce misleading suggestions like "Alpha" for "r".
+    // A name only qualifies as a suggestion if it flexibly matches the query.
+    // This keeps suggestions backed by real product/brand names while allowing
+    // user spelling like "cats white" to match "Cat's White".
     // Priority: unique brand names first, then product names.
     // Truncated to SUGGESTION_MAX_LENGTH chars for mobile screens.
-    const nameMatchRegex = new RegExp(escapeRegex(trimmedQ), "i");
+    const nameMatchRegex = new RegExp(
+      buildFlexibleSearchPattern(trimmedQ),
+      "i",
+    );
     const seen = new Set();
     const suggestions = [];
 
