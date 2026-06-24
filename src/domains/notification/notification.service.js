@@ -564,36 +564,7 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
       return { skipped: true, reason: "no_recipients" };
     }
 
-    // 4. Fetch device tokens for all recipients and log the full picture
-    const devices = await NotificationDeviceModel.find({ user: { $in: allRecipientIds } }).select("user token platform");
-
-    // userId → [token, ...]
-    const userTokensMap = new Map();
-    for (const device of devices) {
-      if (!device.token) continue;
-      const uid = String(device.user);
-      if (!userTokensMap.has(uid)) userTokensMap.set(uid, []);
-      userTokensMap.get(uid).push({ token: `...${device.token.slice(-12)}`, platform: device.platform });
-    }
-
-    const recipients = allRecipientIds.map((uid) => {
-      const { name = "unknown", role = "unknown" } = userDetailsMap.get(uid) || {};
-      const tokens = userTokensMap.get(uid) || [];
-      return {
-        userId: uid,
-        name,
-        role,
-        deviceCount: tokens.length,
-        tokens: tokens.length ? tokens : "⚠️ no registered device",
-      };
-    });
-
-    console.log(
-      `[Push] New order #${orderNumber} — notifying ${allRecipientIds.length} recipient(s):\n` +
-      JSON.stringify(recipients, null, 2)
-    );
-
-    // 5. Dispatch notification
+    // 4. Dispatch notification
     const result = await dispatchNotificationToUsers({
       userIds: allRecipientIds,
       notification: {

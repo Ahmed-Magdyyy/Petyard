@@ -53,27 +53,48 @@ const handleMulterError = (err) => {
   return new ApiError(err.message || "Invalid file upload", 400);
 };
 
-const sendErrorForDev = (err, res) => {
-  console.log(err);
-  return res.status(err.statusCode).json({
+const buildErrorResponse = (err, { includeStack = false } = {}) => {
+  const body = {
     status: err.status,
     error: err.errors || [],
     message: err.message,
-    stack: err.stack,
-  });
+  };
+
+  if (includeStack) {
+    body.stack = err.stack;
+  }
+
+  return body;
 };
 
-const sendErrorForProd = (err, res) => {
-  if (err.isOperational) {
-    res.status(err.statusCode).json({
+const logOperationalError = (err, req) => {
+  console.warn(
+    "Operational error",
+    JSON.stringify({
+      statusCode: err.statusCode,
       status: err.status,
       message: err.message,
       errors: err.errors || [],
-    });
+    }),
+  );
+};
+
+const sendErrorForDev = (err, res) => {
+  console.log(err);
+  return res
+    .status(err.statusCode)
+    .json(buildErrorResponse(err, { includeStack: true }));
+};
+
+const sendErrorForProd = (err, req, res) => {
+  if (err.isOperational) {
+    logOperationalError(err, req);
+    res.status(err.statusCode).json(buildErrorResponse(err));
   } else {
-    console.error("ERROR 💥", err);
+    console.error("Unexpected error", err);
     res.status(500).json({
       status: "error",
+      error: [],
       message: "Something went very wrong!",
     });
   }
@@ -82,7 +103,6 @@ const sendErrorForProd = (err, res) => {
 export const globalError = async (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
-  console.log("error", err);
 
   let error = { ...err };
   error.message = err.message;
@@ -101,6 +121,6 @@ export const globalError = async (err, req, res, next) => {
   if (process.env.NODE_ENV === "development") {
     sendErrorForDev(error, res);
   } else {
-    sendErrorForProd(error, res);
+    sendErrorForProd(error, req, res);
   }
 };

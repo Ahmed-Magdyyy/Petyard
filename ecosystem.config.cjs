@@ -43,7 +43,7 @@ module.exports = {
 
       // Environment
       env: {
-        NODE_ENV: "development",
+        NODE_ENV: "production",
         TZ: "Africa/Cairo",
       },
       env_production: {

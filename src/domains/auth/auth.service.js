@@ -123,7 +123,7 @@ export async function signupService({ name, email, phone, password }) {
   try {
     await sendOtpSms(user.phone, otp);
   } catch (err) {
-    console.error("Failed to send OTP SMS", err);
+    console.error("Failed to send OTP SMS", err.message);
     await UserModel.findByIdAndDelete(user._id);
     throw new ApiError(
       "Failed to send verification SMS, please try again later",
@@ -347,9 +347,8 @@ export async function sendGuestOtpService({ phone }) {
 
   try {
     await sendOtpSms(normalizedPhone, otp);
-    console.log("guest otp:", otp);
   } catch (err) {
-    console.error("Failed to send guest OTP SMS", err);
+    console.error("Failed to send guest OTP SMS", err.message);
     throw new ApiError(
       "Failed to send verification SMS, please try again later",
       502,
@@ -466,7 +465,7 @@ export async function loginService({ identifier, password }) {
     try {
       await sendOtpSms(user.phone, otp);
     } catch (err) {
-      console.error("Failed to send OTP SMS during login", err);
+      console.error("Failed to send OTP SMS during login", err.message);
     }
 
     throw new ApiError("Please verify your phone first", 401);
@@ -765,7 +764,7 @@ export async function oauthSendOtpService({ userId, phone }) {
   try {
     await sendOtpSms(normalizedPhone, otp);
   } catch (err) {
-    console.error("Failed to send OTP SMS", err);
+    console.error("Failed to send OTP SMS", err.message);
     throw new ApiError(
       "Failed to send verification SMS, please try again later",
       502,

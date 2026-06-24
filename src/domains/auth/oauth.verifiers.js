@@ -24,12 +24,6 @@ export async function verifyGoogleIdTokenOrThrow(idToken) {
     throw new ApiError("Google OAuth client id is not configured", 500);
   }
 
-  console.log(
-    "[Google OAuth] idToken received:",
-    idToken?.substring(0, 30) + "...",
-  );
-  console.log("[Google OAuth] audiences configured:", audiences);
-
   let ticket;
   try {
     ticket = await googleClient.verifyIdToken({ idToken, audience: audiences });
