@@ -2,11 +2,7 @@ import asyncHandler from "express-async-handler";
 import jwt from "jsonwebtoken";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { UserModel } from "../user/user.model.js";
-import {
-  authProviderEnum,
-  roles,
-  accountStatus,
-} from "../../shared/constants/enums.js";
+import { roles, accountStatus } from "../../shared/constants/enums.js";
 
 export const protect = asyncHandler(async (req, res, next) => {
   let accessToken;
@@ -153,15 +149,8 @@ export const onlySocialProfileCompletionPhone = asyncHandler(
       throw new ApiError("Please login first", 401);
     }
 
-    if (req.user.signupProvider === authProviderEnum.SYSTEM) {
-      throw new ApiError(
-        "Only users who signed up via Google/Apple allowed for this route",
-        403,
-      );
-    }
-
-    if (req.user.phone) {
-      throw new ApiError("Phone is already set.", 403);
+    if (req.user.phoneVerified) {
+      throw new ApiError("Phone is already verified.", 403);
     }
 
     next();

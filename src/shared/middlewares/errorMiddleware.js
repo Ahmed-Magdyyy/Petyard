@@ -75,6 +75,12 @@ const logOperationalError = (err, req) => {
       status: err.status,
       message: err.message,
       errors: err.errors || [],
+      method: req.method,
+      path: req.originalUrl || req.url,
+      userId: req.user?._id,
+      role: req.user?.role,
+      signupProvider: req.user?.signupProvider,
+      phoneVerified: req.user?.phoneVerified,
     }),
   );
 };

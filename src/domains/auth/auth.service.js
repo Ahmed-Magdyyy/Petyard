@@ -708,20 +708,17 @@ export async function oauthAppleLoginService({
 }
 
 export async function oauthSendOtpService({ userId, phone }) {
-  if (!phone) {
-    throw new ApiError("phone is required", 400);
-  }
-
   const user = await UserModel.findById(userId);
   if (!user) {
     throw new ApiError("User not found", 404);
   }
 
-  if (user.signupProvider === authProviderEnum.SYSTEM && !user.phoneVerified) {
-    throw new ApiError("Please verify your phone first", 403);
+  const requestedPhone = phone || user.pendingPhone || user.phone;
+  if (!requestedPhone) {
+    throw new ApiError("phone is required", 400);
   }
 
-  const normalizedPhone = normalizeEgyptianMobile(phone);
+  const normalizedPhone = normalizeEgyptianMobile(requestedPhone);
   const existing = await UserModel.findOne({
     _id: { $ne: userId },
     phone: normalizedPhone,
@@ -731,20 +728,30 @@ export async function oauthSendOtpService({ userId, phone }) {
     throw new ApiError("Phone is already in use", 409);
   }
 
+  const currentPhoneMatches =
+    user.phone && normalizeEgyptianMobile(user.phone) === normalizedPhone;
+  const verifyExistingPhone = !user.phoneVerified && currentPhoneMatches;
+
   const now = new Date();
   const RESEND_MIN_INTERVAL_MS = 60 * 1000;
   const RESEND_MAX_PER_DAY = 5;
+  const lastSentAt = verifyExistingPhone
+    ? user.phoneOtpLastSentAt
+    : user.pendingPhoneOtpLastSentAt;
+  const sendCountToday = verifyExistingPhone
+    ? user.phoneOtpSendCountToday
+    : user.pendingPhoneOtpSendCountToday;
 
-  if (user.pendingPhoneOtpLastSentAt) {
-    const diff = now.getTime() - user.pendingPhoneOtpLastSentAt.getTime();
+  if (lastSentAt) {
+    const diff = now.getTime() - lastSentAt.getTime();
     if (diff < RESEND_MIN_INTERVAL_MS) {
       throw new ApiError("Please wait before requesting another OTP", 429);
     }
   }
 
   let sendCount = computeNextOtpSendCountToday({
-    lastSentAt: user.pendingPhoneOtpLastSentAt,
-    sendCountToday: user.pendingPhoneOtpSendCountToday,
+    lastSentAt,
+    sendCountToday,
     now,
   });
 
@@ -755,11 +762,23 @@ export async function oauthSendOtpService({ userId, phone }) {
   const otp = generateOtp();
   const otpHash = hashOtp(otp);
 
-  user.pendingPhone = normalizedPhone;
-  user.pendingPhoneVerificationCode = otpHash;
-  user.pendingPhoneVerificationExpires = new Date(Date.now() + 5 * 60 * 1000);
-  user.pendingPhoneOtpLastSentAt = now;
-  user.pendingPhoneOtpSendCountToday = sendCount + 1;
+  if (verifyExistingPhone) {
+    user.phoneVerificationCode = otpHash;
+    user.phoneVerificationExpires = new Date(Date.now() + 5 * 60 * 1000);
+    user.phoneOtpLastSentAt = now;
+    user.phoneOtpSendCountToday = sendCount + 1;
+    user.pendingPhone = undefined;
+    user.pendingPhoneVerificationCode = undefined;
+    user.pendingPhoneVerificationExpires = undefined;
+    user.pendingPhoneOtpLastSentAt = undefined;
+    user.pendingPhoneOtpSendCountToday = 0;
+  } else {
+    user.pendingPhone = normalizedPhone;
+    user.pendingPhoneVerificationCode = otpHash;
+    user.pendingPhoneVerificationExpires = new Date(Date.now() + 5 * 60 * 1000);
+    user.pendingPhoneOtpLastSentAt = now;
+    user.pendingPhoneOtpSendCountToday = sendCount + 1;
+  }
 
   try {
     await sendOtpSms(normalizedPhone, otp);
@@ -779,8 +798,8 @@ export async function oauthSendOtpService({ userId, phone }) {
 }
 
 export async function oauthVerifyPhoneService({ userId, phone, otp }) {
-  if (!phone || !otp) {
-    throw new ApiError("phone and otp are required", 400);
+  if (!otp) {
+    throw new ApiError("otp is required", 400);
   }
 
   const user = await UserModel.findById(userId);
@@ -788,25 +807,44 @@ export async function oauthVerifyPhoneService({ userId, phone, otp }) {
     throw new ApiError("User not found", 404);
   }
 
-  const normalizedPhone = normalizeEgyptianMobile(phone);
-  if (!user.pendingPhone || user.pendingPhone !== normalizedPhone) {
+  const requestedPhone = phone || user.pendingPhone || user.phone;
+  if (!requestedPhone) {
+    throw new ApiError("phone is required", 400);
+  }
+
+  const normalizedPhone = normalizeEgyptianMobile(requestedPhone);
+  const pendingPhoneMatches = user.pendingPhone === normalizedPhone;
+  const currentPhoneMatches =
+    user.phone && normalizeEgyptianMobile(user.phone) === normalizedPhone;
+  const verifyPendingPhone = Boolean(
+    pendingPhoneMatches &&
+      user.pendingPhoneVerificationCode &&
+      user.pendingPhoneVerificationExpires,
+  );
+  const verifyExistingPhone = Boolean(
+    !verifyPendingPhone &&
+      !user.phoneVerified &&
+      currentPhoneMatches &&
+      user.phoneVerificationCode &&
+      user.phoneVerificationExpires,
+  );
+
+  if (!verifyPendingPhone && !verifyExistingPhone) {
     throw new ApiError("No active OTP, please request a new code", 400);
   }
 
-  if (
-    !user.pendingPhoneVerificationCode ||
-    !user.pendingPhoneVerificationExpires
-  ) {
-    throw new ApiError("No active OTP, please request a new code", 400);
-  }
+  const verificationCode = verifyPendingPhone
+    ? user.pendingPhoneVerificationCode
+    : user.phoneVerificationCode;
+  const verificationExpires = verifyPendingPhone
+    ? user.pendingPhoneVerificationExpires
+    : user.phoneVerificationExpires;
 
-  if (user.pendingPhoneVerificationExpires.getTime() < Date.now()) {
+  if (verificationExpires.getTime() < Date.now()) {
     throw new ApiError("OTP has expired", 400);
   }
 
-  const expected = user.pendingPhoneVerificationCode;
-  const provided = hashOtp(otp);
-  if (provided !== expected) {
+  if (hashOtp(otp) !== verificationCode) {
     throw new ApiError("Invalid OTP", 400);
   }
 
@@ -822,6 +860,10 @@ export async function oauthVerifyPhoneService({ userId, phone, otp }) {
   user.phone = normalizedPhone;
   user.phoneVerified = true;
   user.account_status = accountStatus.CONFIRMED;
+  user.phoneVerificationCode = undefined;
+  user.phoneVerificationExpires = undefined;
+  user.phoneOtpLastSentAt = undefined;
+  user.phoneOtpSendCountToday = 0;
   user.pendingPhone = undefined;
   user.pendingPhoneVerificationCode = undefined;
   user.pendingPhoneVerificationExpires = undefined;

@@ -132,8 +132,7 @@ export const oauthAppleLoginValidator = [
 
 export const oauthSendOtpValidator = [
   body("phone")
-    .notEmpty()
-    .withMessage("Phone is required")
+    .optional({ checkFalsy: true })
     .matches(egyptianPhoneRegex)
     .withMessage("Phone must be a valid Egyptian mobile number"),
   validatorMiddleware,
@@ -141,8 +140,7 @@ export const oauthSendOtpValidator = [
 
 export const oauthVerifyPhoneValidator = [
   body("phone")
-    .notEmpty()
-    .withMessage("Phone is required")
+    .optional({ checkFalsy: true })
     .matches(egyptianPhoneRegex)
     .withMessage("Phone must be a valid Egyptian mobile number"),
   body("otp")
