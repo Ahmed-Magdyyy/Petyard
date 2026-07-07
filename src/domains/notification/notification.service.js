@@ -14,6 +14,16 @@ import {
 } from "../serviceReservation/reservations/serviceReservation.utils.js";
 import { roles, enabledControls, paymentMethodEnum, orderStatusEnum } from "../../shared/constants/enums.js";
 
+const STAFF_ALERT_PUSH_OPTIONS = {
+  android: {
+    channelId: "petyard_notification_channel",
+    sound: "petyard_songe",
+  },
+  apns: {
+    sound: "petyardSonge.mp3",
+  },
+};
+
 function normalizePlatform(value) {
   const v = typeof value === "string" ? value.toLowerCase().trim() : "";
   if (v === "ios" || v === "web") return v;
@@ -585,6 +595,7 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
         referenceId: String(order._id),
       },
       channels: { push: true, inApp: true },
+      pushOptions: STAFF_ALERT_PUSH_OPTIONS,
     });
 
     return result;
@@ -665,6 +676,7 @@ export async function sendNewReturnRequestNotificationToAdminsAndModerators(
         referenceId: String(returnRequest._id),
       },
       channels: { push: true, inApp: true },
+      pushOptions: STAFF_ALERT_PUSH_OPTIONS,
     });
 
     return result;
@@ -736,6 +748,7 @@ export async function sendNewServiceReservationNotificationToAdmins(
         referenceId: String(reservation._id),
       },
       channels: { push: true, inApp: true },
+      pushOptions: STAFF_ALERT_PUSH_OPTIONS,
     });
 
     return result;

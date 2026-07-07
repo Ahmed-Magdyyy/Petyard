@@ -12,7 +12,8 @@
  *     icon: "order",
  *     action: { type: "order_detail", screen: "OrderDetailScreen", params: { orderId: "..." } },
  *     source: { domain: "order", event: "status_changed", referenceId: "..." },
- *     channels: { push: true, inApp: true }
+ *     channels: { push: true, inApp: true },
+ *     pushOptions: { android: { channelId: "...", sound: "..." }, apns: { sound: "..." } }
  *   });
  */
 
@@ -36,10 +37,41 @@ function buildDataPayload(data) {
   return out;
 }
 
+function buildPushPlatformConfig(pushOptions = {}) {
+  const options = pushOptions && typeof pushOptions === "object" ? pushOptions : {};
+  const androidOptions = options.android || {};
+  const apnsOptions = options.apns || {};
+
+  const androidNotification = {
+    sound: androidOptions.sound || "default",
+  };
+
+  if (androidOptions.channelId) {
+    androidNotification.channelId = androidOptions.channelId;
+  }
+
+  return {
+    android: {
+      priority: "high",
+      notification: androidNotification,
+    },
+    apns: {
+      payload: {
+        aps: {
+          "content-available": 1,
+          "mutable-content": 1,
+          sound: apnsOptions.sound || "default",
+        },
+      },
+      headers: { "apns-priority": "10" },
+    },
+  };
+}
+
 /**
  * Send push notification to specific tokens
  */
-async function sendPushToTokens({ tokens, notification, data }) {
+async function sendPushToTokens({ tokens, notification, data, pushOptions }) {
   const admin = getFirebaseAdmin();
   if (!admin) {
     return { skipped: true, successCount: 0, failureCount: 0 };
@@ -69,20 +101,7 @@ async function sendPushToTokens({ tokens, notification, data }) {
       tokens: batchTokens,
       notification: notification || undefined,
       data: payloadData,
-      android: {
-        priority: "high",
-        notification: { sound: "default" },
-      },
-      apns: {
-        payload: {
-          aps: {
-            "content-available": 1,
-            "mutable-content": 1,
-            sound: "default",
-          },
-        },
-        headers: { "apns-priority": "10" },
-      },
+      ...buildPushPlatformConfig(pushOptions),
     };
 
     try {
@@ -141,6 +160,7 @@ function computeExpiresAt(source, providedExpiresAt) {
  * @param {Object} params.source - { domain, event, referenceId } for tracking
  * @param {Object} params.channels - { push: boolean, inApp: boolean }
  * @param {Date} params.expiresAt - Optional expiry for in-app notification
+ * @param {Object} params.pushOptions - Optional platform-specific push settings
  */
 export async function dispatchNotification({
   userId,
@@ -150,6 +170,7 @@ export async function dispatchNotification({
   source,
   channels = { push: true, inApp: true },
   expiresAt,
+  pushOptions,
 }) {
   if (!userId) {
     return { push: null, inApp: null };
@@ -197,6 +218,7 @@ export async function dispatchNotification({
           ...(action?.params || {}),
           ...(source?.referenceId ? { referenceId: source.referenceId } : {}),
         },
+        pushOptions,
       });
 
       results.push = {
@@ -222,6 +244,7 @@ export async function dispatchNotification({
  * @param {Object} params.action - { type, screen, params }
  * @param {Object} params.source - { domain, event }
  * @param {Object} params.channels - { push: boolean, inApp: boolean }
+ * @param {Object} params.pushOptions - Optional platform-specific push settings
  */
 export async function dispatchNotificationToUsers({
   userIds,
@@ -231,6 +254,7 @@ export async function dispatchNotificationToUsers({
   source,
   channels = { push: true, inApp: true },
   expiresAt,
+  pushOptions,
 }) {
   const ids = Array.isArray(userIds)
     ? Array.from(new Set(userIds.map((id) => String(id))))
@@ -280,6 +304,7 @@ export async function dispatchNotificationToUsers({
           screen: action?.screen || "",
           ...(action?.params || {}),
         },
+        pushOptions,
       });
 
       results.push = {
@@ -307,6 +332,7 @@ export async function dispatchBroadcastNotification({
   source,
   channels = { push: true, inApp: true },
   expiresAt,
+  pushOptions,
 }) {
   const results = { push: null, inApp: null };
 
@@ -356,6 +382,7 @@ export async function dispatchBroadcastNotification({
           screen: action?.screen || "",
           ...(action?.params || {}),
         },
+        pushOptions,
       });
 
       results.push = {
