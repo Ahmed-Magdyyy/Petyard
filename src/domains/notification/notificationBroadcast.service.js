@@ -1,8 +1,11 @@
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { parseBoolean } from "../../shared/utils/env.js";
-import { dispatchBroadcastNotification } from "./notificationDispatcher.js";
 import {
-  enqueueNotificationBroadcastAndWait,
+  dispatchBroadcastNotification,
+  getBroadcastDeviceCount,
+} from "./notificationDispatcher.js";
+import {
+  enqueueNotificationBroadcast,
   isNotificationBroadcastQueueConfigured,
 } from "./notificationBroadcast.queue.js";
 
@@ -16,14 +19,9 @@ function shouldUseInlineFallback() {
 function mapQueueError(err) {
   if (err instanceof ApiError) return err;
 
-  const message = err?.message || "Notification broadcast queue failed";
-  const isTimeout = /timed out|timeout/i.test(message);
-
   return new ApiError(
-    isTimeout
-      ? "Notification broadcast timed out. Please try again later."
-      : "Notification broadcast service is unavailable. Please try again later.",
-    isTimeout ? 504 : 503,
+    "Notification broadcast service is unavailable. Please try again later.",
+    503,
   );
 }
 
@@ -40,10 +38,15 @@ export async function dispatchAdminBroadcastNotification(payload) {
   }
 
   try {
-    return await enqueueNotificationBroadcastAndWait(payload);
+    const deviceCount = await getBroadcastDeviceCount();
+    await enqueueNotificationBroadcast(payload);
+
+    return {
+      message: `Notifications sending to ${deviceCount} devices is in progress.`,
+    };
   } catch (err) {
     console.error(
-      "[Notification Broadcast] Queued execution failed:",
+      "[Notification Broadcast] Failed to enqueue broadcast:",
       err?.message || err,
     );
 

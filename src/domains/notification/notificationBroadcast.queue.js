@@ -81,6 +81,19 @@ export async function enqueueNotificationBroadcastAndWait(payload) {
   );
 }
 
+export async function enqueueNotificationBroadcast(payload) {
+  const job = await getNotificationBroadcastQueue().add(
+    NOTIFICATION_BROADCAST_JOB_NAME,
+    payload,
+  );
+
+  return {
+    queued: true,
+    jobId: job.id,
+    queueName: NOTIFICATION_BROADCAST_QUEUE_NAME,
+  };
+}
+
 export async function closeNotificationBroadcastQueue() {
   await Promise.allSettled([
     queueEvents?.close(),

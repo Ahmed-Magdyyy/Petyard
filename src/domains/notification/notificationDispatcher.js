@@ -65,6 +65,12 @@ async function getDistinctDeviceTokens(filter = {}) {
   return getUniqueTokens(tokens);
 }
 
+export async function getBroadcastDeviceCount() {
+  return NotificationDeviceModel.countDocuments({
+    token: { $exists: true, $nin: ["", null] },
+  });
+}
+
 function isInvalidRegistrationTokenError(error) {
   const code = error?.code || error?.errorInfo?.code;
   if (INVALID_TOKEN_ERROR_CODES.has(code)) return true;
