@@ -5,7 +5,8 @@
   "main": "src/app/server.js",
   "scripts": {
     "start:dev": "nodemon src/app/server.js",
-    "start:prod": "NODE_ENV=production node src/app/server.js"
+    "start:prod": "NODE_ENV=production node src/app/server.js",
+    "start:notification-worker": "NODE_ENV=production node src/workers/notificationBroadcast.worker.js"
   },
   "author": "",
   "license": "ISC",
@@ -16,6 +17,7 @@
     "@turf/turf": "^6.5.0",
     "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
+    "bullmq": "^5.80.1",
     "cloudinary": "^1.41.3",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",

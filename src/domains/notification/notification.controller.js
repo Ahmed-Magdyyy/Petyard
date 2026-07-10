@@ -13,8 +13,8 @@ import {
 } from "./inAppNotification.service.js";
 import {
   dispatchNotificationToUsers,
-  dispatchBroadcastNotification,
 } from "./notificationDispatcher.js";
+import { dispatchAdminBroadcastNotification } from "./notificationBroadcast.service.js";
 
 function getGuestId(req) {
   const headerValue = req.headers["x-guest-id"];
@@ -190,7 +190,7 @@ export const adminSendNotification = asyncHandler(async (req, res) => {
   }
 
   if (targetType === "all_users" || targetType === "all_devices") {
-    const result = await dispatchBroadcastNotification({
+    const result = await dispatchAdminBroadcastNotification({
       notification: {
         title_en: notification?.title_en || notification?.title || "",
         title_ar: notification?.title_ar,

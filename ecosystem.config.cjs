@@ -51,5 +51,35 @@ module.exports = {
         TZ: "Africa/Cairo",
       },
     },
+    {
+      name: "petyard-notification-worker",
+      script: "src/workers/notificationBroadcast.worker.js",
+
+      // Keep notification fan-out isolated from the API server.
+      max_memory_restart: "512M",
+      node_args: "--max-old-space-size=512",
+
+      exp_backoff_restart_delay: 1000,
+      max_restarts: 15,
+      min_uptime: "5s",
+
+      time: true,
+      merge_logs: false,
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      max_size: "10M",
+
+      kill_timeout: 30000,
+      listen_timeout: 3000,
+      watch: false,
+
+      env: {
+        NODE_ENV: "production",
+        TZ: "Africa/Cairo",
+      },
+      env_production: {
+        NODE_ENV: "production",
+        TZ: "Africa/Cairo",
+      },
+    },
   ],
 };

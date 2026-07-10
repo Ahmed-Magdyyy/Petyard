@@ -1,10 +1,18 @@
 import { InAppNotificationModel } from "./inAppNotification.model.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
+import { parseBoundedInt } from "../../shared/utils/env.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
 }
+
+const BULK_INSERT_CHUNK_SIZE = parseBoundedInt(
+  process.env.IN_APP_NOTIFICATION_INSERT_CHUNK_SIZE,
+  1000,
+  100,
+  5000,
+);
 
 /**
  * Create a new in-app notification for a user
@@ -57,23 +65,31 @@ export async function createBulkInAppNotificationsService({
     return { insertedCount: 0 };
   }
 
-  const docs = userIds.map((userId) => ({
-    user: userId,
-    title_en,
-    title_ar: title_ar || title_en,
-    body_en,
-    body_ar: body_ar || body_en,
-    icon,
-    action: action || {},
-    source: source || {},
-    expiresAt,
-  }));
+  let insertedCount = 0;
 
-  const result = await InAppNotificationModel.insertMany(docs, {
-    ordered: false,
-  });
+  for (let start = 0; start < userIds.length; start += BULK_INSERT_CHUNK_SIZE) {
+    const docs = userIds
+      .slice(start, start + BULK_INSERT_CHUNK_SIZE)
+      .map((userId) => ({
+        user: userId,
+        title_en,
+        title_ar: title_ar || title_en,
+        body_en,
+        body_ar: body_ar || body_en,
+        icon,
+        action: action || {},
+        source: source || {},
+        expiresAt,
+      }));
 
-  return { insertedCount: result.length };
+    const result = await InAppNotificationModel.insertMany(docs, {
+      ordered: false,
+    });
+
+    insertedCount += result.length;
+  }
+
+  return { insertedCount };
 }
 
 /**

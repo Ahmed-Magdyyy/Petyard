@@ -23,6 +23,68 @@ import {
   createInAppNotificationService,
   createBulkInAppNotificationsService,
 } from "./inAppNotification.service.js";
+import { parseBoundedInt } from "../../shared/utils/env.js";
+
+const FCM_BATCH_SIZE = parseBoundedInt(
+  process.env.FCM_PUSH_BATCH_SIZE,
+  500,
+  1,
+  500,
+);
+
+const BROADCAST_BATCH_DELAY_MS = parseBoundedInt(
+  process.env.FCM_BROADCAST_BATCH_DELAY_MS,
+  250,
+  0,
+  10000,
+);
+
+const INVALID_TOKEN_ERROR_CODES = new Set([
+  "messaging/invalid-registration-token",
+  "messaging/registration-token-not-registered",
+  "messaging/sender-id-mismatch",
+]);
+
+function sleep(ms) {
+  if (!ms) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getUniqueTokens(tokens) {
+  return Array.from(
+    new Set(
+      (Array.isArray(tokens) ? tokens : [])
+        .map((t) => (typeof t === "string" ? t.trim() : ""))
+        .filter(Boolean)
+    )
+  );
+}
+
+async function getDistinctDeviceTokens(filter = {}) {
+  const tokens = await NotificationDeviceModel.distinct("token", filter);
+  return getUniqueTokens(tokens);
+}
+
+function isInvalidRegistrationTokenError(error) {
+  const code = error?.code || error?.errorInfo?.code;
+  if (INVALID_TOKEN_ERROR_CODES.has(code)) return true;
+
+  if (code !== "messaging/invalid-argument") return false;
+
+  const message = String(error?.message || "");
+  return /registration token|token is not valid/i.test(message);
+}
+
+async function deleteInvalidDeviceTokens(tokens) {
+  const uniqueTokens = getUniqueTokens(tokens);
+  if (!uniqueTokens.length) return 0;
+
+  const result = await NotificationDeviceModel.deleteMany({
+    token: { $in: uniqueTokens },
+  });
+
+  return result.deletedCount || 0;
+}
 
 /**
  * Build FCM data payload (all values must be strings)
@@ -71,19 +133,19 @@ function buildPushPlatformConfig(pushOptions = {}) {
 /**
  * Send push notification to specific tokens
  */
-async function sendPushToTokens({ tokens, notification, data, pushOptions }) {
+async function sendPushToTokens({
+  tokens,
+  notification,
+  data,
+  pushOptions,
+  batchDelayMs = 0,
+}) {
   const admin = getFirebaseAdmin();
   if (!admin) {
     return { skipped: true, successCount: 0, failureCount: 0 };
   }
 
-  const uniqueTokens = Array.from(
-    new Set(
-      (Array.isArray(tokens) ? tokens : [])
-        .map((t) => (typeof t === "string" ? t.trim() : ""))
-        .filter(Boolean)
-    )
-  );
+  const uniqueTokens = getUniqueTokens(tokens);
 
   if (!uniqueTokens.length) {
     return { successCount: 0, failureCount: 0 };
@@ -92,7 +154,7 @@ async function sendPushToTokens({ tokens, notification, data, pushOptions }) {
   const payloadData = buildDataPayload(data);
   let totalSuccess = 0;
   let totalFailure = 0;
-  const batchSize = 500;
+  const batchSize = FCM_BATCH_SIZE;
 
   for (let start = 0; start < uniqueTokens.length; start += batchSize) {
     const batchTokens = uniqueTokens.slice(start, start + batchSize);
@@ -108,13 +170,34 @@ async function sendPushToTokens({ tokens, notification, data, pushOptions }) {
       const response = await admin.messaging().sendEachForMulticast(message);
       totalSuccess += response.successCount;
       totalFailure += response.failureCount;
+
+      const invalidTokens = [];
+      response.responses.forEach((tokenResponse, index) => {
+        if (
+          !tokenResponse.success &&
+          isInvalidRegistrationTokenError(tokenResponse.error)
+        ) {
+          invalidTokens.push(batchTokens[index]);
+        }
+      });
+
+      if (invalidTokens.length > 0) {
+        await deleteInvalidDeviceTokens(invalidTokens);
+      }
     } catch (err) {
-      console.error("[Push] \u274c Batch send failed:", err.message);
+      console.error("[Push] Batch send failed:", err.message);
       totalFailure += batchTokens.length;
+    }
+
+    if (batchDelayMs > 0 && start + batchSize < uniqueTokens.length) {
+      await sleep(batchDelayMs);
     }
   }
 
-  return { successCount: totalSuccess, failureCount: totalFailure };
+  return {
+    successCount: totalSuccess,
+    failureCount: totalFailure,
+  };
 }
 
 /**
@@ -202,8 +285,7 @@ export async function dispatchNotification({
   // 2. Send Push Notification
   if (channels.push) {
     try {
-      const devices = await NotificationDeviceModel.find({ user: userId });
-      const tokens = devices.map((d) => d.token).filter(Boolean);
+      const tokens = await getDistinctDeviceTokens({ user: userId });
 
       // Use English as default for push (could be enhanced to use user's preferred lang)
       const pushResult = await sendPushToTokens({
@@ -222,7 +304,7 @@ export async function dispatchNotification({
       });
 
       results.push = {
-        deviceCount: devices.length,
+        deviceCount: tokens.length,
         ...pushResult,
       };
     } catch (err) {
@@ -290,8 +372,7 @@ export async function dispatchNotificationToUsers({
   // 2. Send Push to all users' devices
   if (channels.push) {
     try {
-      const devices = await NotificationDeviceModel.find({ user: { $in: ids } });
-      const tokens = devices.map((d) => d.token).filter(Boolean);
+      const tokens = await getDistinctDeviceTokens({ user: { $in: ids } });
 
       const pushResult = await sendPushToTokens({
         tokens,
@@ -309,7 +390,7 @@ export async function dispatchNotificationToUsers({
 
       results.push = {
         userCount: ids.length,
-        deviceCount: devices.length,
+        deviceCount: tokens.length,
         ...pushResult,
       };
     } catch (err) {
@@ -340,12 +421,13 @@ export async function dispatchBroadcastNotification({
   if (channels.inApp) {
     try {
       // Get unique user IDs from devices
-      const devices = await NotificationDeviceModel.find({ user: { $exists: true, $ne: null } })
-        .distinct("user");
+      const userIds = await NotificationDeviceModel.distinct("user", {
+        user: { $exists: true, $ne: null },
+      });
 
-      if (devices.length > 0) {
+      if (userIds.length > 0) {
         const inAppResult = await createBulkInAppNotificationsService({
-          userIds: devices,
+          userIds,
           title_en: notification?.title_en || notification?.title || "",
           title_ar: notification?.title_ar,
           body_en: notification?.body_en || notification?.body || "",
@@ -355,7 +437,7 @@ export async function dispatchBroadcastNotification({
           source,
           expiresAt: computeExpiresAt(source, expiresAt),
         });
-        results.inApp = { ...inAppResult, userCount: devices.length };
+        results.inApp = { ...inAppResult, userCount: userIds.length };
       } else {
         results.inApp = { insertedCount: 0, userCount: 0 };
       }
@@ -368,8 +450,7 @@ export async function dispatchBroadcastNotification({
   // 2. Send push to ALL devices (including guests)
   if (channels.push) {
     try {
-      const devices = await NotificationDeviceModel.find({});
-      const tokens = devices.map((d) => d.token).filter(Boolean);
+      const tokens = await getDistinctDeviceTokens();
 
       const pushResult = await sendPushToTokens({
         tokens,
@@ -383,10 +464,11 @@ export async function dispatchBroadcastNotification({
           ...(action?.params || {}),
         },
         pushOptions,
+        batchDelayMs: BROADCAST_BATCH_DELAY_MS,
       });
 
       results.push = {
-        deviceCount: devices.length,
+        deviceCount: tokens.length,
         ...pushResult,
       };
     } catch (err) {
