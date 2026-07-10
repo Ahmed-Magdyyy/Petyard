@@ -5,7 +5,7 @@ import {
   isBullMqConfigured,
 } from "../../config/bullmq.js";
 
-export const NOTIFICATION_BROADCAST_QUEUE_NAME = "notification:broadcast";
+export const NOTIFICATION_BROADCAST_QUEUE_NAME = "notification-broadcast";
 export const NOTIFICATION_BROADCAST_JOB_NAME = "send-broadcast";
 
 let queue = null;
