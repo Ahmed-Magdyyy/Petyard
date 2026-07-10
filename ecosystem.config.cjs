@@ -2,6 +2,7 @@ module.exports = {
   apps: [
     {
       name: "petyard",
+      cwd: "/root/Petyard",
       script: "src/app/server.js",
 
       // ── Memory Protection ─────────────────────────────────────
@@ -53,6 +54,7 @@ module.exports = {
     },
     {
       name: "petyard-notification-worker",
+      cwd: "/root/Petyard",
       script: "src/workers/notificationBroadcast.worker.js",
 
       // Keep notification fan-out isolated from the API server.
