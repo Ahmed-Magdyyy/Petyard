@@ -20,7 +20,11 @@ const STAFF_ALERT_PUSH_OPTIONS = {
     sound: "petyard_songe",
   },
   apns: {
-    sound: "petyardSonge.mp3",
+    sound: "petyardSonge.caf",
+    headers: {
+      "apns-priority": "10",
+      "apns-push-type": "alert",
+    },
   },
 };
 

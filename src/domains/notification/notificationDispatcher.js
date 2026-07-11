@@ -13,7 +13,7 @@
  *     action: { type: "order_detail", screen: "OrderDetailScreen", params: { orderId: "..." } },
  *     source: { domain: "order", event: "status_changed", referenceId: "..." },
  *     channels: { push: true, inApp: true },
- *     pushOptions: { android: { channelId: "...", sound: "..." }, apns: { sound: "..." } }
+ *     pushOptions: { android: { channelId: "...", sound: "..." }, apns: { sound: "...", headers: {} } }
  *   });
  */
 
@@ -109,6 +109,10 @@ function buildPushPlatformConfig(pushOptions = {}) {
   const options = pushOptions && typeof pushOptions === "object" ? pushOptions : {};
   const androidOptions = options.android || {};
   const apnsOptions = options.apns || {};
+  const apnsHeaders =
+    apnsOptions.headers && typeof apnsOptions.headers === "object"
+      ? apnsOptions.headers
+      : {};
 
   const androidNotification = {
     sound: androidOptions.sound || "default",
@@ -131,7 +135,7 @@ function buildPushPlatformConfig(pushOptions = {}) {
           sound: apnsOptions.sound || "default",
         },
       },
-      headers: { "apns-priority": "10" },
+      headers: { "apns-priority": "10", ...apnsHeaders },
     },
   };
 }
