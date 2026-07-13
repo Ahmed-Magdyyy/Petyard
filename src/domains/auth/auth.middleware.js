@@ -4,7 +4,7 @@ import { ApiError } from "../../shared/utils/ApiError.js";
 import { UserModel } from "../user/user.model.js";
 import { roles, accountStatus } from "../../shared/constants/enums.js";
 
-export const protect = asyncHandler(async (req, res, next) => {
+async function resolveAuthenticatedUser(req) {
   let accessToken;
 
   if (req.headers.authorization?.startsWith("Bearer")) {
@@ -53,24 +53,38 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw new ApiError("Account is not active. Contact customer support", 401);
   }
 
-  // Block unverified-phone users from all routes except phone verification
-  if (!currentUser.phoneVerified) {
-    const path = req.originalUrl || req.url;
-    const isPhoneVerificationRoute =
-      path.includes("/auth/phone/send-otp") ||
-      path.includes("/auth/phone/verify");
+  return currentUser;
+}
 
-    if (!isPhoneVerificationRoute) {
-      throw new ApiError(
-        "No verified phone found. Please verify your phone first",
-        403,
-      );
-    }
+function isPhoneVerificationRoute(req) {
+  const path = req.originalUrl || req.url;
+  return (
+    path.includes("/auth/phone/send-otp") ||
+    path.includes("/auth/phone/verify")
+  );
+}
+
+export const protect = asyncHandler(async (req, res, next) => {
+  const currentUser = await resolveAuthenticatedUser(req);
+
+  // Block unverified-phone users from all routes except phone verification
+  if (!currentUser.phoneVerified && !isPhoneVerificationRoute(req)) {
+    throw new ApiError(
+      "No verified phone found. Please verify your phone first",
+      403,
+    );
   }
 
   req.user = currentUser;
   next();
 });
+
+export const protectAllowUnverifiedPhone = asyncHandler(
+  async (req, res, next) => {
+    req.user = await resolveAuthenticatedUser(req);
+    next();
+  },
+);
 
 export const optionalProtect = asyncHandler(async (req, res, next) => {
   let accessToken;

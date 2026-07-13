@@ -1,5 +1,20 @@
 import { HomeLayoutModel } from "./homeLayout.model.js";
 import { enabledControls, roles } from "../../shared/constants/enums.js";
+import {
+  bumpCacheVersion,
+  getCacheVersion,
+  getOrSetCache,
+} from "../../shared/utils/cache.js";
+import { parseBoundedInt } from "../../shared/utils/env.js";
+
+const HOME_LAYOUT_CACHE_VERSION_KEY = "home-layout:version";
+const HOME_LAYOUT_CACHE_TTL_SECONDS = parseBoundedInt(
+  process.env.HOME_LAYOUT_CACHE_TTL_SECONDS,
+  5 * 60,
+  5,
+  60 * 60,
+);
+
 const DEFAULT_SECTIONS = [
   {
     key: "banners",
@@ -59,20 +74,39 @@ export async function getHomeLayoutService(lang = "en", user = null) {
     (user.role === roles.SUPER_ADMIN ||
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.HOME_LAYOUT)));
-  const layout = await getOrCreateLayout();
+  const normalizedLang = lang === "ar" ? "ar" : "en";
 
-  const sorted = [...layout.sections].sort((a, b) => a.position - b.position);
+  const fetchLayout = async () => {
+    const layout = await getOrCreateLayout();
 
-  const sections = sorted.map((s) => ({
-    key: s.key,
-    ...(includeAllLanguages
-      ? { name: lang === "ar" ? s.name_ar : s.name_en, name_en: s.name_en, name_ar: s.name_ar }
-      : { name: lang === "ar" ? s.name_ar : s.name_en }),
-    position: s.position,
-    // isVisible: s.isVisible,
-  }));
+    const sorted = [...layout.sections].sort((a, b) => a.position - b.position);
 
-  return { sections };
+    const sections = sorted.map((s) => ({
+      key: s.key,
+      ...(includeAllLanguages
+        ? {
+            name: normalizedLang === "ar" ? s.name_ar : s.name_en,
+            name_en: s.name_en,
+            name_ar: s.name_ar,
+          }
+        : { name: normalizedLang === "ar" ? s.name_ar : s.name_en }),
+      position: s.position,
+      // isVisible: s.isVisible,
+    }));
+
+    return { sections };
+  };
+
+  if (includeAllLanguages) {
+    return fetchLayout();
+  }
+
+  const version = await getCacheVersion(HOME_LAYOUT_CACHE_VERSION_KEY);
+  return getOrSetCache(
+    `home-layout:v1:${version}:${normalizedLang}`,
+    HOME_LAYOUT_CACHE_TTL_SECONDS,
+    fetchLayout,
+  );
 }
 
 export async function updateHomeLayoutService(sections) {
@@ -94,6 +128,7 @@ export async function updateHomeLayoutService(sections) {
   });
 
   const updated = await layout.save();
+  await bumpCacheVersion(HOME_LAYOUT_CACHE_VERSION_KEY);
 
   const sorted = [...updated.sections].sort((a, b) => a.position - b.position);
 

@@ -72,6 +72,31 @@ export async function incrCacheKey(key) {
   }
 }
 
+export async function getCacheVersion(key) {
+  const version = await getCacheString(key);
+  return version || "0";
+}
+
+export async function bumpCacheVersion(key) {
+  const nextVersion = await incrCacheKey(key);
+  return nextVersion == null ? null : String(nextVersion);
+}
+
+export function stableStringify(value) {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  const keys = Object.keys(value).sort();
+  return `{${keys
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+    .join(",")}}`;
+}
+
 export async function deleteCacheKey(key) {
   const redisClient = getRedisClient();
   if (!redisClient) {
@@ -116,4 +141,3 @@ export async function deleteCachePattern(pattern) {
     console.error("[Redis] Pattern DEL error for", pattern, err.message);
   }
 }
-

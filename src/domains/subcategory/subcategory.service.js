@@ -5,11 +5,34 @@ import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { enabledControls, roles } from "../../shared/constants/enums.js";
 import {
+  bumpCacheVersion,
+  getCacheVersion,
+  getOrSetCache,
+  stableStringify,
+} from "../../shared/utils/cache.js";
+import { parseBoundedInt } from "../../shared/utils/env.js";
+import { bumpProductListCacheVersion } from "../product/productCache.service.js";
+import {
   validateImageFile,
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
 import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
+
+const SUBCATEGORY_CACHE_VERSION_KEY = "subcategories:version";
+const SUBCATEGORY_CACHE_TTL_SECONDS = parseBoundedInt(
+  process.env.SUBCATEGORY_CACHE_TTL_SECONDS,
+  5 * 60,
+  5,
+  60 * 60,
+);
+
+async function invalidateSubcategoryCaches() {
+  await Promise.all([
+    bumpCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY),
+    bumpProductListCacheVersion(),
+  ]);
+}
 
 export async function getSubcategoriesService(
   query = {},
@@ -29,140 +52,153 @@ export async function getSubcategoriesService(
     filter.category = category;
   }
 
-  // Fetch all subcategories for the category (we need the full list to build the tree)
-  const allSubcategories = await SubcategoryModel.find(filter)
-    .populate("category", "_id slug name_en name_ar")
-    .populate("parent", "_id slug name_en name_ar")
-    .sort({ createdAt: 1 });
+  const fetchSubcategories = async () => {
+    // Fetch all subcategories for the category (we need the full list to build the tree)
+    const allSubcategories = await SubcategoryModel.find(filter)
+      .populate("category", "_id slug name_en name_ar")
+      .populate("parent", "_id slug name_en name_ar")
+      .sort({ createdAt: 1 });
 
-  // When q is provided, determine which subcategories match and which
-  // ancestors are needed to preserve the tree structure.
-  let matchFilter = null;
-  if (typeof q === "string" && q.trim()) {
-    const regex = new RegExp(
-      buildFlexibleSearchPattern(q.trim()),
-      "i",
-    );
-    // Collect IDs of subcategories whose name matches the query
-    const matchedIds = new Set();
-    for (const s of allSubcategories) {
-      if (regex.test(s.name_en) || regex.test(s.name_ar)) {
-        matchedIds.add(String(s._id));
-      }
-    }
-    // Also include all ancestors of matched nodes so the tree stays intact
-    const allById = new Map();
-    for (const s of allSubcategories) {
-      allById.set(String(s._id), s);
-    }
-    const includedIds = new Set(matchedIds);
-    for (const id of matchedIds) {
-      let current = allById.get(id);
-      while (current) {
-        const pid = current.parent?._id
-          ? String(current.parent._id)
-          : current.parent
-            ? String(current.parent)
-            : null;
-        if (!pid || includedIds.has(pid)) break;
-        includedIds.add(pid);
-        current = allById.get(pid);
-      }
-    }
-    // Also include all descendants of matched nodes
-    const addDescendants = (parentIdStr) => {
+    // When q is provided, determine which subcategories match and which
+    // ancestors are needed to preserve the tree structure.
+    let matchFilter = null;
+    if (typeof q === "string" && q.trim()) {
+      const regex = new RegExp(
+        buildFlexibleSearchPattern(q.trim()),
+        "i",
+      );
+      // Collect IDs of subcategories whose name matches the query
+      const matchedIds = new Set();
       for (const s of allSubcategories) {
-        const pid = s.parent?._id
-          ? String(s.parent._id)
-          : s.parent
-            ? String(s.parent)
-            : null;
-        if (pid === parentIdStr && !includedIds.has(String(s._id))) {
-          includedIds.add(String(s._id));
-          addDescendants(String(s._id));
+        if (regex.test(s.name_en) || regex.test(s.name_ar)) {
+          matchedIds.add(String(s._id));
         }
       }
-    };
-    for (const id of matchedIds) {
-      addDescendants(id);
+      // Also include all ancestors of matched nodes so the tree stays intact
+      const allById = new Map();
+      for (const s of allSubcategories) {
+        allById.set(String(s._id), s);
+      }
+      const includedIds = new Set(matchedIds);
+      for (const id of matchedIds) {
+        let current = allById.get(id);
+        while (current) {
+          const pid = current.parent?._id
+            ? String(current.parent._id)
+            : current.parent
+              ? String(current.parent)
+              : null;
+          if (!pid || includedIds.has(pid)) break;
+          includedIds.add(pid);
+          current = allById.get(pid);
+        }
+      }
+      // Also include all descendants of matched nodes
+      const addDescendants = (parentIdStr) => {
+        for (const s of allSubcategories) {
+          const pid = s.parent?._id
+            ? String(s.parent._id)
+            : s.parent
+              ? String(s.parent)
+              : null;
+          if (pid === parentIdStr && !includedIds.has(String(s._id))) {
+            includedIds.add(String(s._id));
+            addDescendants(String(s._id));
+          }
+        }
+      };
+      for (const id of matchedIds) {
+        addDescendants(id);
+      }
+      matchFilter = includedIds;
     }
-    matchFilter = includedIds;
-  }
 
-  // Filter the list if q was provided
-  const subcategories = matchFilter
-    ? allSubcategories.filter((s) => matchFilter.has(String(s._id)))
-    : allSubcategories;
+    // Filter the list if q was provided
+    const subcategories = matchFilter
+      ? allSubcategories.filter((s) => matchFilter.has(String(s._id)))
+      : allSubcategories;
 
-  // Format each subcategory
-  const formatSubcategory = (s) => ({
-    id: s._id,
-    category: s.category?._id || s.category,
-    slug: s.slug,
-    updatedAt: s.updatedAt,
-    ...(includeAllLanguages
-      ? {
-          name: pickLocalizedField(s, "name", normalizedLang),
-          name_en: s.name_en,
-          name_ar: s.name_ar,
-          desc: pickLocalizedField(s, "desc", normalizedLang),
-          desc_en: s.desc_en,
-          desc_ar: s.desc_ar,
+    // Format each subcategory
+    const formatSubcategory = (s) => ({
+      id: s._id,
+      category: s.category?._id || s.category,
+      slug: s.slug,
+      updatedAt: s.updatedAt,
+      ...(includeAllLanguages
+        ? {
+            name: pickLocalizedField(s, "name", normalizedLang),
+            name_en: s.name_en,
+            name_ar: s.name_ar,
+            desc: pickLocalizedField(s, "desc", normalizedLang),
+            desc_en: s.desc_en,
+            desc_ar: s.desc_ar,
+          }
+        : {
+            name: pickLocalizedField(s, "name", normalizedLang),
+            desc: pickLocalizedField(s, "desc", normalizedLang),
+          }),
+      image: s.image?.url || null,
+      parent: s.parent?._id || s.parent || null,
+      children: [],
+    });
+
+    // Build a map of all formatted subcategories by ID
+    const formatted = subcategories.map(formatSubcategory);
+    const map = new Map();
+    for (const s of formatted) {
+      map.set(String(s.id), s);
+    }
+
+    // Nest children into their parents (with circular reference protection)
+    const roots = [];
+    for (const s of formatted) {
+      const pid = s.parent ? String(s.parent) : null;
+      if (pid && map.has(pid)) {
+        // Walk up the ancestor chain to detect cycles
+        let ancestor = pid;
+        let isCycle = false;
+        const visited = new Set();
+        while (ancestor) {
+          if (ancestor === String(s.id)) {
+            isCycle = true;
+            break;
+          }
+          if (visited.has(ancestor)) break;
+          visited.add(ancestor);
+          const parentNode = map.get(ancestor);
+          ancestor = parentNode?.parent ? String(parentNode.parent) : null;
         }
-      : {
-          name: pickLocalizedField(s, "name", normalizedLang),
-          desc: pickLocalizedField(s, "desc", normalizedLang),
-        }),
-    image: s.image?.url || null,
-    parent: s.parent?._id || s.parent || null,
-    children: [],
-  });
 
-  // Build a map of all formatted subcategories by ID
-  const formatted = subcategories.map(formatSubcategory);
-  const map = new Map();
-  for (const s of formatted) {
-    map.set(String(s.id), s);
-  }
-
-  // Nest children into their parents (with circular reference protection)
-  const roots = [];
-  for (const s of formatted) {
-    const pid = s.parent ? String(s.parent) : null;
-    if (pid && map.has(pid)) {
-      // Walk up the ancestor chain to detect cycles
-      let ancestor = pid;
-      let isCycle = false;
-      const visited = new Set();
-      while (ancestor) {
-        if (ancestor === String(s.id)) {
-          isCycle = true;
-          break;
+        if (isCycle) {
+          // Circular reference detected; treat as root
+          roots.push(s);
+        } else {
+          map.get(pid).children.push(s);
         }
-        if (visited.has(ancestor)) break;
-        visited.add(ancestor);
-        const parentNode = map.get(ancestor);
-        ancestor = parentNode?.parent ? String(parentNode.parent) : null;
-      }
-
-      if (isCycle) {
-        // Circular reference detected — treat as root
-        roots.push(s);
       } else {
-        map.get(pid).children.push(s);
+        roots.push(s);
       }
-    } else {
-      roots.push(s);
     }
+
+    // If a parent subcategory filter was provided, return only its direct branch
+    if (parentId) {
+      const parent = map.get(String(parentId));
+      return parent ? parent.children : [];
+    }
+
+    return roots;
+  };
+
+  if (includeAllLanguages) {
+    return fetchSubcategories();
   }
 
-  // If a parent subcategory filter was provided, return only its direct branch
-  if (parentId) {
-    const parent = map.get(String(parentId));
-    return parent ? parent.children : [];
-  }
-
-  return roots;
+  const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
+  return getOrSetCache(
+    `subcategories:list:v1:${version}:${normalizedLang}:${stableStringify(query || {})}`,
+    SUBCATEGORY_CACHE_TTL_SECONDS,
+    fetchSubcategories,
+  );
 }
 
 export async function getSubcategoryByIdService(id, lang = "en", user = null) {
@@ -173,34 +209,47 @@ export async function getSubcategoryByIdService(id, lang = "en", user = null) {
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.SUBCATEGORIES)));
 
-  const subcategory = await SubcategoryModel.findById(id)
-    .populate("category", "_id slug name_en name_ar")
-    .populate("parent", "_id slug name_en name_ar");
-  if (!subcategory) {
-    throw new ApiError(`No subcategory found for this id: ${id}`, 404);
+  const fetchSubcategory = async () => {
+    const subcategory = await SubcategoryModel.findById(id)
+      .populate("category", "_id slug name_en name_ar")
+      .populate("parent", "_id slug name_en name_ar");
+    if (!subcategory) {
+      throw new ApiError(`No subcategory found for this id: ${id}`, 404);
+    }
+
+    return {
+      id: subcategory._id,
+      category: subcategory.category?._id || subcategory.category,
+      slug: subcategory.slug,
+      updatedAt: subcategory.updatedAt,
+      ...(includeAllLanguages
+        ? {
+            name: pickLocalizedField(subcategory, "name", normalizedLang),
+            name_en: subcategory.name_en,
+            name_ar: subcategory.name_ar,
+            desc: pickLocalizedField(subcategory, "desc", normalizedLang),
+            desc_en: subcategory.desc_en,
+            desc_ar: subcategory.desc_ar,
+          }
+        : {
+            name: pickLocalizedField(subcategory, "name", normalizedLang),
+            desc: pickLocalizedField(subcategory, "desc", normalizedLang),
+          }),
+      image: subcategory.image?.url || null,
+      parent: subcategory.parent?._id || subcategory.parent || null,
+    };
+  };
+
+  if (includeAllLanguages) {
+    return fetchSubcategory();
   }
 
-  return {
-    id: subcategory._id,
-    category: subcategory.category?._id || subcategory.category,
-    slug: subcategory.slug,
-    updatedAt: subcategory.updatedAt,
-    ...(includeAllLanguages
-      ? {
-          name: pickLocalizedField(subcategory, "name", normalizedLang),
-          name_en: subcategory.name_en,
-          name_ar: subcategory.name_ar,
-          desc: pickLocalizedField(subcategory, "desc", normalizedLang),
-          desc_en: subcategory.desc_en,
-          desc_ar: subcategory.desc_ar,
-        }
-      : {
-          name: pickLocalizedField(subcategory, "name", normalizedLang),
-          desc: pickLocalizedField(subcategory, "desc", normalizedLang),
-        }),
-    image: subcategory.image?.url || null,
-    parent: subcategory.parent?._id || subcategory.parent || null,
-  };
+  const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
+  return getOrSetCache(
+    `subcategories:detail:v1:${version}:${id}:${normalizedLang}`,
+    SUBCATEGORY_CACHE_TTL_SECONDS,
+    fetchSubcategory,
+  );
 }
 
 export async function createSubcategoryService(payload, file) {
@@ -256,6 +305,8 @@ export async function createSubcategoryService(payload, file) {
       ...(image && { image }),
     });
 
+    await invalidateSubcategoryCaches();
+
     return subcategory;
   } catch (err) {
     if (uploadedPublicId) {
@@ -308,6 +359,8 @@ export async function updateSubcategoryService(id, payload, file) {
       await deleteImageFromCloudinary(oldPublicId);
     }
 
+    await invalidateSubcategoryCaches();
+
     return updated;
   } catch (err) {
     if (newImage?.public_id) {
@@ -328,6 +381,7 @@ export async function deleteSubcategoryService(id) {
   }
 
   await SubcategoryModel.deleteOne({ _id: id });
+  await invalidateSubcategoryCaches();
 }
 
 /**
@@ -336,13 +390,21 @@ export async function deleteSubcategoryService(id) {
  * products from that subcategory AND all its nested children.
  */
 export async function getSubcategoryChildrenIds(parentId) {
-  const children = await SubcategoryModel.find(
-    { parent: parentId },
-    { _id: 1 },
-  ).lean();
+  const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
 
-  const ids = children.map((c) => c._id);
-  const nested = await Promise.all(ids.map(getSubcategoryChildrenIds));
+  return getOrSetCache(
+    `subcategories:children:v1:${version}:${parentId}`,
+    SUBCATEGORY_CACHE_TTL_SECONDS,
+    async () => {
+      const children = await SubcategoryModel.find(
+        { parent: parentId },
+        { _id: 1 },
+      ).lean();
 
-  return ids.concat(nested.flat());
+      const ids = children.map((c) => String(c._id));
+      const nested = await Promise.all(ids.map(getSubcategoryChildrenIds));
+
+      return ids.concat(nested.flat());
+    },
+  );
 }

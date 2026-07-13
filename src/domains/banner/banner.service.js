@@ -5,19 +5,45 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+import {
+  bumpCacheVersion,
+  getCacheVersion,
+  getOrSetCache,
+} from "../../shared/utils/cache.js";
+import { parseBoundedInt } from "../../shared/utils/env.js";
+
+const BANNER_CACHE_VERSION_KEY = "banners:version";
+const BANNER_CACHE_TTL_SECONDS = parseBoundedInt(
+  process.env.BANNER_CACHE_TTL_SECONDS,
+  5 * 60,
+  5,
+  60 * 60,
+);
+
+async function invalidateBannerCaches() {
+  await bumpCacheVersion(BANNER_CACHE_VERSION_KEY);
+}
 
 export async function getActiveBannersService() {
-  const banners = await BannerModel.find({ isActive: true }).sort({
-    position: 1,
-    createdAt: 1,
-  });
+  const version = await getCacheVersion(BANNER_CACHE_VERSION_KEY);
 
-  return banners.map((b) => ({
-    id: b._id,
-    image: b.image && b.image.url ? b.image.url : null,
-    target: b.target || null,
-    position: typeof b.position === "number" ? b.position : 0,
-  }));
+  return getOrSetCache(
+    `banners:active:v1:${version}`,
+    BANNER_CACHE_TTL_SECONDS,
+    async () => {
+      const banners = await BannerModel.find({ isActive: true }).sort({
+        position: 1,
+        createdAt: 1,
+      });
+
+      return banners.map((b) => ({
+        id: b._id,
+        image: b.image && b.image.url ? b.image.url : null,
+        target: b.target || null,
+        position: typeof b.position === "number" ? b.position : 0,
+      }));
+    },
+  );
 }
 
 export async function getAllBannersService() {
@@ -71,6 +97,8 @@ export async function createBannerService(payload, file) {
       ...(typeof isActive === "boolean" && { isActive }),
       ...(image && { image }),
     });
+
+    await invalidateBannerCaches();
 
     return banner;
   } catch (err) {
@@ -142,6 +170,8 @@ export async function updateBannerService(id, payload, file) {
       await deleteImageFromCloudinary(oldPublicId);
     }
 
+    await invalidateBannerCaches();
+
     return updated;
   } catch (err) {
     if (newImage?.public_id) {
@@ -162,6 +192,7 @@ export async function deleteBannerService(id) {
   }
 
   await BannerModel.deleteOne({ _id: id });
+  await invalidateBannerCaches();
 }
 
 export async function reorderBannersService(banners) {
@@ -184,6 +215,8 @@ export async function reorderBannersService(banners) {
       400
     );
   }
+
+  await invalidateBannerCaches();
 
   return { updated: result.modifiedCount };
 }

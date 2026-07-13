@@ -1,12 +1,21 @@
 import { Queue, QueueEvents } from "bullmq";
+import crypto from "crypto";
 import {
   bullMqConfig,
   createBullMqConnection,
   isBullMqConfigured,
 } from "../../config/bullmq.js";
+import {
+  broadcastTopicConfig,
+  getBroadcastBucketDelayMs,
+  getBroadcastTopicBuckets,
+} from "./notificationTopics.service.js";
 
 export const NOTIFICATION_BROADCAST_QUEUE_NAME = "notification-broadcast";
 export const NOTIFICATION_BROADCAST_JOB_NAME = "send-broadcast";
+export const NOTIFICATION_BROADCAST_PREPARE_JOB_NAME = "prepare-broadcast";
+export const NOTIFICATION_BROADCAST_TOPIC_BUCKET_JOB_NAME =
+  "send-broadcast-topic-bucket";
 
 let queue = null;
 let queueEvents = null;
@@ -71,8 +80,12 @@ export async function enqueueNotificationBroadcastAndWait(payload) {
   await events.waitUntilReady();
 
   const job = await getNotificationBroadcastQueue().add(
-    NOTIFICATION_BROADCAST_JOB_NAME,
-    payload,
+    NOTIFICATION_BROADCAST_PREPARE_JOB_NAME,
+    {
+      ...payload,
+      campaignId: payload?.campaignId || crypto.randomUUID(),
+      queuedAt: new Date().toISOString(),
+    },
   );
 
   return job.waitUntilFinished(
@@ -83,14 +96,49 @@ export async function enqueueNotificationBroadcastAndWait(payload) {
 
 export async function enqueueNotificationBroadcast(payload) {
   const job = await getNotificationBroadcastQueue().add(
-    NOTIFICATION_BROADCAST_JOB_NAME,
-    payload,
+    NOTIFICATION_BROADCAST_PREPARE_JOB_NAME,
+    {
+      ...payload,
+      campaignId: payload?.campaignId || crypto.randomUUID(),
+      queuedAt: new Date().toISOString(),
+    },
   );
 
   return {
     queued: true,
     jobId: job.id,
+    campaignId: job.data.campaignId,
     queueName: NOTIFICATION_BROADCAST_QUEUE_NAME,
+  };
+}
+
+export async function enqueueNotificationBroadcastTopicBucketJobs(payload) {
+  const campaignId = payload?.campaignId || crypto.randomUUID();
+  const buckets = getBroadcastTopicBuckets();
+  const queue = getNotificationBroadcastQueue();
+
+  const jobs = buckets.map((bucketInfo, index) => ({
+    name: NOTIFICATION_BROADCAST_TOPIC_BUCKET_JOB_NAME,
+    data: {
+      ...payload,
+      campaignId,
+      bucket: bucketInfo.bucket,
+      topic: bucketInfo.topic,
+      queuedAt: new Date().toISOString(),
+    },
+    opts: {
+      jobId: `notification-broadcast-${campaignId}-bucket-${bucketInfo.bucket}`,
+      delay: getBroadcastBucketDelayMs(index),
+    },
+  }));
+
+  await queue.addBulk(jobs);
+
+  return {
+    campaignId,
+    bucketCount: buckets.length,
+    spreadWindowMs: broadcastTopicConfig.spreadWindowMs,
+    queuedBucketJobCount: jobs.length,
   };
 }
 

@@ -1,5 +1,9 @@
 import { Router } from "express";
-import { protect, allowedTo } from "../auth/auth.middleware.js";
+import {
+  protect,
+  protectAllowUnverifiedPhone,
+  allowedTo,
+} from "../auth/auth.middleware.js";
 import { roles } from "../../shared/constants/enums.js";
 import {
   registerDevice,
@@ -27,7 +31,7 @@ const router = Router();
 
 router.post(
   "/devices/register",
-  protect,
+  protectAllowUnverifiedPhone,
   registerDeviceValidator,
   registerDevice
 );
@@ -88,4 +92,3 @@ router.post(
 );
 
 export default router;
-

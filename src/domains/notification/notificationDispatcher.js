@@ -24,6 +24,11 @@ import {
   createBulkInAppNotificationsService,
 } from "./inAppNotification.service.js";
 import { parseBoundedInt } from "../../shared/utils/env.js";
+import { enqueueNotificationBroadcastTopicBucketJobs } from "./notificationBroadcast.queue.js";
+import {
+  getBroadcastTopicNameForBucket,
+  sendPushToBroadcastTopic,
+} from "./notificationTopics.service.js";
 
 const FCM_BATCH_SIZE = parseBoundedInt(
   process.env.FCM_PUSH_BATCH_SIZE,
@@ -416,6 +421,75 @@ export async function dispatchNotificationToUsers({
  * Broadcast notification to all devices (push only for guests too)
  * In-app only created for registered users
  */
+async function createBroadcastInAppNotifications({
+  notification,
+  icon,
+  action,
+  source,
+  expiresAt,
+}) {
+  const userIds = await NotificationDeviceModel.distinct("user", {
+    user: { $exists: true, $ne: null },
+  });
+
+  if (userIds.length === 0) {
+    return { insertedCount: 0, userCount: 0 };
+  }
+
+  const inAppResult = await createBulkInAppNotificationsService({
+    userIds,
+    title_en: notification?.title_en || notification?.title || "",
+    title_ar: notification?.title_ar,
+    body_en: notification?.body_en || notification?.body || "",
+    body_ar: notification?.body_ar,
+    icon,
+    action,
+    source,
+    expiresAt: computeExpiresAt(source, expiresAt),
+  });
+
+  return { ...inAppResult, userCount: userIds.length };
+}
+
+function buildBroadcastPushPayload({ notification, action, source, campaignId, bucket }) {
+  return {
+    notification: {
+      title: notification?.title_en || notification?.title || "",
+      body: notification?.body_en || notification?.body || "",
+    },
+    data: {
+      type: action?.type || source?.event || "notification",
+      screen: action?.screen || "",
+      ...(action?.params || {}),
+      ...(campaignId ? { campaignId } : {}),
+      ...(bucket !== undefined && bucket !== null ? { broadcastBucket: bucket } : {}),
+    },
+  };
+}
+
+async function dispatchBroadcastPushToTokens({
+  notification,
+  action,
+  source,
+  pushOptions,
+}) {
+  const tokens = await getDistinctDeviceTokens();
+  const pushPayload = buildBroadcastPushPayload({ notification, action, source });
+
+  const pushResult = await sendPushToTokens({
+    tokens,
+    notification: pushPayload.notification,
+    data: pushPayload.data,
+    pushOptions,
+    batchDelayMs: BROADCAST_BATCH_DELAY_MS,
+  });
+
+  return {
+    deviceCount: tokens.length,
+    ...pushResult,
+  };
+}
+
 export async function dispatchBroadcastNotification({
   notification,
   icon = "system",
@@ -430,27 +504,13 @@ export async function dispatchBroadcastNotification({
   // 1. Create in-app for all users with registered devices
   if (channels.inApp) {
     try {
-      // Get unique user IDs from devices
-      const userIds = await NotificationDeviceModel.distinct("user", {
-        user: { $exists: true, $ne: null },
+      results.inApp = await createBroadcastInAppNotifications({
+        notification,
+        icon,
+        action,
+        source,
+        expiresAt,
       });
-
-      if (userIds.length > 0) {
-        const inAppResult = await createBulkInAppNotificationsService({
-          userIds,
-          title_en: notification?.title_en || notification?.title || "",
-          title_ar: notification?.title_ar,
-          body_en: notification?.body_en || notification?.body || "",
-          body_ar: notification?.body_ar,
-          icon,
-          action,
-          source,
-          expiresAt: computeExpiresAt(source, expiresAt),
-        });
-        results.inApp = { ...inAppResult, userCount: userIds.length };
-      } else {
-        results.inApp = { insertedCount: 0, userCount: 0 };
-      }
     } catch (err) {
       console.error("[Dispatcher] Failed to create broadcast in-app notifications:", err.message);
       results.inApp = { success: false, error: err.message };
@@ -460,27 +520,12 @@ export async function dispatchBroadcastNotification({
   // 2. Send push to ALL devices (including guests)
   if (channels.push) {
     try {
-      const tokens = await getDistinctDeviceTokens();
-
-      const pushResult = await sendPushToTokens({
-        tokens,
-        notification: {
-          title: notification?.title_en || notification?.title || "",
-          body: notification?.body_en || notification?.body || "",
-        },
-        data: {
-          type: action?.type || source?.event || "notification",
-          screen: action?.screen || "",
-          ...(action?.params || {}),
-        },
+      results.push = await dispatchBroadcastPushToTokens({
+        notification,
+        action,
+        source,
         pushOptions,
-        batchDelayMs: BROADCAST_BATCH_DELAY_MS,
       });
-
-      results.push = {
-        deviceCount: tokens.length,
-        ...pushResult,
-      };
     } catch (err) {
       console.error("[Dispatcher] Failed to send broadcast push:", err.message);
       results.push = { success: false, error: err.message };
@@ -488,4 +533,75 @@ export async function dispatchBroadcastNotification({
   }
 
   return results;
+}
+
+export async function prepareBroadcastNotificationCampaign({
+  notification,
+  icon = "system",
+  action,
+  source,
+  channels = { push: true, inApp: true },
+  expiresAt,
+  pushOptions,
+  campaignId,
+}) {
+  const results = { push: null, inApp: null };
+
+  if (channels.inApp) {
+    try {
+      results.inApp = await createBroadcastInAppNotifications({
+        notification,
+        icon,
+        action,
+        source,
+        expiresAt,
+      });
+    } catch (err) {
+      console.error("[Dispatcher] Failed to create broadcast in-app notifications:", err.message);
+      results.inApp = { success: false, error: err.message };
+    }
+  }
+
+  if (channels.push) {
+    const scheduleResult = await enqueueNotificationBroadcastTopicBucketJobs({
+      notification,
+      action,
+      source,
+      pushOptions,
+      campaignId,
+    });
+
+    results.push = {
+      mode: "bucketed_topics",
+      ...scheduleResult,
+    };
+  }
+
+  return results;
+}
+
+export async function dispatchBroadcastTopicBucket({
+  notification,
+  action,
+  source,
+  pushOptions,
+  campaignId,
+  bucket,
+  topic,
+}) {
+  const resolvedTopic = topic || getBroadcastTopicNameForBucket(bucket);
+  const pushPayload = buildBroadcastPushPayload({
+    notification,
+    action,
+    source,
+    campaignId,
+    bucket,
+  });
+
+  return sendPushToBroadcastTopic({
+    topic: resolvedTopic,
+    notification: pushPayload.notification,
+    data: pushPayload.data,
+    pushOptions,
+  });
 }

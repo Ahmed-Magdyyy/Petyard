@@ -25,25 +25,30 @@ function mapQueueError(err) {
   );
 }
 
+function buildBroadcastAcceptedResponse(deviceCount) {
+  return {
+    message: `Notifications sending to ${deviceCount} devices is in progress.`,
+  };
+}
+
 export async function dispatchAdminBroadcastNotification(payload) {
+  const deviceCount = await getBroadcastDeviceCount();
+
   if (!isNotificationBroadcastQueueConfigured()) {
     if (shouldUseInlineFallback()) {
       console.warn(
         "[Notification Broadcast] BullMQ is not configured; using inline fallback.",
       );
-      return dispatchBroadcastNotification(payload);
+      await dispatchBroadcastNotification(payload);
+      return buildBroadcastAcceptedResponse(deviceCount);
     }
 
     throw new ApiError("Notification broadcast queue is not configured", 503);
   }
 
   try {
-    const deviceCount = await getBroadcastDeviceCount();
     await enqueueNotificationBroadcast(payload);
-
-    return {
-      message: `Notifications sending to ${deviceCount} devices is in progress.`,
-    };
+    return buildBroadcastAcceptedResponse(deviceCount);
   } catch (err) {
     console.error(
       "[Notification Broadcast] Failed to enqueue broadcast:",
@@ -52,7 +57,8 @@ export async function dispatchAdminBroadcastNotification(payload) {
 
     if (shouldUseInlineFallback()) {
       console.warn("[Notification Broadcast] Using inline fallback.");
-      return dispatchBroadcastNotification(payload);
+      await dispatchBroadcastNotification(payload);
+      return buildBroadcastAcceptedResponse(deviceCount);
     }
 
     throw mapQueueError(err);

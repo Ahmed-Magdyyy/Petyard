@@ -4,10 +4,32 @@ import slugify from "slugify";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { enabledControls, roles } from "../../shared/constants/enums.js";
 import {
+  bumpCacheVersion,
+  getCacheVersion,
+  getOrSetCache,
+} from "../../shared/utils/cache.js";
+import { parseBoundedInt } from "../../shared/utils/env.js";
+import { bumpProductListCacheVersion } from "../product/productCache.service.js";
+import {
   validateImageFile,
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+
+const CATEGORY_CACHE_VERSION_KEY = "categories:version";
+const CATEGORY_CACHE_TTL_SECONDS = parseBoundedInt(
+  process.env.CATEGORY_CACHE_TTL_SECONDS,
+  5 * 60,
+  5,
+  60 * 60,
+);
+
+async function invalidateCategoryCaches() {
+  await Promise.all([
+    bumpCacheVersion(CATEGORY_CACHE_VERSION_KEY),
+    bumpProductListCacheVersion(),
+  ]);
+}
 
 export async function getCategoriesService(lang = "en", user = null) {
   const normalizedLang = lang === "ar" ? "ar" : "en";
@@ -17,28 +39,41 @@ export async function getCategoriesService(lang = "en", user = null) {
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.CATEGORIES)));
 
-  const categories = await CategoryModel.find({}).sort({ position: 1 });
+  const fetchCategories = async () => {
+    const categories = await CategoryModel.find({}).sort({ position: 1 });
 
-  return categories.map((c) => ({
-    id: c._id,
-    slug: c.slug,
-    updatedAt: c.updatedAt,
-    ...(includeAllLanguages
-      ? {
-          name: pickLocalizedField(c, "name", normalizedLang),
-          name_en: c.name_en,
-          name_ar: c.name_ar,
-          desc: pickLocalizedField(c, "desc", normalizedLang),
-          desc_en: c.desc_en,
-          desc_ar: c.desc_ar,
-        }
-      : {
-          name: pickLocalizedField(c, "name", normalizedLang),
-          desc: pickLocalizedField(c, "desc", normalizedLang),
-        }),
-    image: c.image || null,
-    position: typeof c.position === "number" ? c.position : 0,
-  }));
+    return categories.map((c) => ({
+      id: c._id,
+      slug: c.slug,
+      updatedAt: c.updatedAt,
+      ...(includeAllLanguages
+        ? {
+            name: pickLocalizedField(c, "name", normalizedLang),
+            name_en: c.name_en,
+            name_ar: c.name_ar,
+            desc: pickLocalizedField(c, "desc", normalizedLang),
+            desc_en: c.desc_en,
+            desc_ar: c.desc_ar,
+          }
+        : {
+            name: pickLocalizedField(c, "name", normalizedLang),
+            desc: pickLocalizedField(c, "desc", normalizedLang),
+          }),
+      image: c.image || null,
+      position: typeof c.position === "number" ? c.position : 0,
+    }));
+  };
+
+  if (includeAllLanguages) {
+    return fetchCategories();
+  }
+
+  const version = await getCacheVersion(CATEGORY_CACHE_VERSION_KEY);
+  return getOrSetCache(
+    `categories:list:v1:${version}:${normalizedLang}`,
+    CATEGORY_CACHE_TTL_SECONDS,
+    fetchCategories,
+  );
 }
 
 export async function getCategoryByIdService(id, lang = "en", user = null) {
@@ -49,31 +84,44 @@ export async function getCategoryByIdService(id, lang = "en", user = null) {
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.CATEGORIES)));
 
-  const category = await CategoryModel.findById(id);
-  if (!category) {
-    throw new ApiError(`No category found for this id: ${id}`, 404);
+  const fetchCategory = async () => {
+    const category = await CategoryModel.findById(id);
+    if (!category) {
+      throw new ApiError(`No category found for this id: ${id}`, 404);
+    }
+
+    return {
+      id: category._id,
+      slug: category.slug,
+      updatedAt: category.updatedAt,
+      ...(includeAllLanguages
+        ? {
+            name: pickLocalizedField(category, "name", normalizedLang),
+            name_en: category.name_en,
+            name_ar: category.name_ar,
+            desc: pickLocalizedField(category, "desc", normalizedLang),
+            desc_en: category.desc_en,
+            desc_ar: category.desc_ar,
+          }
+        : {
+            name: pickLocalizedField(category, "name", normalizedLang),
+            desc: pickLocalizedField(category, "desc", normalizedLang),
+          }),
+      image: category.image?.url || null,
+      position: typeof category.position === "number" ? category.position : 0,
+    };
+  };
+
+  if (includeAllLanguages) {
+    return fetchCategory();
   }
 
-  return {
-    id: category._id,
-    slug: category.slug,
-    updatedAt: category.updatedAt,
-    ...(includeAllLanguages
-      ? {
-          name: pickLocalizedField(category, "name", normalizedLang),
-          name_en: category.name_en,
-          name_ar: category.name_ar,
-          desc: pickLocalizedField(category, "desc", normalizedLang),
-          desc_en: category.desc_en,
-          desc_ar: category.desc_ar,
-        }
-      : {
-          name: pickLocalizedField(category, "name", normalizedLang),
-          desc: pickLocalizedField(category, "desc", normalizedLang),
-        }),
-    image: category.image.url || null,
-    position: typeof category.position === "number" ? category.position : 0,
-  };
+  const version = await getCacheVersion(CATEGORY_CACHE_VERSION_KEY);
+  return getOrSetCache(
+    `categories:detail:v1:${version}:${id}:${normalizedLang}`,
+    CATEGORY_CACHE_TTL_SECONDS,
+    fetchCategory,
+  );
 }
 
 export async function createCategoryService(payload, file) {
@@ -120,6 +168,8 @@ export async function createCategoryService(payload, file) {
       ...(image && { image }),
     });
 
+    await invalidateCategoryCaches();
+
     return category;
   } catch (err) {
     if (uploadedPublicId) {
@@ -163,6 +213,8 @@ export async function updateCategoryService(id, payload, file) {
       await deleteImageFromCloudinary(oldPublicId);
     }
 
+    await invalidateCategoryCaches();
+
     return updated;
   } catch (err) {
     if (newImage?.public_id) {
@@ -183,6 +235,7 @@ export async function deleteCategoryService(id) {
   }
 
   await CategoryModel.deleteOne({ _id: id });
+  await invalidateCategoryCaches();
 }
 
 export async function updateCategoryPositionsService(positions) {
@@ -194,6 +247,7 @@ export async function updateCategoryPositionsService(positions) {
   }));
 
   const result = await CategoryModel.bulkWrite(ops, { ordered: false });
+  await invalidateCategoryCaches();
   return {
     requested: positions.length,
     matched: result.matchedCount,

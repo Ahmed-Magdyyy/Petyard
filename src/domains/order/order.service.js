@@ -15,8 +15,8 @@ import {
   FREE_SHIPPING_THRESHOLD,
   roles,
 } from "../../shared/constants/enums.js";
-import { deleteCacheKey } from "../../shared/utils/cache.js";
 import { escapeRegex } from "../../shared/utils/escapeRegex.js";
+import { invalidateProductCaches } from "../product/productCache.service.js";
 import { validateAndApplyCoupon } from "../coupon/coupon.application.js";
 import { sendOrderStatusChangedNotification, sendNewOrderNotificationToAdminsAndModerators } from "../notification/notification.service.js";
 import { dispatchNotification } from "../notification/notificationDispatcher.js";
@@ -81,23 +81,6 @@ function generateOrderNumber() {
   }
 
   return `PY-${datePart}-${random}`;
-}
-
-async function invalidateProductCaches(productIds) {
-  const uniqueIds = [
-    ...new Set(
-      (productIds || []).map((id) => (id ? String(id) : null)).filter(Boolean),
-    ),
-  ];
-
-  if (!uniqueIds.length) return;
-
-  await Promise.all(
-    uniqueIds.flatMap((id) => [
-      deleteCacheKey(`product:${id}:en`),
-      deleteCacheKey(`product:${id}:ar`),
-    ]),
-  );
 }
 
 const allowedStatusTransitions = {

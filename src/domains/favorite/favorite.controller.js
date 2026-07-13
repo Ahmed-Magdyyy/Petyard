@@ -13,6 +13,7 @@ function getGuestId(req) {
   if (typeof headerValue === "string" && headerValue.trim()) {
     return headerValue.trim();
   }
+  
   return null;
 }
 
@@ -64,7 +65,7 @@ export const getFavoriteGuest = asyncHandler(async (req, res) => {
   if (!guestId) {
     throw new ApiError("x-guest-id header is required", 400);
   }
-
+  
   const lang = req.lang || "en";
 
   const result = await getFavoriteService({ guestId, lang });

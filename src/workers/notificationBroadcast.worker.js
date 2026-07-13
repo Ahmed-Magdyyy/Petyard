@@ -6,10 +6,16 @@ import {
   createBullMqConnection,
 } from "../config/bullmq.js";
 import { getFirebaseAdmin } from "../config/firebase.js";
-import { dispatchBroadcastNotification } from "../domains/notification/notificationDispatcher.js";
+import {
+  dispatchBroadcastNotification,
+  dispatchBroadcastTopicBucket,
+  prepareBroadcastNotificationCampaign,
+} from "../domains/notification/notificationDispatcher.js";
 import {
   NOTIFICATION_BROADCAST_JOB_NAME,
+  NOTIFICATION_BROADCAST_PREPARE_JOB_NAME,
   NOTIFICATION_BROADCAST_QUEUE_NAME,
+  NOTIFICATION_BROADCAST_TOPIC_BUCKET_JOB_NAME,
 } from "../domains/notification/notificationBroadcast.queue.js";
 
 let worker = null;
@@ -36,12 +42,19 @@ async function startWorker() {
   worker = new Worker(
     NOTIFICATION_BROADCAST_QUEUE_NAME,
     async (job) => {
-      if (job.name !== NOTIFICATION_BROADCAST_JOB_NAME) {
+      console.log(`[Notification Broadcast Worker] Started job ${job.id}`);
+
+      let result;
+      if (job.name === NOTIFICATION_BROADCAST_PREPARE_JOB_NAME) {
+        result = await prepareBroadcastNotificationCampaign(job.data);
+      } else if (job.name === NOTIFICATION_BROADCAST_TOPIC_BUCKET_JOB_NAME) {
+        result = await dispatchBroadcastTopicBucket(job.data);
+      } else if (job.name === NOTIFICATION_BROADCAST_JOB_NAME) {
+        result = await dispatchBroadcastNotification(job.data);
+      } else {
         throw new Error(`Unsupported notification job: ${job.name}`);
       }
 
-      console.log(`[Notification Broadcast Worker] Started job ${job.id}`);
-      const result = await dispatchBroadcastNotification(job.data);
       console.log(`[Notification Broadcast Worker] Completed job ${job.id}`);
       return result;
     },

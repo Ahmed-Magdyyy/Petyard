@@ -6,13 +6,36 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+import {
+  bumpCacheVersion,
+  getCacheVersion,
+  getOrSetCache,
+  stableStringify,
+} from "../../shared/utils/cache.js";
+import { parseBoundedInt } from "../../shared/utils/env.js";
 import { CollectionModel } from "./collection.model.js";
 import {
   autoHideExpiredCollections,
   ensurePromotionalCollectionUniqueness,
 } from "./collection.promotion.js";
 import { getProductsService } from "../product/product.service.js";
+import { bumpProductListCacheVersion } from "../product/productCache.service.js";
 import { enabledControls, roles } from "../../shared/constants/enums.js";
+
+const COLLECTION_CACHE_VERSION_KEY = "collections:version";
+const COLLECTION_CACHE_TTL_SECONDS = parseBoundedInt(
+  process.env.COLLECTION_CACHE_TTL_SECONDS,
+  60,
+  5,
+  10 * 60,
+);
+
+async function invalidateCollectionCaches({ affectsProductList = true } = {}) {
+  await Promise.all([
+    bumpCacheVersion(COLLECTION_CACHE_VERSION_KEY),
+    affectsProductList ? bumpProductListCacheVersion() : Promise.resolve(),
+  ]);
+}
 
 function parseJsonField(value, fieldName) {
   if (typeof value !== "string") return value;
@@ -105,10 +128,6 @@ export async function getCollectionsService(
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.COLLECTIONS)));
 
-  if (!includeAllCollections) {
-    await autoHideExpiredCollections();
-  }
-
   const isVisibleFilter = parseBooleanField(queryParams?.isVisible);
   const filter = includeAllCollections ? {} : { isVisible: true };
 
@@ -119,15 +138,32 @@ export async function getCollectionsService(
     filter.isVisible = isVisibleFilter;
   }
 
-  const collections = await CollectionModel.find(filter).sort({
-    position: 1,
-    slug: 1,
-  });
+  const fetchCollections = async () => {
+    if (!includeAllCollections) {
+      await autoHideExpiredCollections();
+    }
 
-  return collections.map((c) =>
-    mapCollectionToPublicDto(c, normalizedLang, {
-      includeAllLanguages: includeAllCollections,
-    }),
+    const collections = await CollectionModel.find(filter).sort({
+      position: 1,
+      slug: 1,
+    });
+
+    return collections.map((c) =>
+      mapCollectionToPublicDto(c, normalizedLang, {
+        includeAllLanguages: includeAllCollections,
+      }),
+    );
+  };
+
+  if (includeAllCollections) {
+    return fetchCollections();
+  }
+
+  const version = await getCacheVersion(COLLECTION_CACHE_VERSION_KEY);
+  return getOrSetCache(
+    `collections:list:v1:${version}:${normalizedLang}:${stableStringify(queryParams || {})}`,
+    COLLECTION_CACHE_TTL_SECONDS,
+    fetchCollections,
   );
 }
 
@@ -140,35 +176,49 @@ export async function getCollectionByIdService(id, lang = "en", user = null) {
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.COLLECTIONS)));
 
-  if (!includeAllCollections) {
-    await autoHideExpiredCollections();
-  }
-  let collection;
+  const fetchCollection = async () => {
+    if (!includeAllCollections) {
+      await autoHideExpiredCollections();
+    }
+
+    let collection;
+
+    if (includeAllCollections) {
+      collection = await CollectionModel.findOne({ _id: id })
+        .populate({
+          path: "selector.productIds",
+          select: "name_en name_ar",
+        })
+        .populate({
+          path: "selector.subcategoryIds",
+          select: "name_en name_ar",
+        })
+        .populate({
+          path: "selector.brandIds",
+          select: "name_en name_ar",
+        });
+    } else {
+      collection = await CollectionModel.findOne({ _id: id, isVisible: true });
+    }
+    if (!collection) {
+      throw new ApiError(`No collection found for this id: ${id}`, 404);
+    }
+
+    return mapCollectionToPublicDto(collection, normalizedLang, {
+      includeAllLanguages: includeAllCollections,
+    });
+  };
 
   if (includeAllCollections) {
-    collection = await CollectionModel.findOne({ _id: id })
-      .populate({
-        path: "selector.productIds",
-        select: "name_en name_ar",
-      })
-      .populate({
-        path: "selector.subcategoryIds",
-        select: "name_en name_ar",
-      })
-      .populate({
-        path: "selector.brandIds",
-        select: "name_en name_ar",
-      });
-  } else {
-    collection = await CollectionModel.findOne({ _id: id, isVisible: true });
-  }
-  if (!collection) {
-    throw new ApiError(`No collection found for this id: ${id}`, 404);
+    return fetchCollection();
   }
 
-  return mapCollectionToPublicDto(collection, normalizedLang, {
-    includeAllLanguages: includeAllCollections,
-  });
+  const version = await getCacheVersion(COLLECTION_CACHE_VERSION_KEY);
+  return getOrSetCache(
+    `collections:detail:v1:${version}:${id}:${normalizedLang}`,
+    COLLECTION_CACHE_TTL_SECONDS,
+    fetchCollection,
+  );
 }
 
 export async function getCollectionWithProductsService(
@@ -253,6 +303,8 @@ export async function createCollectionService(payload, file) {
       ...(image && { image }),
     });
 
+    await invalidateCollectionCaches();
+
     return collection;
   } catch (err) {
     if (uploadedPublicId) {
@@ -329,6 +381,8 @@ export async function updateCollectionService(id, payload, file) {
       await deleteImageFromCloudinary(oldPublicId);
     }
 
+    await invalidateCollectionCaches();
+
     return updated;
   } catch (err) {
     if (newImage?.public_id) {
@@ -349,6 +403,7 @@ export async function deleteCollectionService(id) {
   }
 
   await CollectionModel.deleteOne({ _id: id });
+  await invalidateCollectionCaches();
 }
 
 export async function updateCollectionPositionsService(positions) {
@@ -360,6 +415,7 @@ export async function updateCollectionPositionsService(positions) {
   }));
 
   const result = await CollectionModel.bulkWrite(ops, { ordered: false });
+  await invalidateCollectionCaches({ affectsProductList: false });
   return {
     requested: positions.length,
     matched: result.matchedCount,

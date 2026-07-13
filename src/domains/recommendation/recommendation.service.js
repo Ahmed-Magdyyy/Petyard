@@ -15,6 +15,7 @@ import {
   findProducts,
 } from "../product/product.repository.js";
 import { mapProductToCardDto } from "../product/product.service.js";
+import { getProductListCacheVersion } from "../product/productCache.service.js";
 import { findActivePromotionsForProducts } from "../collection/collection.promotion.js";
 
 function normalizeLang(lang) {
@@ -205,7 +206,8 @@ export async function getHomeRecommendationsService({
   const normalizedLang = normalizeLang(lang);
 
   const petVersion = await getPetCacheVersion(userId);
-  const cacheKey = `recs:home:${warehouseId}:${String(userId)}:${petVersion}:${normalizedLang}`;
+  const productListVersion = await getProductListCacheVersion();
+  const cacheKey = `recs:home:${warehouseId}:${String(userId)}:${petVersion}:${productListVersion}:${normalizedLang}`;
 
   return getOrSetCache(cacheKey, 6 * 60 * 60, async () => {
     const usedIds = new Set();
@@ -400,7 +402,8 @@ export async function getRelatedProductsService({
 
   const userKey = userId ? String(userId) : "guest";
   const petVersion = userId ? await getPetCacheVersion(userId) : "0";
-  const cacheKey = `recs:related:${warehouseId}:${productId}:${userKey}:${petVersion}:${normalizedLang}`;
+  const productListVersion = await getProductListCacheVersion();
+  const cacheKey = `recs:related:${warehouseId}:${productId}:${userKey}:${petVersion}:${productListVersion}:${normalizedLang}`;
 
   return getOrSetCache(cacheKey, 60 * 60, async () => {
     const usedIds = new Set([String(productId)]);

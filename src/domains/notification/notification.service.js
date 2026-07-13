@@ -5,6 +5,7 @@ import {
   dispatchNotification,
   dispatchNotificationToUsers,
 } from "./notificationDispatcher.js";
+import { subscribeDeviceToBroadcastTopicInBackground } from "./notificationTopics.service.js";
 import { UserModel } from "../user/user.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import {
@@ -95,6 +96,8 @@ export async function registerDeviceForUserService({
     });
   }
 
+  subscribeDeviceToBroadcastTopicInBackground(device.token);
+
   return {
     id: device._id,
     userId: device.user,
@@ -144,6 +147,8 @@ export async function registerDeviceForGuestService({
       lastUsedAt: now,
     });
   }
+
+  subscribeDeviceToBroadcastTopicInBackground(device.token);
 
   return {
     id: device._id,

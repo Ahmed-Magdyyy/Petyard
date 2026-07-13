@@ -35,9 +35,14 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
-import { getOrSetCache, deleteCacheKey, deleteCachePattern } from "../../shared/utils/cache.js";
+import { getOrSetCache, stableStringify } from "../../shared/utils/cache.js";
 import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
 import { computeFinalDiscountedPrice } from "../../shared/utils/pricing.js";
+import {
+  getProductListCacheVersion,
+  invalidateProductCaches,
+  productCacheConfig,
+} from "./productCache.service.js";
 import {
   autoHideExpiredCollections,
   findActivePromotionForProduct,
@@ -896,8 +901,6 @@ async function getProductsService(
   const mongoFilter =
     andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
-  await autoHideExpiredCollectionsThrottled();
-
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
 
   let sort = mapProductSortKey(sortKey);
@@ -908,43 +911,72 @@ async function getProductsService(
   const listSelect =
     "_id slug type name_en name_ar tags price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
 
-  const [totalProductsCount, products] = await Promise.all([
-    countProducts(mongoFilter),
-    findProducts(mongoFilter, {
-      skip,
-      limit: limitNum,
-      sort,
-      select: listSelect,
-      lean: true,
-    }),
-  ]);
+  const fetchProductList = async () => {
+    await autoHideExpiredCollectionsThrottled();
 
-  const now = new Date();
-  const promotionsByProductId = await findActivePromotionsForProducts(
-    products,
-    now,
-  );
+    const [totalProductsCount, products] = await Promise.all([
+      countProducts(mongoFilter),
+      findProducts(mongoFilter, {
+        skip,
+        limit: limitNum,
+        sort,
+        select: listSelect,
+        lean: true,
+      }),
+    ]);
+
+    const now = new Date();
+    const promotionsByProductId = await findActivePromotionsForProducts(
+      products,
+      now,
+    );
+
+    const data = products.map((p) => {
+      const promotion = promotionsByProductId.get(String(p._id)) || null;
+      const dto = mapProductToCardDto(p, {
+        lang: normalizedLang,
+        promotion,
+        warehouseId: selectedWarehouseId,
+      });
+      dto.isFavorite = false;
+      return dto;
+    });
+
+    const totalPages = Math.ceil(totalProductsCount / limitNum) || 1;
+
+    return {
+      totalResults: totalProductsCount,
+      totalPages,
+      page: pageNum,
+      results: data.length,
+      data,
+    };
+  };
+
+  const shouldCachePublicList = !includeZeroStockInWarehouse;
+  const productListResult = shouldCachePublicList
+    ? await getOrSetCache(
+        `products:list:v1:${await getProductListCacheVersion()}:${normalizedLang}:${stableStringify({
+          queryParams,
+          warehouse: selectedWarehouseId || null,
+        })}`,
+        productCacheConfig.listTtlSeconds,
+        fetchProductList,
+      )
+    : await fetchProductList();
+
+  if (!userId) {
+    return productListResult;
+  }
 
   const favoriteProductIds = await getUserFavoriteProductIds(userId);
-
-  const data = products.map((p) => {
-    const promotion = promotionsByProductId.get(String(p._id)) || null;
-    const dto = mapProductToCardDto(p, {
-      lang: normalizedLang,
-      promotion,
-      warehouseId: selectedWarehouseId,
-    });
-    dto.isFavorite = favoriteProductIds.has(String(p._id));
-    return dto;
-  });
-
-  const totalPages = Math.ceil(totalProductsCount / limitNum) || 1;
+  const data = (productListResult.data || []).map((dto) => ({
+    ...dto,
+    isFavorite: favoriteProductIds.has(String(dto.id)),
+  }));
 
   return {
-    totalResults: totalProductsCount,
-    totalPages,
-    page: pageNum,
-    results: data.length,
+    ...productListResult,
     data,
   };
 }
@@ -965,7 +997,7 @@ async function getProductByIdService(
   const whPart = warehouseId ? `:wh:${warehouseId}` : "";
   const cacheKey = `product:${id}:${normalizedLang}:${includeAllLanguages ? "all" : "localized"}${whPart}`;
 
-  const result = await getOrSetCache(cacheKey, 60, async () => {
+  const result = await getOrSetCache(cacheKey, productCacheConfig.detailTtlSeconds, async () => {
     await autoHideExpiredCollections();
 
     const product = await findProductByIdWithRefs(id);
@@ -1366,6 +1398,8 @@ async function createProductService(payload, files = []) {
       isFeatured: typeof isFeatured === "boolean" ? isFeatured : undefined,
     });
 
+    await invalidateProductCaches(product._id);
+
     return product;
   } catch (err) {
     for (const publicId of uploadedPublicIds) {
@@ -1657,8 +1691,7 @@ async function updateProductService(id, payload, files = []) {
       }
     }
 
-    // Invalidate all cached variants of this product (all langs, warehouse scopes)
-    await deleteCachePattern(`product:${id}:*`);
+    await invalidateProductCaches(id);
 
     return updated;
   } catch (err) {
@@ -1785,8 +1818,7 @@ async function updateProductStockService(id, payload, warehouseScope) {
 
   const updated = await product.save();
 
-  // Invalidate all cached variants of this product (all langs, warehouse scopes)
-  await deleteCachePattern(`product:${id}:*`);
+  await invalidateProductCaches(id);
 
   return updated;
 }
@@ -1825,8 +1857,7 @@ async function deleteProductService(id) {
 
   await deleteProductById(id);
 
-  // Invalidate all cached variants of this product (all langs, warehouse scopes)
-  await deleteCachePattern(`product:${id}:*`);
+  await invalidateProductCaches(id);
 }
 
 // ─── Search Suggestions ──────────────────────────────────────────────────────

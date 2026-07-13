@@ -15,6 +15,10 @@ import {
   dispatchNotificationToUsers,
 } from "./notificationDispatcher.js";
 import { dispatchAdminBroadcastNotification } from "./notificationBroadcast.service.js";
+import {
+  logAuditEvent,
+  safeIdentifierMarker,
+} from "../../shared/utils/auditLog.js";
 
 function getGuestId(req) {
   const headerValue = req.headers["x-guest-id"];
@@ -50,6 +54,8 @@ export const registerGuestDevice = asyncHandler(async (req, res) => {
   if (!guestId) {
     throw new ApiError("x-guest-id header is required", 400);
   }
+  console.log("from notification : ",req.headers);
+  
 
   const { token, platform, lang } = req.body || {};
 
@@ -59,6 +65,17 @@ export const registerGuestDevice = asyncHandler(async (req, res) => {
     platform,
     lang: lang || "en",
   });
+
+  // logAuditEvent("notification_device.register_guest", {
+  //   route: "/api/v1/notifications/devices/register-guest",
+  //   guestId: safeIdentifierMarker(guestId),
+  //   token: safeIdentifierMarker(token),
+  //   guestIdEqualsToken:
+  //     typeof token === "string" && guestId.trim() === token.trim(),
+  //   platform: device.platform,
+  //   lang: device.lang,
+  //   deviceId: String(device.id),
+  // });
 
   res.status(200).json({ data: device });
 });
@@ -203,7 +220,7 @@ export const adminSendNotification = asyncHandler(async (req, res) => {
       channels: effectiveChannels,
     });
 
-    res.status(200).json({ data: result });
+    res.status(200).json(result);
     return;
   }
 

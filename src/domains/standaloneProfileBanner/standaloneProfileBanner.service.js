@@ -5,10 +5,33 @@ import {
   uploadImageToCloudinary,
   deleteImageFromCloudinary,
 } from "../../shared/utils/imageUpload.js";
+import {
+  bumpCacheVersion,
+  getCacheVersion,
+  getOrSetCache,
+} from "../../shared/utils/cache.js";
+import { parseBoundedInt } from "../../shared/utils/env.js";
+
+const STANDALONE_PROFILE_BANNER_CACHE_VERSION_KEY =
+  "standalone-profile-banner:version";
+const STANDALONE_PROFILE_BANNER_CACHE_TTL_SECONDS = parseBoundedInt(
+  process.env.STANDALONE_PROFILE_BANNER_CACHE_TTL_SECONDS,
+  5 * 60,
+  5,
+  60 * 60,
+);
+
+async function invalidateStandaloneProfileBannerCache() {
+  await bumpCacheVersion(STANDALONE_PROFILE_BANNER_CACHE_VERSION_KEY);
+}
 
 export async function getStandaloneProfileBannerService() {
-  const banner = await StandaloneProfileBannerModel.findOne();
-  return banner;
+  const version = await getCacheVersion(STANDALONE_PROFILE_BANNER_CACHE_VERSION_KEY);
+  return getOrSetCache(
+    `standalone-profile-banner:v1:${version}`,
+    STANDALONE_PROFILE_BANNER_CACHE_TTL_SECONDS,
+    () => StandaloneProfileBannerModel.findOne(),
+  );
 }
 
 export async function createStandaloneProfileBannerService(file) {
@@ -35,6 +58,7 @@ export async function createStandaloneProfileBannerService(file) {
     const banner = await StandaloneProfileBannerModel.create({
       image: newImage,
     });
+    await invalidateStandaloneProfileBannerCache();
     return banner;
   } catch (err) {
     if (newImage?.public_id) {
@@ -72,6 +96,8 @@ export async function updateStandaloneProfileBannerService(file) {
     if (oldPublicId) {
       await deleteImageFromCloudinary(oldPublicId);
     }
+
+    await invalidateStandaloneProfileBannerCache();
 
     return banner;
   } catch (err) {
