@@ -17,7 +17,7 @@ import { roles, enabledControls, paymentMethodEnum, orderStatusEnum } from "../.
 
 const STAFF_ALERT_PUSH_OPTIONS = {
   android: {
-    channelId: "petyard_notification_channel",
+    channelId: "petyard_notification_channel_v2",
     sound: "petyard_songe",
   },
   apns: {
