@@ -30,11 +30,6 @@ const appVersionReleaseSchema = new Schema(
       type: Boolean,
       required: true,
     },
-    releaseNotes: {
-      type: String,
-      trim: true,
-      default: null,
-    },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",

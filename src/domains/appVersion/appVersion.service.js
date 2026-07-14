@@ -7,7 +7,6 @@ import {
 } from "./appVersion.model.js";
 
 const DEFAULT_VERSION = "0.0.0";
-const DEFAULT_RELEASE_NOTES = "Default app version policy";
 const APP_UPDATE_URL = "https://app.petyardstores.com";
 
 function normalizePlatform(platform) {
@@ -59,13 +58,6 @@ function compareVersions(a, b) {
   return 0;
 }
 
-function normalizeNullableString(value) {
-  if (value === null) return null;
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || null;
-}
-
 function normalizeReleasePayload(payload = {}) {
   const platform = normalizePlatform(payload.platform);
   const version = normalizeVersion(payload.version, "version");
@@ -78,9 +70,8 @@ function normalizeReleasePayload(payload = {}) {
     platform,
     version,
     mustUpdate: payload.mustUpdate,
-    setAsLatestVersion: payload.setAsLatestVersion,
+    setAsLatestVersion: Boolean(payload.setAsLatestVersion),
     setAsMinVersion: Boolean(payload.setAsMinVersion),
-    releaseNotes: normalizeNullableString(payload.releaseNotes) ?? null,
   };
 }
 
@@ -97,7 +88,6 @@ function toReleaseDto(release, policy = null) {
     platform: release.platform,
     version: release.version,
     mustUpdate: Boolean(release.mustUpdate),
-    releaseNotes: release.releaseNotes || null,
     storeUrl: APP_UPDATE_URL,
     isLatestVersion: latestId === releaseId,
     isMinVersion: minId === releaseId,
@@ -110,7 +100,6 @@ function toPublicVersionDto(release) {
   return {
     version: release.version,
     mustUpdate: Boolean(release.mustUpdate),
-    releaseNotes: release.releaseNotes || null,
     storeUrl: APP_UPDATE_URL,
   };
 }
@@ -132,7 +121,6 @@ async function getOrCreateDefaultRelease(platform) {
         platform,
         version: DEFAULT_VERSION,
         mustUpdate: false,
-        releaseNotes: DEFAULT_RELEASE_NOTES,
       },
     },
     { new: true, upsert: true, setDefaultsOnInsert: true },
@@ -182,13 +170,6 @@ function assertSinglePolicySelectionPerPlatform(releases) {
   }
 }
 
-function shouldPromoteReleaseToLatest({ release, currentLatest, hasExplicitLatest }) {
-  if (release.setAsLatestVersion === true) return true;
-  if (release.setAsLatestVersion === false) return false;
-  if (hasExplicitLatest) return false;
-  return compareVersions(release.version, currentLatest.version) >= 0;
-}
-
 async function getOrCreatePlatformPolicy(platform) {
   const normalizedPlatform = normalizePlatform(platform);
   const defaultRelease = await getOrCreateDefaultRelease(normalizedPlatform);
@@ -216,23 +197,6 @@ async function getOrCreatePlatformPolicy(platform) {
   }
 
   return policy;
-}
-
-async function findReleaseByVersionOrThrow(platform, version, fieldName) {
-  const normalizedVersion = normalizeVersion(version, fieldName);
-  const release = await AppVersionReleaseModel.findOne({
-    platform,
-    version: normalizedVersion,
-  });
-
-  if (!release) {
-    throw new ApiError(
-      `No ${platform} app release found for version ${normalizedVersion}`,
-      404,
-    );
-  }
-
-  return release;
 }
 
 async function applyPolicySelection({
@@ -285,20 +249,6 @@ export async function checkAppVersionService({ platform, appVersion }) {
     updateAvailable: belowLatestVersion,
     latestAppVersion: toPublicVersionDto(policy.latestRelease),
     minAppVersion: toPublicVersionDto(policy.minRelease),
-  };
-}
-
-export async function listAppVersionReleasesService(platform) {
-  const normalizedPlatform = normalizePlatform(platform);
-  const policy = await getOrCreatePlatformPolicy(normalizedPlatform);
-  const releases = await AppVersionReleaseModel.find({
-    platform: normalizedPlatform,
-  }).sort({ createdAt: -1 });
-
-  return {
-    platform: normalizedPlatform,
-    results: releases.length,
-    data: releases.map((release) => toReleaseDto(release, policy)),
   };
 }
 
@@ -362,16 +312,7 @@ export async function createAppVersionReleasesService({ payload = {}, actorId })
 
   for (const release of normalizedReleases) {
     const simulatedPolicy = simulatedPolicies.get(release.platform);
-    const hasExplicitLatestSelection = normalizedReleases.some(
-      (candidate) =>
-        candidate.platform === release.platform &&
-        candidate.setAsLatestVersion === true,
-    );
-    const setAsLatestVersion = shouldPromoteReleaseToLatest({
-      release,
-      currentLatest: simulatedPolicy.latestRelease,
-      hasExplicitLatest: hasExplicitLatestSelection,
-    });
+    const setAsLatestVersion = release.setAsLatestVersion;
     const setAsMinVersion = release.setAsMinVersion;
 
     const virtualRelease = {
@@ -379,7 +320,6 @@ export async function createAppVersionReleasesService({ payload = {}, actorId })
       platform: release.platform,
       version: release.version,
       mustUpdate: release.mustUpdate,
-      releaseNotes: release.releaseNotes,
     };
 
     const nextLatestRelease = setAsLatestVersion
@@ -408,23 +348,13 @@ export async function createAppVersionReleasesService({ payload = {}, actorId })
       platform: releaseInput.platform,
       version: releaseInput.version,
       mustUpdate: releaseInput.mustUpdate,
-      releaseNotes: releaseInput.releaseNotes,
       createdBy: actorId || null,
       updatedBy: actorId || null,
     });
 
     created.push(release);
 
-    const hasExplicitLatestSelection = normalizedReleases.some(
-      (candidate) =>
-        candidate.platform === releaseInput.platform &&
-        candidate.setAsLatestVersion === true,
-    );
-    const setAsLatestVersion = shouldPromoteReleaseToLatest({
-      release: releaseInput,
-      currentLatest: policy.latestRelease,
-      hasExplicitLatest: hasExplicitLatestSelection,
-    });
+    const setAsLatestVersion = releaseInput.setAsLatestVersion;
 
     if (setAsLatestVersion) {
       latestSelections.set(releaseInput.platform, release);
@@ -472,74 +402,4 @@ export async function createAppVersionReleasesService({ payload = {}, actorId })
       ]),
     ),
   };
-}
-
-export async function updateAppVersionReleaseService({
-  platform,
-  version,
-  payload = {},
-  actorId,
-}) {
-  const normalizedPlatform = normalizePlatform(platform);
-  const release = await findReleaseByVersionOrThrow(
-    normalizedPlatform,
-    version,
-    "version",
-  );
-
-  if (payload.mustUpdate !== undefined) {
-    release.mustUpdate = Boolean(payload.mustUpdate);
-  }
-
-  const releaseNotes = normalizeNullableString(payload.releaseNotes);
-  if (releaseNotes !== undefined) {
-    release.releaseNotes = releaseNotes;
-  }
-
-  release.updatedBy = actorId || null;
-  await release.save();
-
-  const policy = await getOrCreatePlatformPolicy(normalizedPlatform);
-
-  return {
-    data: toReleaseDto(release, policy),
-    policy: toPolicyDto(policy),
-  };
-}
-
-export async function updateAppVersionPolicyService({
-  platform,
-  payload = {},
-  actorId,
-}) {
-  const normalizedPlatform = normalizePlatform(platform);
-  const policy = await getOrCreatePlatformPolicy(normalizedPlatform);
-
-  const latestRelease =
-    payload.latestAppVersion !== undefined
-      ? await findReleaseByVersionOrThrow(
-          normalizedPlatform,
-          payload.latestAppVersion,
-          "latestAppVersion",
-        )
-      : policy.latestRelease;
-
-  const minRelease =
-    payload.minAppVersion !== undefined
-      ? await findReleaseByVersionOrThrow(
-          normalizedPlatform,
-          payload.minAppVersion,
-          "minAppVersion",
-        )
-      : policy.minRelease;
-
-  const updatedPolicy = await applyPolicySelection({
-    platform: normalizedPlatform,
-    policy,
-    latestRelease,
-    minRelease,
-    updatedBy: actorId,
-  });
-
-  return toPolicyDto(updatedPolicy);
 }
