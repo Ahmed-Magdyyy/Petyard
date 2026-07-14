@@ -126,6 +126,12 @@ function buildPushPlatformConfig(pushOptions = {}) {
   if (androidOptions.channelId) {
     androidNotification.channelId = androidOptions.channelId;
   }
+  if (androidOptions.priority) {
+    androidNotification.priority = androidOptions.priority;
+  }
+  if (typeof androidOptions.defaultSound === "boolean") {
+    androidNotification.defaultSound = androidOptions.defaultSound;
+  }
 
   return {
     android: {
