@@ -16,7 +16,12 @@ const walletTransactionSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ["ORDER_DEBIT", "ORDER_REFUND", "POINTS_REDEEM_CREDIT", "ADMIN_ADJUST"],
+      enum: [
+        "ORDER_DEBIT",
+        "ORDER_REFUND",
+        "POINTS_REDEEM_CREDIT",
+        "ADMIN_ADJUST",
+      ],
       required: true,
       index: true,
     },
@@ -35,6 +40,19 @@ const walletTransactionSchema = new Schema(
     },
     note: {
       type: String,
+      trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+    },
+    description_en: {
+      type: String,
+      trim: true,
+    },
+    description_ar: {
+      type: String,
+      trim: true,
     },
     createdBy: {
       type: Schema.Types.ObjectId,
@@ -45,6 +63,12 @@ const walletTransactionSchema = new Schema(
 );
 
 walletTransactionSchema.index({ user: 1, createdAt: -1 });
-walletTransactionSchema.index({ type: 1, referenceType: 1, referenceId: 1 }, { unique: true });
+walletTransactionSchema.index(
+  { type: 1, referenceType: 1, referenceId: 1 },
+  { unique: true },
+);
 
-export const WalletTransactionModel = model("WalletTransaction", walletTransactionSchema);
+export const WalletTransactionModel = model(
+  "WalletTransaction",
+  walletTransactionSchema,
+);
