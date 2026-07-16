@@ -13,12 +13,19 @@ import {
   toCairoHour24,
   formatHourLabel12,
 } from "../serviceReservation/reservations/serviceReservation.utils.js";
-import { roles, enabledControls, paymentMethodEnum, orderStatusEnum } from "../../shared/constants/enums.js";
+import {
+  roles,
+  enabledControls,
+  paymentMethodEnum,
+  orderStatusEnum,
+} from "../../shared/constants/enums.js";
 
 const STAFF_ALERT_PUSH_OPTIONS = {
   android: {
     channelId: "petyard_notification_channel_v3",
     sound: "petyard_songe",
+    priority: "max",
+    defaultSound: false,
   },
   apns: {
     sound: "petyardSonge.caf",
@@ -555,7 +562,7 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
 
     // Build userId → { name, role } map from admins
     const userDetailsMap = new Map(
-      admins.map((a) => [String(a._id), { name: a.name, role: a.role }])
+      admins.map((a) => [String(a._id), { name: a.name, role: a.role }]),
     );
 
     const adminIds = admins.map((a) => String(a._id));
@@ -563,15 +570,25 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
     // 2. Find moderators for the order's warehouse (if any)
     let moderatorIds = [];
     if (order.warehouse) {
-      const warehouse = await WarehouseModel.findById(order.warehouse).select("moderators");
+      const warehouse = await WarehouseModel.findById(order.warehouse).select(
+        "moderators",
+      );
       if (warehouse && Array.isArray(warehouse.moderators)) {
-        moderatorIds = warehouse.moderators.filter(Boolean).map((id) => String(id));
+        moderatorIds = warehouse.moderators
+          .filter(Boolean)
+          .map((id) => String(id));
 
         // Fetch name & role for moderators not already in the map
-        const unknownModIds = moderatorIds.filter((id) => !userDetailsMap.has(id));
+        const unknownModIds = moderatorIds.filter(
+          (id) => !userDetailsMap.has(id),
+        );
         if (unknownModIds.length) {
-          const mods = await UserModel.find({ _id: { $in: unknownModIds } }).select("_id email name role");
-          mods.forEach((m) => userDetailsMap.set(String(m._id), { name: m.name, role: m.role }));
+          const mods = await UserModel.find({
+            _id: { $in: unknownModIds },
+          }).select("_id email name role");
+          mods.forEach((m) =>
+            userDetailsMap.set(String(m._id), { name: m.name, role: m.role }),
+          );
         }
       }
     }
