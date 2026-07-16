@@ -19,8 +19,6 @@ const STAFF_ALERT_PUSH_OPTIONS = {
   android: {
     channelId: "petyard_notification_channel_v3",
     sound: "petyard_songe",
-    priority: "max",
-    defaultSound: false,
   },
   apns: {
     sound: "petyardSonge.caf",
