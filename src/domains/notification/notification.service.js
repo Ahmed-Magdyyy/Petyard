@@ -22,10 +22,10 @@ import {
 
 const STAFF_ALERT_PUSH_OPTIONS = {
   android: {
-    channelId: "petyard_notification_channel_v3",
+    channelId: "petyard_notification_channel_v4",
     sound: "petyard_songe",
-    priority: "max",
-    defaultSound: false,
+    // priority: "max",
+    // defaultSound: false,
   },
   apns: {
     sound: "petyardSonge.caf",
