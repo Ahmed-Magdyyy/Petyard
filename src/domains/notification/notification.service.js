@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { getFirebaseAdmin } from "../../config/firebase.js";
 import { NotificationDeviceModel } from "./notification.model.js";
@@ -20,21 +21,27 @@ import {
   orderStatusEnum,
 } from "../../shared/constants/enums.js";
 
-const STAFF_ALERT_PUSH_OPTIONS = {
-  android: {
-    channelId: "petyard_notification_channel_v4",
-    sound: "petyard_songe",
-    // priority: "max",
-    // defaultSound: false,
-  },
-  apns: {
-    sound: "petyardSonge.caf",
-    headers: {
-      "apns-priority": "10",
-      "apns-push-type": "alert",
+// Built per dispatch so the android tag is unique per notification.
+// TODO: replace the random tag id with the real reservation/order id.
+function buildStaffAlertPushOptions() {
+  return {
+    android: {
+      channelId: "petyard_notification_channel_v4",
+      sound: "petyard_songe",
+      priority: "max",
+      defaultVibrateTimings: true,
+      visibility: "public",
+      tag: `reservation_${crypto.randomUUID()}`,
     },
-  },
-};
+    apns: {
+      sound: "petyardSonge.caf",
+      headers: {
+        "apns-priority": "10",
+        "apns-push-type": "alert",
+      },
+    },
+  };
+}
 
 function normalizePlatform(value) {
   const v = typeof value === "string" ? value.toLowerCase().trim() : "";
@@ -621,7 +628,7 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
         referenceId: String(order._id),
       },
       channels: { push: true, inApp: true },
-      pushOptions: STAFF_ALERT_PUSH_OPTIONS,
+      pushOptions: buildStaffAlertPushOptions(),
     });
 
     return result;
@@ -702,7 +709,7 @@ export async function sendNewReturnRequestNotificationToAdminsAndModerators(
         referenceId: String(returnRequest._id),
       },
       channels: { push: true, inApp: true },
-      pushOptions: STAFF_ALERT_PUSH_OPTIONS,
+      pushOptions: buildStaffAlertPushOptions(),
     });
 
     return result;
@@ -774,7 +781,7 @@ export async function sendNewServiceReservationNotificationToAdmins(
         referenceId: String(reservation._id),
       },
       channels: { push: true, inApp: true },
-      pushOptions: STAFF_ALERT_PUSH_OPTIONS,
+      pushOptions: buildStaffAlertPushOptions(),
     });
 
     return result;

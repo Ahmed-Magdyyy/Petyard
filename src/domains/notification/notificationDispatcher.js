@@ -13,7 +13,7 @@
  *     action: { type: "order_detail", screen: "OrderDetailScreen", params: { orderId: "..." } },
  *     source: { domain: "order", event: "status_changed", referenceId: "..." },
  *     channels: { push: true, inApp: true },
- *     pushOptions: { android: { channelId: "...", sound: "..." }, apns: { sound: "...", headers: {} } }
+ *     pushOptions: { android: { channelId: "...", sound: "...", priority: "max", defaultVibrateTimings: true, visibility: "public", tag: "..." }, apns: { sound: "...", headers: {} } }
  *   });
  */
 
@@ -131,6 +131,16 @@ function buildPushPlatformConfig(pushOptions = {}) {
   }
   if (typeof androidOptions.defaultSound === "boolean") {
     androidNotification.defaultSound = androidOptions.defaultSound;
+  }
+  if (typeof androidOptions.defaultVibrateTimings === "boolean") {
+    androidNotification.defaultVibrateTimings =
+      androidOptions.defaultVibrateTimings;
+  }
+  if (androidOptions.visibility) {
+    androidNotification.visibility = androidOptions.visibility;
+  }
+  if (androidOptions.tag) {
+    androidNotification.tag = androidOptions.tag;
   }
 
   return {
