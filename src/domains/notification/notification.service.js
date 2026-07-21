@@ -26,7 +26,7 @@ import {
 function buildStaffAlertPushOptions() {
   return {
     android: {
-      channelId: "petyard_notification_channel_v6",
+      channelId: "petyard_notification_channel_v7",
       sound: "petyard_songe",
       priority: "max",
       defaultVibrateTimings: true,
