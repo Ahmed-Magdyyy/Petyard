@@ -4,6 +4,7 @@
   "description": "",
   "main": "src/app/server.js",
   "scripts": {
+    "test": "node --test",
     "start:dev": "nodemon src/app/server.js",
     "start:prod": "NODE_ENV=production node src/app/server.js",
     "start:notification-worker": "NODE_ENV=production node src/workers/notificationBroadcast.worker.js"

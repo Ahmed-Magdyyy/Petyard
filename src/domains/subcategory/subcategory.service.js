@@ -11,6 +11,11 @@ import {
   stableStringify,
 } from "../../shared/utils/cache.js";
 import { parseBoundedInt } from "../../shared/utils/env.js";
+import {
+  IMAGE_DELIVERY_CACHE_NAMESPACE,
+  IMAGE_DELIVERY_PRESETS,
+  getImageDeliveryUrl,
+} from "../../shared/utils/imageDelivery.js";
 import { bumpProductListCacheVersion } from "../product/productCache.service.js";
 import {
   validateImageFile,
@@ -137,7 +142,10 @@ export async function getSubcategoriesService(
             name: pickLocalizedField(s, "name", normalizedLang),
             desc: pickLocalizedField(s, "desc", normalizedLang),
           }),
-      image: s.image?.url || null,
+      image: getImageDeliveryUrl(
+        s.image?.url || null,
+        IMAGE_DELIVERY_PRESETS.SUBCATEGORY_TILE,
+      ),
       parent: s.parent?._id || s.parent || null,
       children: [],
     });
@@ -195,7 +203,7 @@ export async function getSubcategoriesService(
 
   const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
   return getOrSetCache(
-    `subcategories:list:v1:${version}:${normalizedLang}:${stableStringify(query || {})}`,
+    `subcategories:list:v2:${IMAGE_DELIVERY_CACHE_NAMESPACE}:${version}:${normalizedLang}:${stableStringify(query || {})}`,
     SUBCATEGORY_CACHE_TTL_SECONDS,
     fetchSubcategories,
   );
@@ -235,7 +243,10 @@ export async function getSubcategoryByIdService(id, lang = "en", user = null) {
             name: pickLocalizedField(subcategory, "name", normalizedLang),
             desc: pickLocalizedField(subcategory, "desc", normalizedLang),
           }),
-      image: subcategory.image?.url || null,
+      image: getImageDeliveryUrl(
+        subcategory.image?.url || null,
+        IMAGE_DELIVERY_PRESETS.SUBCATEGORY_TILE,
+      ),
       parent: subcategory.parent?._id || subcategory.parent || null,
     };
   };
@@ -246,7 +257,7 @@ export async function getSubcategoryByIdService(id, lang = "en", user = null) {
 
   const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
   return getOrSetCache(
-    `subcategories:detail:v1:${version}:${id}:${normalizedLang}`,
+    `subcategories:detail:v2:${IMAGE_DELIVERY_CACHE_NAMESPACE}:${version}:${id}:${normalizedLang}`,
     SUBCATEGORY_CACHE_TTL_SECONDS,
     fetchSubcategory,
   );

@@ -9,6 +9,12 @@ import {
   getOrSetCache,
 } from "../../shared/utils/cache.js";
 import { parseBoundedInt } from "../../shared/utils/env.js";
+import {
+  IMAGE_DELIVERY_CACHE_NAMESPACE,
+  IMAGE_DELIVERY_PRESETS,
+  getImageDeliveryUrl,
+  getImageObjectWithDeliveryUrl,
+} from "../../shared/utils/imageDelivery.js";
 import { bumpProductListCacheVersion } from "../product/productCache.service.js";
 import {
   validateImageFile,
@@ -59,7 +65,11 @@ export async function getCategoriesService(lang = "en", user = null) {
             name: pickLocalizedField(c, "name", normalizedLang),
             desc: pickLocalizedField(c, "desc", normalizedLang),
           }),
-      image: c.image || null,
+      image:
+        getImageObjectWithDeliveryUrl(
+          c.image,
+          IMAGE_DELIVERY_PRESETS.CATEGORY_TILE,
+        ) || null,
       position: typeof c.position === "number" ? c.position : 0,
     }));
   };
@@ -70,7 +80,7 @@ export async function getCategoriesService(lang = "en", user = null) {
 
   const version = await getCacheVersion(CATEGORY_CACHE_VERSION_KEY);
   return getOrSetCache(
-    `categories:list:v1:${version}:${normalizedLang}`,
+    `categories:list:v2:${IMAGE_DELIVERY_CACHE_NAMESPACE}:${version}:${normalizedLang}`,
     CATEGORY_CACHE_TTL_SECONDS,
     fetchCategories,
   );
@@ -107,7 +117,10 @@ export async function getCategoryByIdService(id, lang = "en", user = null) {
             name: pickLocalizedField(category, "name", normalizedLang),
             desc: pickLocalizedField(category, "desc", normalizedLang),
           }),
-      image: category.image?.url || null,
+      image: getImageDeliveryUrl(
+        category.image?.url || null,
+        IMAGE_DELIVERY_PRESETS.CATEGORY_TILE,
+      ),
       position: typeof category.position === "number" ? category.position : 0,
     };
   };
@@ -118,7 +131,7 @@ export async function getCategoryByIdService(id, lang = "en", user = null) {
 
   const version = await getCacheVersion(CATEGORY_CACHE_VERSION_KEY);
   return getOrSetCache(
-    `categories:detail:v1:${version}:${id}:${normalizedLang}`,
+    `categories:detail:v2:${IMAGE_DELIVERY_CACHE_NAMESPACE}:${version}:${id}:${normalizedLang}`,
     CATEGORY_CACHE_TTL_SECONDS,
     fetchCategory,
   );
