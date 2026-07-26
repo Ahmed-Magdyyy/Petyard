@@ -17,6 +17,13 @@ import {
   deleteWarehouseById,
 } from "./warehouse.repository.js";
 
+import { warehouseFulfillmentStatusEnum } from '../../shared/constants/enums.js';
+import {
+  assertMaintenanceFallbackAvailable,
+  assertWarehouseNotInUseAsFallback,
+  validateFallbackWarehouse,
+} from './warehouse.fulfillment.js';
+
 async function validateModeratorsOrThrow(moderators) {
   if (moderators === undefined) return undefined;
   if (!Array.isArray(moderators)) return undefined;
@@ -37,6 +44,87 @@ async function validateModeratorsOrThrow(moderators) {
   }
 
   return found.map((u) => u._id);
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+function normalizeBoolean(value, fallback, fieldName) {
+  if (value === undefined) return fallback;
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new ApiError(`${fieldName} must be a boolean`, 400);
+}
+
+function normalizeFulfillmentConfiguration({
+  currentFulfillment,
+  fulfillment,
+}) {
+  if (fulfillment === undefined) return undefined;
+
+  const next = {
+    status:
+      fulfillment.status ||
+      currentFulfillment?.status ||
+      warehouseFulfillmentStatusEnum.OPERATIONAL,
+    fallbackWarehouse: hasOwn(fulfillment, 'fallbackWarehouse')
+      ? fulfillment.fallbackWarehouse
+      : currentFulfillment?.fallbackWarehouse || null,
+    statusReason: hasOwn(fulfillment, 'statusReason')
+      ? fulfillment.statusReason
+      : currentFulfillment?.statusReason || null,
+  };
+
+  return next;
+}
+
+async function assertWarehouseStateAllowed({
+  warehouseId,
+  isDefault,
+  active,
+  fulfillment,
+}) {
+  const status =
+    fulfillment?.status || warehouseFulfillmentStatusEnum.OPERATIONAL;
+  const fallbackWarehouseId = fulfillment?.fallbackWarehouse || null;
+
+  if (
+    isDefault &&
+    (!active || status !== warehouseFulfillmentStatusEnum.OPERATIONAL)
+  ) {
+    throw new ApiError(
+      'The default warehouse must be active and operational',
+      400,
+    );
+  }
+
+  if (status === warehouseFulfillmentStatusEnum.MAINTENANCE) {
+    if (!active) {
+      throw new ApiError(
+        'A maintenance warehouse must remain active so its delivery zone can use the fallback warehouse',
+        400,
+      );
+    }
+
+    await assertMaintenanceFallbackAvailable({
+      sourceWarehouseId: warehouseId,
+      fallbackWarehouseId,
+    });
+  } else if (fallbackWarehouseId) {
+    await validateFallbackWarehouse({
+      sourceWarehouseId: warehouseId,
+      fallbackWarehouseId,
+    });
+  }
+
+  if (
+    warehouseId &&
+    (!active || status !== warehouseFulfillmentStatusEnum.OPERATIONAL)
+  ) {
+    await assertWarehouseNotInUseAsFallback(warehouseId);
+  }
 }
 
 export async function getWarehousesService(queryParams = {}) {
@@ -80,13 +168,33 @@ export async function getWarehouseByIdService(id) {
 }
 
 export async function createWarehouseService(payload) {
-  const { isDefault, moderators, ...rest } = payload || {};
-
-  if (isDefault) {
-    await clearAllDefaultWarehouses();
-  }
+  const { isDefault, active, moderators, fulfillment, ...rest } = payload || {};
 
   const validatedModerators = await validateModeratorsOrThrow(moderators);
+  const validatedFulfillment = normalizeFulfillmentConfiguration({
+    currentFulfillment: null,
+    fulfillment,
+  });
+
+  const normalizedIsDefault = normalizeBoolean(isDefault, false, 'isDefault');
+  const normalizedActive = normalizeBoolean(active, true, 'active');
+  const resultingFulfillment =
+    validatedFulfillment || {
+      status: warehouseFulfillmentStatusEnum.OPERATIONAL,
+      fallbackWarehouse: null,
+      statusReason: null,
+    };
+
+  await assertWarehouseStateAllowed({
+    warehouseId: null,
+    isDefault: normalizedIsDefault,
+    active: normalizedActive,
+    fulfillment: resultingFulfillment,
+  });
+
+  if (normalizedIsDefault) {
+    await clearAllDefaultWarehouses();
+  }
 
   if (
     rest.boundaryGeometry &&
@@ -105,9 +213,13 @@ export async function createWarehouseService(payload) {
 
   const warehouse = await createWarehouse({
     ...rest,
-    ...(typeof isDefault === "boolean" ? { isDefault } : {}),
+    isDefault: normalizedIsDefault,
+    active: normalizedActive,
     ...(validatedModerators !== undefined
       ? { moderators: validatedModerators }
+      : {}),
+    ...(validatedFulfillment !== undefined
+      ? { fulfillment: validatedFulfillment }
       : {}),
   });
 
@@ -134,7 +246,38 @@ export async function updateWarehouseService(id, payload) {
     isDefault,
     moderators,
     defaultShippingPrice,
+    fulfillment,
   } = payload;
+
+  const validatedFulfillment = normalizeFulfillmentConfiguration({
+    currentFulfillment: warehouse.fulfillment,
+    fulfillment,
+  });
+
+  const resultingFulfillmentStatus =
+    validatedFulfillment?.status ||
+    warehouse.fulfillment?.status ||
+    warehouseFulfillmentStatusEnum.OPERATIONAL;
+  const resultingIsDefault = normalizeBoolean(
+    isDefault,
+    warehouse.isDefault,
+    'isDefault',
+  );
+  const resultingActive = normalizeBoolean(active, warehouse.active, 'active');
+  const resultingFulfillment =
+    validatedFulfillment ||
+    warehouse.fulfillment || {
+      status: resultingFulfillmentStatus,
+      fallbackWarehouse: null,
+      statusReason: null,
+    };
+
+  await assertWarehouseStateAllowed({
+    warehouseId: warehouse._id,
+    isDefault: resultingIsDefault,
+    active: resultingActive,
+    fulfillment: resultingFulfillment,
+  });
 
   if (name !== undefined) warehouse.name = name;
   if (code !== undefined) warehouse.code = code;
@@ -169,8 +312,8 @@ export async function updateWarehouseService(id, payload) {
     }
   }
 
-  if (typeof isDefault === "boolean") {
-    if (isDefault) {
+  if (isDefault !== undefined) {
+    if (resultingIsDefault) {
       await clearDefaultForOtherWarehouses(id);
       warehouse.isDefault = true;
     } else {
@@ -181,7 +324,10 @@ export async function updateWarehouseService(id, payload) {
   if (moderators !== undefined) {
     warehouse.moderators = await validateModeratorsOrThrow(moderators);
   }
-  if (active !== undefined) warehouse.active = active;
+  if (validatedFulfillment !== undefined) {
+    warehouse.fulfillment = validatedFulfillment;
+  }
+  if (active !== undefined) warehouse.active = resultingActive;
 
   const updated = await warehouse.save();
   return updated;
@@ -193,7 +339,16 @@ export async function toggleWarehouseActiveService(id) {
     throw new ApiError(`No warehouse found for this id: ${id}`, 404);
   }
 
-  warehouse.active = !warehouse.active;
+  const nextActive = !warehouse.active;
+
+  await assertWarehouseStateAllowed({
+    warehouseId: warehouse._id,
+    isDefault: warehouse.isDefault,
+    active: nextActive,
+    fulfillment: warehouse.fulfillment,
+  });
+
+  warehouse.active = nextActive;
   const updated = await warehouse.save();
   return updated;
 }
@@ -203,6 +358,12 @@ export async function deleteWarehouseService(id) {
   if (!warehouse) {
     throw new ApiError(`No warehouse found for this id: ${id}`, 404);
   }
+
+  if (warehouse.isDefault) {
+    throw new ApiError('The default warehouse cannot be deleted', 409);
+  }
+
+  await assertWarehouseNotInUseAsFallback(warehouse._id);
 
   // TODO: later, prevent delete if warehouse has stock/orders
 

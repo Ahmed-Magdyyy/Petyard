@@ -18,6 +18,8 @@ import { mapProductToCardDto } from "../product/product.service.js";
 import { getProductListCacheVersion } from "../product/productCache.service.js";
 import { findActivePromotionsForProducts } from "../collection/collection.promotion.js";
 
+import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
 }
@@ -202,6 +204,10 @@ export async function getHomeRecommendationsService({
   if (!warehouseId) {
     throw new ApiError("warehouse is required", 400);
   }
+
+  warehouseId = String(
+    (await resolveEffectiveWarehouse(warehouseId)).effectiveWarehouse._id,
+  );
 
   const normalizedLang = normalizeLang(lang);
 
@@ -393,6 +399,10 @@ export async function getRelatedProductsService({
   if (!warehouseId) {
     throw new ApiError("warehouse is required", 400);
   }
+
+  warehouseId = String(
+    (await resolveEffectiveWarehouse(warehouseId)).effectiveWarehouse._id,
+  );
 
   if (!productId) {
     throw new ApiError("productId is required", 400);

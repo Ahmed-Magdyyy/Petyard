@@ -35,7 +35,13 @@ router
     enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
     getWarehouses,
   )
-  .post(createWarehouseValidator, createWarehouse);
+  .post(
+    protect,
+    allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
+    enabledControlsMiddleware(enabledControlsEnum.WAREHOUSES),
+    createWarehouseValidator,
+    createWarehouse,
+  );
 
 router
   .route("/:id")

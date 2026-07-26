@@ -34,3 +34,5 @@ exports/
 scripts/*
 !scripts/
 !scripts/syncNotificationBroadcastTopics.mjs
+BUNNY_MEDIA_MIGRATION_IMPLEMENTATION_PLAN.md
+CLOUDINARY_DELIVERY_OPTIMIZATION_IMPLEMENTATION_PLAN.md

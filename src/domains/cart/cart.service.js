@@ -29,6 +29,8 @@ import {
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { abandonedCart } from "../../shared/Email/emailHtml.js";
 
+import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+
 const MAX_ABANDON_EMAILS_PER_CART = 3;
 const ABANDON_EMAIL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -72,6 +74,15 @@ async function assertWarehouseExists(warehouseId) {
   if (!exists) {
     throw new ApiError(`No warehouse found for this id: ${warehouseId}`, 400);
   }
+}
+
+async function resolveCartWarehouseId(warehouseId) {
+  if (!warehouseId) {
+    throw new ApiError('Warehouse ID is required', 400);
+  }
+
+  const { effectiveWarehouse } = await resolveEffectiveWarehouse(warehouseId);
+  return String(effectiveWarehouse._id);
 }
 
 function buildIdentityFilter({ userId, guestId }) {
@@ -512,6 +523,8 @@ export async function getCartService({
   if (!warehouseId) {
     throw new ApiError("Warehouse ID is required", 400);
   }
+  warehouseId = await resolveCartWarehouseId(warehouseId);
+
   const warehouse = await WarehouseModel.findById(warehouseId)
     .select("defaultShippingPrice")
     .lean();
@@ -555,7 +568,7 @@ export async function setCartAddressFromUserService({
     );
   }
 
-  const warehouseId = address.warehouse;
+  const warehouseId = await resolveCartWarehouseId(address.warehouse);
 
   const baseCart = await findCart({ user: userId });
   if (!baseCart) {
@@ -618,7 +631,7 @@ export async function setCartAddressForGuestService({
     );
   }
 
-  const warehouseId = address.warehouse;
+  const warehouseId = await resolveCartWarehouseId(address.warehouse);
 
   const baseCart = await findCart({ guestId });
   if (!baseCart) {
@@ -675,7 +688,7 @@ export async function upsertCartItemService({
     );
   }
 
-  await assertWarehouseExists(warehouseId);
+  warehouseId = await resolveCartWarehouseId(warehouseId);
 
   const normalizedProductType = normalizeProductType(productType);
   if (!normalizedProductType) {
@@ -842,6 +855,7 @@ export async function updateCartItemQuantityService({
     );
   }
 
+  warehouseId = await resolveCartWarehouseId(warehouseId);
   const cart = await getExistingCartOrThrow({ userId, guestId, warehouseId });
 
   const item = cart.items.id(itemId);
@@ -930,6 +944,7 @@ export async function removeCartItemService({
   itemId,
   lang = "en",
 }) {
+  warehouseId = await resolveCartWarehouseId(warehouseId);
   const cart = await getExistingCartOrThrow({ userId, guestId, warehouseId });
 
   const item = cart.items.id(itemId);
@@ -959,7 +974,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     throw new ApiError("guestId is required for merge", 400);
   }
 
-  await assertWarehouseExists(warehouseId);
+  warehouseId = await resolveCartWarehouseId(warehouseId);
 
   const guestCart = await findCart({ guestId });
 

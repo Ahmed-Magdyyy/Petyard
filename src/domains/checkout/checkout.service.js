@@ -139,7 +139,7 @@ export async function applyCouponAtCheckoutService({
     throw new ApiError("Cart not found", 404);
   }
 
-  const warehouseId = baseCart.warehouse;
+  let warehouseId = baseCart.warehouse;
   if (!warehouseId) {
     throw new ApiError("Cart warehouse is not set", 400);
   }
@@ -150,6 +150,8 @@ export async function applyCouponAtCheckoutService({
     warehouseId,
     lang,
   });
+
+  warehouseId = cart.warehouseId;
 
   const items = Array.isArray(cart.items) ? cart.items : [];
   if (!items.length) {
@@ -236,7 +238,7 @@ export async function getCheckoutSummaryService({
     throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
   }
 
-  const warehouseId = baseCart.warehouse;
+  let warehouseId = baseCart.warehouse;
 
   const cartResponse = await getCartService({
     userId: userId || null,
@@ -244,6 +246,8 @@ export async function getCheckoutSummaryService({
     warehouseId,
     lang,
   });
+
+  warehouseId = cartResponse.warehouseId;
 
   const subtotal =
     typeof cartResponse.totalCartPrice === "number" &&

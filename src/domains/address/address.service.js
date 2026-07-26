@@ -72,8 +72,9 @@ async function resolveWarehouseForAddressFields(fields) {
       lat: fields.location.lat,
       lng: fields.location.lng,
     });
-    if (resolved && resolved.warehouse && resolved.warehouse.id) {
-      fields.warehouse = resolved.warehouse.id;
+    const zoneWarehouse = resolved?.zoneWarehouse || resolved?.warehouse;
+    if (zoneWarehouse?.id) {
+      fields.warehouse = zoneWarehouse.id;
     }
   }
 }

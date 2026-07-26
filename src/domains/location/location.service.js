@@ -6,6 +6,8 @@ import { booleanPointInPolygon } from "@turf/turf";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { createRequire } from "module";
 
+import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+
 const require = createRequire(import.meta.url);
 const governoratesConfig = require("../../shared/constants/governorates.json");
 
@@ -347,10 +349,15 @@ export async function resolveLocationByCoordinatesService({
       throw new ApiError("No active warehouse configured", 500);
     }
 
-    const warehouseSummary = summarizeWarehouse(productsWarehouse);
+    const zoneWarehouse = productsWarehouse;
+    const { effectiveWarehouse, rerouted } =
+      await resolveEffectiveWarehouse(zoneWarehouse);
+    const warehouseSummary = summarizeWarehouse(effectiveWarehouse);
 
     return {
       warehouse: warehouseSummary,
+      zoneWarehouse: summarizeWarehouse(zoneWarehouse),
+      warehouseRouting: { rerouted },
       location: {
         source,
         coordinates: {
@@ -376,9 +383,9 @@ export async function resolveLocationByCoordinatesService({
         reasonMessage:
           "Exact location is required to confirm delivery availability.",
         requiresPreciseLocation: true,
-        effectiveShippingPrice: productsWarehouse.defaultShippingPrice ?? 0,
-        shippingFee: productsWarehouse.defaultShippingPrice ?? 0,
-        defaultShippingPrice: productsWarehouse.defaultShippingPrice ?? 0,
+        effectiveShippingPrice: effectiveWarehouse.defaultShippingPrice ?? 0,
+        shippingFee: effectiveWarehouse.defaultShippingPrice ?? 0,
+        defaultShippingPrice: effectiveWarehouse.defaultShippingPrice ?? 0,
       },
     };
   }
@@ -424,7 +431,7 @@ export async function resolveLocationByCoordinatesService({
     boundaryGeometry: { $exists: true },
   }).select(
     "name code governorate active defaultShippingPrice isDefault location boundaryGeometry",
-  );
+  ).select('fulfillment');
 
   const insideCandidates = [];
 
@@ -527,7 +534,12 @@ export async function resolveLocationByCoordinatesService({
     canDeliver = true;
   }
 
-  const normalizedFromWarehouse = productsWarehouseDoc.governorate || null;
+  const zoneWarehouseDoc = productsWarehouseDoc;
+  const { effectiveWarehouse, rerouted } =
+    await resolveEffectiveWarehouse(zoneWarehouseDoc);
+  productsWarehouseDoc = effectiveWarehouse;
+
+  const normalizedFromWarehouse = zoneWarehouseDoc.governorate || null;
   const normalizedGov = decisionNormalizedGov || normalizedFromWarehouse;
   const isSupported = isSupportedGovernorate(normalizedGov);
 
@@ -537,6 +549,8 @@ export async function resolveLocationByCoordinatesService({
 
   return {
     warehouse: productsSummary,
+    zoneWarehouse: summarizeWarehouse(zoneWarehouseDoc),
+    warehouseRouting: { rerouted },
     location: {
       source,
       coordinates: {

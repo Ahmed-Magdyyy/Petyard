@@ -50,6 +50,20 @@ import {
   uploadImageToCloudinary,
 } from "../../shared/utils/imageUpload.js";
 
+import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+
+export async function resolveOrderCartWarehouse(cart) {
+  if (!cart?.warehouse) {
+    throw new ApiError('Cart warehouse is not set', 400);
+  }
+
+  const { effectiveWarehouse } = await resolveEffectiveWarehouse(
+    cart.warehouse,
+  );
+  cart.warehouse = effectiveWarehouse._id;
+  return cart.warehouse;
+}
+
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
 }
@@ -742,6 +756,8 @@ async function processOrderCreationWithCart({
   historyByUserId,
   instapayScreenshotUrl,
 }) {
+  await resolveOrderCartWarehouse(cart);
+
   const { orderItems, subtotal, hasPromotionalItems, productById } =
     await buildOrderItemsWithPromotions({ session, cart, lang });
 

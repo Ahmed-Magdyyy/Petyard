@@ -1,6 +1,29 @@
 import mongoose from "mongoose";
 
+import { warehouseFulfillmentStatusEnum } from '../../shared/constants/enums.js';
+
 const { Schema, model } = mongoose;
+
+const warehouseFulfillmentSchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: Object.values(warehouseFulfillmentStatusEnum),
+      default: warehouseFulfillmentStatusEnum.OPERATIONAL,
+    },
+    fallbackWarehouse: {
+      type: Schema.Types.ObjectId,
+      ref: 'Warehouse',
+      default: null,
+    },
+    statusReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+  },
+  { _id: false },
+);
 
 const warehouseSchema = new Schema(
   {
@@ -79,6 +102,10 @@ const warehouseSchema = new Schema(
     active: {
       type: Boolean,
       default: true,
+    },
+    fulfillment: {
+      type: warehouseFulfillmentSchema,
+      default: () => ({}),
     },
   },
   { timestamps: true },

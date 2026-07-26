@@ -55,6 +55,8 @@ import { CategoryModel } from "../category/category.model.js";
 import { countWarehouses } from "../warehouse/warehouse.repository.js";
 import { FavoriteModel } from "../favorite/favorite.model.js";
 
+import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+
 async function getUserFavoriteProductIds(userId) {
   if (!userId) return new Set();
   const fav = await FavoriteModel.findOne({ user: userId })
@@ -749,6 +751,11 @@ async function getProductsService(
   const normalizedLang = normalizeLang(lang);
   const { includeZeroStockInWarehouse = false } = options || {};
 
+  const effectiveWarehouseId =
+    warehouse && !includeZeroStockInWarehouse
+      ? String((await resolveEffectiveWarehouse(warehouse)).effectiveWarehouse._id)
+      : warehouse;
+
   const filter = {};
 
   // Type filter (SIMPLE vs VARIANT), case-insensitive
@@ -824,10 +831,10 @@ async function getProductsService(
   // in the given warehouse. This applies to both SIMPLE and VARIANT products.
   let warehouseFilter = null;
   let selectedWarehouseId = null;
-  if (warehouse) {
-    const warehouseId = Array.isArray(warehouse)
-      ? String(warehouse[0])
-      : String(warehouse);
+  if (effectiveWarehouseId) {
+    const warehouseId = Array.isArray(effectiveWarehouseId)
+      ? String(effectiveWarehouseId[0])
+      : String(effectiveWarehouseId);
 
     if (warehouseId) {
       selectedWarehouseId = warehouseId;
@@ -993,6 +1000,12 @@ async function getProductByIdService(
     (user.role === roles.SUPER_ADMIN ||
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.PRODUCTS)));
+
+  if (warehouseId && !includeAllLanguages) {
+    warehouseId = String(
+      (await resolveEffectiveWarehouse(warehouseId)).effectiveWarehouse._id,
+    );
+  }
 
   const whPart = warehouseId ? `:wh:${warehouseId}` : "";
   const cacheKey = `product:${id}:${normalizedLang}:${includeAllLanguages ? "all" : "localized"}${whPart}`;
@@ -1887,6 +1900,12 @@ export async function searchProductsService({
 
   if (!trimmedQ) {
     return { suggestions: [], products: [] };
+  }
+
+  if (!includeZeroStock) {
+    warehouse = String(
+      (await resolveEffectiveWarehouse(warehouse)).effectiveWarehouse._id,
+    );
   }
 
   const regex = { $regex: buildFlexibleSearchPattern(trimmedQ), $options: "i" };

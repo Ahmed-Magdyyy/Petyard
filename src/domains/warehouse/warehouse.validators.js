@@ -3,6 +3,8 @@ import { body, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 import { createRequire } from "module";
 
+import { warehouseFulfillmentStatusEnum } from '../../shared/constants/enums.js';
+
 const require = createRequire(import.meta.url);
 const governoratesConfig = require("../../shared/constants/governorates.json");
 
@@ -76,7 +78,8 @@ export const createWarehouseValidator = [
   body("isDefault")
     .optional()
     .isBoolean()
-    .withMessage("isDefault must be a boolean"),
+    .withMessage("isDefault must be a boolean")
+    .toBoolean(),
 
   body("defaultShippingPrice")
     .optional()
@@ -92,6 +95,32 @@ export const createWarehouseValidator = [
     .optional()
     .isMongoId()
     .withMessage("Invalid moderator id"),
+
+  body('active')
+    .optional()
+    .isBoolean()
+    .withMessage('active must be a boolean')
+    .toBoolean(),
+
+  body('fulfillment')
+    .optional()
+    .isObject()
+    .withMessage('fulfillment must be an object'),
+
+  body('fulfillment.status')
+    .optional()
+    .isIn(Object.values(warehouseFulfillmentStatusEnum))
+    .withMessage('fulfillment.status is invalid'),
+
+  body('fulfillment.fallbackWarehouse')
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage('fulfillment.fallbackWarehouse must be a valid warehouse id'),
+
+  body('fulfillment.statusReason')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('fulfillment.statusReason must be a string'),
 
   validatorMiddleware,
 ];
@@ -146,9 +175,14 @@ export const updateWarehouseValidator = [
   body("isDefault")
     .optional()
     .isBoolean()
-    .withMessage("isDefault must be a boolean"),
+    .withMessage("isDefault must be a boolean")
+    .toBoolean(),
 
-  body("active").optional().isBoolean().withMessage("active must be a boolean"),
+  body("active")
+    .optional()
+    .isBoolean()
+    .withMessage("active must be a boolean")
+    .toBoolean(),
 
   body("moderators")
     .optional()
@@ -159,6 +193,41 @@ export const updateWarehouseValidator = [
     .optional()
     .isMongoId()
     .withMessage("Invalid moderator id"),
+
+  body('boundaryGeometry')
+    .optional({ nullable: true })
+    .isObject()
+    .withMessage('boundaryGeometry must be an object'),
+
+  body('boundaryGeometry.type')
+    .optional()
+    .isIn(['Polygon'])
+    .withMessage('boundaryGeometry.type must be Polygon'),
+
+  body('boundaryGeometry.coordinates')
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage('boundaryGeometry.coordinates must be a non-empty array'),
+
+  body('fulfillment')
+    .optional()
+    .isObject()
+    .withMessage('fulfillment must be an object'),
+
+  body('fulfillment.status')
+    .optional()
+    .isIn(Object.values(warehouseFulfillmentStatusEnum))
+    .withMessage('fulfillment.status is invalid'),
+
+  body('fulfillment.fallbackWarehouse')
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage('fulfillment.fallbackWarehouse must be a valid warehouse id'),
+
+  body('fulfillment.statusReason')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('fulfillment.statusReason must be a string'),
 
   validatorMiddleware,
 ];

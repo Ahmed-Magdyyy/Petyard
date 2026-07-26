@@ -91,6 +91,12 @@ export const cartStatusEnum = Object.freeze({
   ABANDONED: "ABANDONED",
 });
 
+export const warehouseFulfillmentStatusEnum = Object.freeze({
+  OPERATIONAL: 'OPERATIONAL',
+  MAINTENANCE: 'MAINTENANCE',
+  CLOSED: 'CLOSED',
+});
+
 export const serviceTypeEnum = Object.freeze({
   GROOMING: "GROOMING",
   SHOWERING: "SHOWERING",
