@@ -2,8 +2,10 @@ import { BannerModel } from "./banner.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 import {
   bumpCacheVersion,
@@ -69,15 +71,17 @@ export async function createBannerService(payload, file) {
 
 
   let image;
-  let uploadedPublicId;
+  let uploadedImage;
 
   if (file) {
     validateImageFile(file);
-    image = await uploadImageToCloudinary(file, {
+    image = await uploadImage(file, {
       folder: "petyard/banners",
       publicId: `banner_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
-    uploadedPublicId = image?.public_id;
+    uploadedImage = image;
   }
 
   const target = {};
@@ -102,8 +106,8 @@ export async function createBannerService(payload, file) {
 
     return banner;
   } catch (err) {
-    if (uploadedPublicId) {
-      await deleteImageFromCloudinary(uploadedPublicId);
+    if (uploadedImage) {
+      await deleteImage(uploadedImage);
     }
     throw err;
   }
@@ -151,14 +155,18 @@ export async function updateBannerService(id, payload, file) {
   if (isActive !== undefined) banner.isActive = isActive;
 
   let newImage;
-  let oldPublicId;
+  let oldImage;
 
   if (file) {
     validateImageFile(file);
-    oldPublicId = banner.image?.public_id;
-    newImage = await uploadImageToCloudinary(file, {
+    oldImage = banner.image
+      ? { public_id: banner.image.public_id, url: banner.image.url }
+      : null;
+    newImage = await uploadImage(file, {
       folder: "petyard/banners",
       publicId: `banner_${banner._id}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
     banner.image = newImage;
   }
@@ -166,16 +174,16 @@ export async function updateBannerService(id, payload, file) {
   try {
     const updated = await banner.save();
 
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
+    if (oldImage) {
+      await deleteImage(oldImage);
     }
 
     await invalidateBannerCaches();
 
     return updated;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }
@@ -187,8 +195,8 @@ export async function deleteBannerService(id) {
     throw new ApiError(`No banner found for this id: ${id}`, 404);
   }
 
-  if (banner.image?.public_id) {
-    await deleteImageFromCloudinary(banner.image.public_id);
+  if (banner.image?.url) {
+    await deleteImage(banner.image);
   }
 
   await BannerModel.deleteOne({ _id: id });

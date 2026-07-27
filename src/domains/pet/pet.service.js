@@ -5,8 +5,10 @@ import { buildPagination, buildSort } from "../../shared/utils/apiFeatures.js";
 import { incrCacheKey } from "../../shared/utils/cache.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 
 async function bumpPetCacheVersion(ownerId) {
@@ -137,15 +139,17 @@ export async function createPetService(ownerId, payload, file) {
   });
 
   let image;
-  let uploadedPublicId;
+  let uploadedImage;
 
   if (file) {
     validateImageFile(file);
-    image = await uploadImageToCloudinary(file, {
+    image = await uploadImage(file, {
       folder: "petyard/pets",
       publicId: `pet_${ownerId}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
-    uploadedPublicId = image?.public_id;
+    uploadedImage = image;
   }
 
   const hasAnyPets = await PetModel.exists({ petOwner: ownerId });
@@ -169,8 +173,8 @@ export async function createPetService(ownerId, payload, file) {
 
     return pet;
   } catch (err) {
-    if (uploadedPublicId) {
-      await deleteImageFromCloudinary(uploadedPublicId);
+    if (uploadedImage) {
+      await deleteImage(uploadedImage);
     }
     throw err;
   }
@@ -249,14 +253,18 @@ export async function updatePetForOwnerService(ownerId, petId, payload, file) {
     pet.temp_health_issues = temp_health_issues;
 
   let newImage;
-  let oldPublicId;
+  let oldImage;
 
   if (file) {
     validateImageFile(file);
-    oldPublicId = pet.image?.public_id;
-    newImage = await uploadImageToCloudinary(file, {
+    oldImage = pet.image
+      ? { public_id: pet.image.public_id, url: pet.image.url }
+      : null;
+    newImage = await uploadImage(file, {
       folder: "petyard/pets",
       publicId: `pet_${pet._id}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
     pet.image = newImage;
   }
@@ -264,16 +272,16 @@ export async function updatePetForOwnerService(ownerId, petId, payload, file) {
   try {
     const updatedPet = await pet.save();
 
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
+    if (oldImage) {
+      await deleteImage(oldImage);
     }
 
     await bumpPetCacheVersion(ownerId);
 
     return updatedPet;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }
@@ -285,8 +293,8 @@ export async function deletePetByIdService(petId) {
   if (!pet) {
     throw new ApiError(`No pet found for this id: ${petId}`, 404);
   }
-  if (pet.image?.public_id) {
-    await deleteImageFromCloudinary(pet.image.public_id);
+  if (pet.image?.url) {
+    await deleteImage(pet.image);
   }
 
   await bumpPetCacheVersion(pet.petOwner);
@@ -302,8 +310,8 @@ export async function deletePetForOwnerService(ownerId, petId) {
   if (!pet) {
     throw new ApiError(`No pet found for this id: ${petId}`, 404);
   }
-  if (pet.image?.public_id) {
-    await deleteImageFromCloudinary(pet.image.public_id);
+  if (pet.image?.url) {
+    await deleteImage(pet.image);
   }
 
   await bumpPetCacheVersion(ownerId);

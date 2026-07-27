@@ -4,8 +4,10 @@ import { pickLocalizedField } from "../../../shared/utils/i18n.js";
 import { roles, enabledControls } from "../../../shared/constants/enums.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../../shared/utils/imageUpload.js";
 
 const CURRENCY = "EGP";
@@ -195,15 +197,17 @@ export async function createServiceAdminService(payload, file) {
   }
 
   let image;
-  let uploadedPublicId;
+  let uploadedImage;
 
   if (file) {
     validateImageFile(file);
-    image = await uploadImageToCloudinary(file, {
+    image = await uploadImage(file, {
       folder: "petyard/services",
       publicId: `service_${type.toLowerCase()}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
-    uploadedPublicId = image?.public_id;
+    uploadedImage = image;
   }
 
   // Parse options if it came as a JSON string (multipart/form-data)
@@ -228,8 +232,8 @@ export async function createServiceAdminService(payload, file) {
 
     return service;
   } catch (err) {
-    if (uploadedPublicId) {
-      await deleteImageFromCloudinary(uploadedPublicId);
+    if (uploadedImage) {
+      await deleteImage(uploadedImage);
     }
     throw err;
   }
@@ -263,14 +267,18 @@ export async function updateServiceAdminService(serviceType, payload, file) {
   }
 
   let newImage;
-  let oldPublicId;
+  let oldImage;
 
   if (file) {
     validateImageFile(file);
-    oldPublicId = service.image?.public_id;
-    newImage = await uploadImageToCloudinary(file, {
+    oldImage = service.image
+      ? { public_id: service.image.public_id, url: service.image.url }
+      : null;
+    newImage = await uploadImage(file, {
       folder: "petyard/services",
       publicId: `service_${service.type.toLowerCase()}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
     service.image = newImage;
   }
@@ -278,14 +286,14 @@ export async function updateServiceAdminService(serviceType, payload, file) {
   try {
     const updated = await service.save();
 
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
+    if (oldImage) {
+      await deleteImage(oldImage);
     }
 
     return updated;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }
@@ -299,8 +307,8 @@ export async function deleteServiceAdminService(type) {
     throw new ApiError(`No service found for type: ${type}`, 404);
   }
 
-  if (service.image?.public_id) {
-    await deleteImageFromCloudinary(service.image.public_id);
+  if (service.image?.url) {
+    await deleteImage(service.image);
   }
 
   await ServiceCatalogModel.deleteOne({ type: type.toUpperCase() });

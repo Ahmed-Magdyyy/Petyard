@@ -2,8 +2,10 @@ import { StandaloneProfileBannerModel } from "./standaloneProfileBanner.model.js
 import { ApiError } from "../../shared/utils/ApiError.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 import {
   bumpCacheVersion,
@@ -49,9 +51,11 @@ export async function createStandaloneProfileBannerService(file) {
 
   validateImageFile(file);
 
-  const newImage = await uploadImageToCloudinary(file, {
+  const newImage = await uploadImage(file, {
     folder: "petyard/standalone-profile-banners",
     publicId: `standalone_profile_banner_${Date.now()}`,
+    visibility: IMAGE_VISIBILITY.PUBLIC,
+    profile: IMAGE_UPLOAD_PROFILES.STANDARD,
   });
 
   try {
@@ -61,8 +65,8 @@ export async function createStandaloneProfileBannerService(file) {
     await invalidateStandaloneProfileBannerCache();
     return banner;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }
@@ -83,26 +87,30 @@ export async function updateStandaloneProfileBannerService(file) {
     );
   }
 
-  const newImage = await uploadImageToCloudinary(file, {
+  const newImage = await uploadImage(file, {
     folder: "petyard/standalone-profile-banners",
     publicId: `standalone_profile_banner_${Date.now()}`,
+    visibility: IMAGE_VISIBILITY.PUBLIC,
+    profile: IMAGE_UPLOAD_PROFILES.STANDARD,
   });
 
   try {
-    const oldPublicId = banner.image?.public_id;
+    const oldImage = banner.image
+      ? { public_id: banner.image.public_id, url: banner.image.url }
+      : null;
     banner.image = newImage;
     await banner.save();
 
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
+    if (oldImage) {
+      await deleteImage(oldImage);
     }
 
     await invalidateStandaloneProfileBannerCache();
 
     return banner;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }

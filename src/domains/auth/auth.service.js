@@ -27,9 +27,7 @@ import {
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { forgetPasswordEmailHTML } from "../../shared/Email/emailHtml.js";
 import { getRedisClient } from "../../config/redis.js";
-
-const DEFAULT_USER_AVATAR_URL =
-  "https://res.cloudinary.com/dx5n4ekk2/image/upload/v1767069108/petyard/users/user_default_avatar_2.svg";
+import { DEFAULT_USER_AVATAR_URL } from "../../shared/constants/media.js";
 
 async function issueSessionTokensForUser(user) {
   const now = Date.now();

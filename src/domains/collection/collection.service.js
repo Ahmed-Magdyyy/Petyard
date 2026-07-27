@@ -3,8 +3,10 @@ import { ApiError } from "../../shared/utils/ApiError.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 import {
   bumpCacheVersion,
@@ -271,15 +273,17 @@ export async function createCollectionService(payload, file) {
   }
 
   let image;
-  let uploadedPublicId;
+  let uploadedImage;
 
   if (file) {
     validateImageFile(file);
-    image = await uploadImageToCloudinary(file, {
+    image = await uploadImage(file, {
       folder: "petyard/collections",
       publicId: `collection_${normalizedSlug}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
-    uploadedPublicId = image?.public_id;
+    uploadedImage = image;
   }
 
   try {
@@ -307,8 +311,8 @@ export async function createCollectionService(payload, file) {
 
     return collection;
   } catch (err) {
-    if (uploadedPublicId) {
-      await deleteImageFromCloudinary(uploadedPublicId);
+    if (uploadedImage) {
+      await deleteImage(uploadedImage);
     }
     throw err;
   }
@@ -362,14 +366,18 @@ export async function updateCollectionService(id, payload, file) {
     collection.promotion = normalizedPromotion;
 
   let newImage;
-  let oldPublicId;
+  let oldImage;
 
   if (file) {
     validateImageFile(file);
-    oldPublicId = collection.image?.public_id;
-    newImage = await uploadImageToCloudinary(file, {
+    oldImage = collection.image
+      ? { public_id: collection.image.public_id, url: collection.image.url }
+      : null;
+    newImage = await uploadImage(file, {
       folder: "petyard/collections",
       publicId: `collection_${collection.slug}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
     collection.image = newImage;
   }
@@ -377,16 +385,16 @@ export async function updateCollectionService(id, payload, file) {
   try {
     const updated = await collection.save();
 
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
+    if (oldImage) {
+      await deleteImage(oldImage);
     }
 
     await invalidateCollectionCaches();
 
     return updated;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }
@@ -398,8 +406,8 @@ export async function deleteCollectionService(id) {
     throw new ApiError(`No collection found for this id: ${id}`, 404);
   }
 
-  if (collection.image?.public_id) {
-    await deleteImageFromCloudinary(collection.image.public_id);
+  if (collection.image?.url) {
+    await deleteImage(collection.image);
   }
 
   await CollectionModel.deleteOne({ _id: id });

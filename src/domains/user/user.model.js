@@ -5,11 +5,9 @@ import {
   accountStatus,
   authProviderEnum,
 } from "../../shared/constants/enums.js";
+import { DEFAULT_USER_AVATAR_URL } from "../../shared/constants/media.js";
 
 const { Schema, model } = mongoose;
-
-const DEFAULT_USER_AVATAR_URL =
-  "https://res.cloudinary.com/dx5n4ekk2/image/upload/v1767069108/petyard/users/user_default_avatar_2.svg";
 
 const authProviderSchema = new Schema(
   {

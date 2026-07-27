@@ -27,6 +27,9 @@ import { getRedisClient } from "../config/redis.js";
 import { getFirebaseAdmin } from "../config/firebase.js";
 import cors from "cors";
 import { egyptTimezoneReplacer } from "../shared/utils/egyptTimezone.js";
+import { validateMediaConfiguration } from "../shared/utils/mediaConfig.js";
+
+validateMediaConfiguration();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

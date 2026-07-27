@@ -5,8 +5,10 @@ import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { enabledControls, roles } from "../../shared/constants/enums.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
 
@@ -104,15 +106,17 @@ export async function createBrandService(payload, file) {
   }
 
   let image;
-  let uploadedPublicId;
+  let uploadedImage;
 
   if (file) {
     validateImageFile(file);
-    image = await uploadImageToCloudinary(file, {
+    image = await uploadImage(file, {
       folder: "petyard/brands",
       publicId: `brand_${normalizedSlug}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
-    uploadedPublicId = image?.public_id;
+    uploadedImage = image;
   }
 
   try {
@@ -127,8 +131,8 @@ export async function createBrandService(payload, file) {
 
     return brand;
   } catch (err) {
-    if (uploadedPublicId) {
-      await deleteImageFromCloudinary(uploadedPublicId);
+    if (uploadedImage) {
+      await deleteImage(uploadedImage);
     }
     throw err;
   }
@@ -148,14 +152,18 @@ export async function updateBrandService(id, payload, file) {
   if (desc_ar !== undefined) brand.desc_ar = desc_ar;
 
   let newImage;
-  let oldPublicId;
+  let oldImage;
 
   if (file) {
     validateImageFile(file);
-    oldPublicId = brand.image?.public_id;
-    newImage = await uploadImageToCloudinary(file, {
+    oldImage = brand.image
+      ? { public_id: brand.image.public_id, url: brand.image.url }
+      : null;
+    newImage = await uploadImage(file, {
       folder: "petyard/brands",
       publicId: `brand_${brand.slug}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
     brand.image = newImage;
   }
@@ -163,14 +171,14 @@ export async function updateBrandService(id, payload, file) {
   try {
     const updated = await brand.save();
 
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
+    if (oldImage) {
+      await deleteImage(oldImage);
     }
 
     return updated;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }
@@ -182,8 +190,8 @@ export async function deleteBrandService(id) {
     throw new ApiError(`No brand found for this id: ${id}`, 404);
   }
 
-  if (brand.image?.public_id) {
-    await deleteImageFromCloudinary(brand.image.public_id);
+  if (brand.image?.url) {
+    await deleteImage(brand.image);
   }
 
   await BrandModel.deleteOne({ _id: id });

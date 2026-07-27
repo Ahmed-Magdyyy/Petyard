@@ -15,14 +15,14 @@ import {
 } from "../../shared/utils/apiFeatures.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 import { escapeRegex } from "../../shared/utils/escapeRegex.js";
 import { PetModel } from "../pet/pet.model.js";
-
-const DEFAULT_USER_AVATAR_URL =
-  "https://res.cloudinary.com/dx5n4ekk2/image/upload/v1767069108/petyard/users/user_default_avatar_2.svg";
+import { DEFAULT_USER_AVATAR_URL } from "../../shared/constants/media.js";
 
 // Admin services
 
@@ -166,7 +166,9 @@ export async function deleteUserService(id) {
     return alreadyDeletedUser;
   }
 
-  const oldAvatarPublicId = user.image?.public_id || null;
+  const oldAvatar = user.image
+    ? { public_id: user.image.public_id, url: user.image.url }
+    : null;
 
   user.deletedAt = new Date();
   user.active = false;
@@ -200,8 +202,8 @@ export async function deleteUserService(id) {
 
   const deletedUser = await user.save();
 
-  if (oldAvatarPublicId) {
-    await deleteImageFromCloudinary(oldAvatarPublicId);
+  if (oldAvatar?.url) {
+    await deleteImage(oldAvatar);
   }
 
   await PetModel.deleteMany({ petOwner: id });
@@ -274,25 +276,35 @@ export async function updateLoggedUserDataService({
   if (name !== undefined) user.name = name;
   if (email !== undefined) user.email = email;
 
+  let oldImage = null;
+  let uploadedImage = null;
+
   if (file) {
     validateImageFile(file);
-
-    const oldPublicId = user.image?.public_id || null;
-
-    const uploaded = await uploadImageToCloudinary(file, {
+    oldImage = user.image
+      ? { public_id: user.image.public_id, url: user.image.url }
+      : null;
+    uploadedImage = await uploadImage(file, {
       folder: "petyard/users",
       publicId: `user_${String(user._id)}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
-
-    user.image = uploaded;
-
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
-    }
+    user.image = uploadedImage;
   }
 
-  const updatedUser = await user.save();
-  return updatedUser;
+  try {
+    const updatedUser = await user.save();
+    if (oldImage?.url) {
+      await deleteImage(oldImage);
+    }
+    return updatedUser;
+  } catch (error) {
+    if (uploadedImage) {
+      await deleteImage(uploadedImage);
+    }
+    throw error;
+  }
 }
 
 // Address services are now in the unified Address domain.
@@ -322,7 +334,9 @@ export async function deleteLoggedUserService({ userId }) {
     return alreadyDeletedUser;
   }
 
-  const oldAvatarPublicId = user.image?.public_id || null;
+  const oldAvatar = user.image
+    ? { public_id: user.image.public_id, url: user.image.url }
+    : null;
 
   user.deletedAt = new Date();
   user.active = false;
@@ -358,8 +372,8 @@ export async function deleteLoggedUserService({ userId }) {
 
   const deletedUser = await user.save();
 
-  if (oldAvatarPublicId) {
-    await deleteImageFromCloudinary(oldAvatarPublicId);
+  if (oldAvatar?.url) {
+    await deleteImage(oldAvatar);
   }
 
   await PetModel.deleteMany({ petOwner: userId });

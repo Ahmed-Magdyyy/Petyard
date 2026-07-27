@@ -34,5 +34,10 @@ exports/
 scripts/*
 !scripts/
 !scripts/syncNotificationBroadcastTopics.mjs
+!scripts/cloudinaryToBunnyCopy.js
+!scripts/cloudinaryToBunnyRewriteDbUrls.js
+!scripts/cloudinaryToBunnyAudit.js
+!scripts/bunnyMediaCanary.js
+scripts/bunny-migration-reports/
 BUNNY_MEDIA_MIGRATION_IMPLEMENTATION_PLAN.md
 CLOUDINARY_DELIVERY_OPTIMIZATION_IMPLEMENTATION_PLAN.md

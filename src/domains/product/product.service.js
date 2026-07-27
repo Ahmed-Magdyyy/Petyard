@@ -32,8 +32,10 @@ import {
 } from "../../shared/utils/apiFeatures.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 import { getOrSetCache, stableStringify } from "../../shared/utils/cache.js";
 import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
@@ -1174,28 +1176,30 @@ function mapVariantPayloads(rawVariants, productImages, existingVariantsById) {
 
 async function uploadProductImages(files, slug, mainImageIndex) {
   if (!Array.isArray(files) || files.length === 0) {
-    return { images: [], uploadedPublicIds: [] };
+    return { images: [], uploadedImages: [] };
   }
 
   const shortSlug = slug.length > 60 ? slug.slice(0, 60) : slug;
 
   const uploadPromises = files.map((file, index) => {
     validateImageFile(file);
-    return uploadImageToCloudinary(file, {
+    return uploadImage(file, {
       folder: `petyard/products/${shortSlug}`,
       publicId: `product_${shortSlug}_${index}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
   });
 
   const results = await Promise.allSettled(uploadPromises);
 
   const images = [];
-  const uploadedPublicIds = [];
+  const uploadedImages = [];
   let firstError = null;
 
   for (const result of results) {
     if (result.status === "fulfilled" && result.value) {
-      uploadedPublicIds.push(result.value.public_id);
+      uploadedImages.push(result.value);
       images.push({ ...result.value, isMain: false });
     } else if (result.status === "rejected" && !firstError) {
       firstError = result.reason;
@@ -1203,8 +1207,8 @@ async function uploadProductImages(files, slug, mainImageIndex) {
   }
 
   if (firstError) {
-    for (const publicId of uploadedPublicIds) {
-      await deleteImageFromCloudinary(publicId);
+    for (const uploadedImage of uploadedImages) {
+      await deleteImage(uploadedImage);
     }
     throw firstError instanceof ApiError
       ? firstError
@@ -1222,7 +1226,24 @@ async function uploadProductImages(files, slug, mainImageIndex) {
     images[mainIndex].isMain = true;
   }
 
-  return { images, uploadedPublicIds };
+  return { images, uploadedImages };
+}
+
+function mediaDescriptorKey(image) {
+  return JSON.stringify([
+    typeof image?.public_id === "string" ? image.public_id.trim() : "",
+    typeof image?.url === "string" ? image.url.trim() : "",
+  ]);
+}
+
+function cloneMediaDescriptor(image) {
+  if (!image || typeof image.url !== "string" || !image.url) {
+    return null;
+  }
+  return {
+    public_id: image.public_id ?? null,
+    url: image.url,
+  };
 }
 
 async function createProductService(payload, files = []) {
@@ -1370,7 +1391,7 @@ async function createProductService(payload, files = []) {
     await ensureWarehousesExist(allWarehouseIds);
   }
 
-  const { images, uploadedPublicIds } = await uploadProductImages(
+  const { images, uploadedImages } = await uploadProductImages(
     files,
     normalizedSlug,
     mainImageIndex,
@@ -1415,8 +1436,8 @@ async function createProductService(payload, files = []) {
 
     return product;
   } catch (err) {
-    for (const publicId of uploadedPublicIds) {
-      await deleteImageFromCloudinary(publicId);
+    for (const uploadedImage of uploadedImages) {
+      await deleteImage(uploadedImage);
     }
     throw err;
   }
@@ -1648,11 +1669,11 @@ async function updateProductService(id, payload, files = []) {
   }
 
   let newImages = null;
-  let newUploadedPublicIds = [];
-  const oldPublicIds = Array.isArray(product.images)
+  let newUploadedImages = [];
+  const oldImages = Array.isArray(product.images)
     ? product.images
-        .map((img) => img.public_id)
-        .filter((id) => typeof id === "string" && id.length > 0)
+        .map(cloneMediaDescriptor)
+        .filter(Boolean)
     : [];
 
   if (Array.isArray(files) && files.length > 0) {
@@ -1662,7 +1683,7 @@ async function updateProductService(id, payload, files = []) {
       mainImageIndex,
     );
     newImages = uploadResult.images;
-    newUploadedPublicIds = uploadResult.uploadedPublicIds;
+    newUploadedImages = uploadResult.uploadedImages;
     product.images = newImages;
   }
 
@@ -1689,17 +1710,12 @@ async function updateProductService(id, payload, files = []) {
   try {
     const updated = await product.save();
 
-    // Only attempt to delete old images from Cloudinary when we actually
-    // uploaded new ones for this product. If no new images were uploaded
-    // (files.length === 0), we keep the existing images as-is to avoid
-    // unnecessary network calls and accidental deletions.
-    if (
-      Array.isArray(newUploadedPublicIds) &&
-      newUploadedPublicIds.length > 0
-    ) {
-      for (const publicId of oldPublicIds) {
-        if (!newUploadedPublicIds.includes(publicId)) {
-          await deleteImageFromCloudinary(publicId);
+    // Only remove replaced media after the product has saved successfully.
+    if (Array.isArray(newUploadedImages) && newUploadedImages.length > 0) {
+      const newKeys = new Set(newUploadedImages.map(mediaDescriptorKey));
+      for (const oldImage of oldImages) {
+        if (!newKeys.has(mediaDescriptorKey(oldImage))) {
+          await deleteImage(oldImage);
         }
       }
     }
@@ -1708,8 +1724,8 @@ async function updateProductService(id, payload, files = []) {
 
     return updated;
   } catch (err) {
-    for (const publicId of newUploadedPublicIds) {
-      await deleteImageFromCloudinary(publicId);
+    for (const newUploadedImage of newUploadedImages) {
+      await deleteImage(newUploadedImage);
     }
     throw err;
   }
@@ -1842,13 +1858,18 @@ async function deleteProductService(id) {
     throw new ApiError(`No product found for this id: ${id}`, 404);
   }
 
-  const publicIds = [];
+  const descriptorsByKey = new Map();
+
+  const collectDescriptor = (image) => {
+    const descriptor = cloneMediaDescriptor(image);
+    if (descriptor) {
+      descriptorsByKey.set(mediaDescriptorKey(descriptor), descriptor);
+    }
+  };
 
   if (Array.isArray(product.images)) {
     for (const img of product.images) {
-      if (img && img.public_id) {
-        publicIds.push(img.public_id);
-      }
+      collectDescriptor(img);
     }
   }
 
@@ -1856,16 +1877,14 @@ async function deleteProductService(id) {
     for (const v of product.variants) {
       if (Array.isArray(v.images)) {
         for (const img of v.images) {
-          if (img && img.public_id) {
-            publicIds.push(img.public_id);
-          }
+          collectDescriptor(img);
         }
       }
     }
   }
 
-  for (const publicId of publicIds) {
-    await deleteImageFromCloudinary(publicId);
+  for (const descriptor of descriptorsByKey.values()) {
+    await deleteImage(descriptor);
   }
 
   await deleteProductById(id);

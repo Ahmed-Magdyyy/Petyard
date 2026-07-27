@@ -47,7 +47,9 @@ import {
 } from "../payment/savedCard.service.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
+  uploadImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
@@ -1107,8 +1109,10 @@ export async function createOrderForUserService({
       );
     }
     validateImageFile(instapayScreenshotFile);
-    const uploadResult = await uploadImageToCloudinary(instapayScreenshotFile, {
+    const uploadResult = await uploadImage(instapayScreenshotFile, {
       folder: "instapay_screenshots",
+      visibility: IMAGE_VISIBILITY.PRIVATE,
+      profile: IMAGE_UPLOAD_PROFILES.PROOF,
     });
     if (uploadResult) {
       instapayScreenshotUrl = uploadResult.url;
@@ -1275,8 +1279,10 @@ export async function createOrderForGuestService({
       );
     }
     validateImageFile(instapayScreenshotFile);
-    const uploadResult = await uploadImageToCloudinary(instapayScreenshotFile, {
+    const uploadResult = await uploadImage(instapayScreenshotFile, {
       folder: "instapay_screenshots",
+      visibility: IMAGE_VISIBILITY.PRIVATE,
+      profile: IMAGE_UPLOAD_PROFILES.PROOF,
     });
     if (uploadResult) {
       instapayScreenshotUrl = uploadResult.url;

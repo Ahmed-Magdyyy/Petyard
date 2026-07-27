@@ -19,8 +19,10 @@ import {
 import { bumpProductListCacheVersion } from "../product/productCache.service.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
 
@@ -293,15 +295,17 @@ export async function createSubcategoryService(payload, file) {
   }
 
   let image;
-  let uploadedPublicId;
+  let uploadedImage;
 
   if (file) {
     validateImageFile(file);
-    image = await uploadImageToCloudinary(file, {
+    image = await uploadImage(file, {
       folder: "petyard/subcategories",
       publicId: `subcategory_${normalizedSlug}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.TILE,
     });
-    uploadedPublicId = image?.public_id;
+    uploadedImage = image;
   }
 
   try {
@@ -320,8 +324,8 @@ export async function createSubcategoryService(payload, file) {
 
     return subcategory;
   } catch (err) {
-    if (uploadedPublicId) {
-      await deleteImageFromCloudinary(uploadedPublicId);
+    if (uploadedImage) {
+      await deleteImage(uploadedImage);
     }
     throw err;
   }
@@ -351,14 +355,21 @@ export async function updateSubcategoryService(id, payload, file) {
   if (desc_ar !== undefined) subcategory.desc_ar = desc_ar;
 
   let newImage;
-  let oldPublicId;
+  let oldImage;
 
   if (file) {
     validateImageFile(file);
-    oldPublicId = subcategory.image?.public_id;
-    newImage = await uploadImageToCloudinary(file, {
+    oldImage = subcategory.image
+      ? {
+          public_id: subcategory.image.public_id,
+          url: subcategory.image.url,
+        }
+      : null;
+    newImage = await uploadImage(file, {
       folder: "petyard/subcategories",
       publicId: `subcategory_${subcategory.slug}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.TILE,
     });
     subcategory.image = newImage;
   }
@@ -366,16 +377,16 @@ export async function updateSubcategoryService(id, payload, file) {
   try {
     const updated = await subcategory.save();
 
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
+    if (oldImage) {
+      await deleteImage(oldImage);
     }
 
     await invalidateSubcategoryCaches();
 
     return updated;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }
@@ -387,8 +398,8 @@ export async function deleteSubcategoryService(id) {
     throw new ApiError(`No subcategory found for this id: ${id}`, 404);
   }
 
-  if (subcategory.image?.public_id) {
-    await deleteImageFromCloudinary(subcategory.image.public_id);
+  if (subcategory.image?.url) {
+    await deleteImage(subcategory.image);
   }
 
   await SubcategoryModel.deleteOne({ _id: id });

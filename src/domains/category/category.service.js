@@ -18,8 +18,10 @@ import {
 import { bumpProductListCacheVersion } from "../product/productCache.service.js";
 import {
   validateImageFile,
-  uploadImageToCloudinary,
-  deleteImageFromCloudinary,
+  uploadImage,
+  deleteImage,
+  IMAGE_UPLOAD_PROFILES,
+  IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 
 const CATEGORY_CACHE_VERSION_KEY = "categories:version";
@@ -159,15 +161,17 @@ export async function createCategoryService(payload, file) {
   }
 
   let image;
-  let uploadedPublicId;
+  let uploadedImage;
 
   if (file) {
     validateImageFile(file);
-    image = await uploadImageToCloudinary(file, {
+    image = await uploadImage(file, {
       folder: "petyard/categories",
       publicId: `category_${normalizedSlug}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.TILE,
     });
-    uploadedPublicId = image?.public_id;
+    uploadedImage = image;
   }
 
   try {
@@ -185,8 +189,8 @@ export async function createCategoryService(payload, file) {
 
     return category;
   } catch (err) {
-    if (uploadedPublicId) {
-      await deleteImageFromCloudinary(uploadedPublicId);
+    if (uploadedImage) {
+      await deleteImage(uploadedImage);
     }
     throw err;
   }
@@ -207,14 +211,18 @@ export async function updateCategoryService(id, payload, file) {
   if (position !== undefined) category.position = Number(position) || 0;
 
   let newImage;
-  let oldPublicId;
+  let oldImage;
 
   if (file) {
     validateImageFile(file);
-    oldPublicId = category.image?.public_id;
-    newImage = await uploadImageToCloudinary(file, {
+    oldImage = category.image
+      ? { public_id: category.image.public_id, url: category.image.url }
+      : null;
+    newImage = await uploadImage(file, {
       folder: "petyard/categories",
       publicId: `category_${category.slug}_${Date.now()}`,
+      visibility: IMAGE_VISIBILITY.PUBLIC,
+      profile: IMAGE_UPLOAD_PROFILES.TILE,
     });
     category.image = newImage;
   }
@@ -222,16 +230,16 @@ export async function updateCategoryService(id, payload, file) {
   try {
     const updated = await category.save();
 
-    if (oldPublicId) {
-      await deleteImageFromCloudinary(oldPublicId);
+    if (oldImage) {
+      await deleteImage(oldImage);
     }
 
     await invalidateCategoryCaches();
 
     return updated;
   } catch (err) {
-    if (newImage?.public_id) {
-      await deleteImageFromCloudinary(newImage.public_id);
+    if (newImage) {
+      await deleteImage(newImage);
     }
     throw err;
   }
@@ -243,8 +251,8 @@ export async function deleteCategoryService(id) {
     throw new ApiError(`No category found for this id: ${id}`, 404);
   }
 
-  if (category.image?.public_id) {
-    await deleteImageFromCloudinary(category.image.public_id);
+  if (category.image?.url) {
+    await deleteImage(category.image);
   }
 
   await CategoryModel.deleteOne({ _id: id });

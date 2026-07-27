@@ -12,6 +12,7 @@ import {
   updateOrderStatusService,
   reorderService,
 } from "./order.service.js";
+import { presentOrder, presentOrderPage } from "./order.presenter.js";
 
 function getGuestId(req) {
   const headerValue = req.headers["x-guest-id"];
@@ -40,14 +41,14 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
 
   if (result.action === "requires_payment") {
     return res.status(200).json({
-      data: result.order,
+      data: presentOrder(result.order),
       action: "requires_payment",
       clientSecret: result.clientSecret,
       publicKey: result.publicKey,
     });
   }
 
-  res.status(201).json({ data: result.order });
+  res.status(201).json({ data: presentOrder(result.order) });
 });
 
 export const createOrderForUser = asyncHandler(async (req, res) => {
@@ -65,14 +66,14 @@ export const createOrderForUser = asyncHandler(async (req, res) => {
 
   if (result.action === "requires_payment") {
     return res.status(200).json({
-      data: result.order,
+      data: presentOrder(result.order),
       action: "requires_payment",
       clientSecret: result.clientSecret,
       publicKey: result.publicKey,
     });
   }
 
-  res.status(201).json({ data: result.order });
+  res.status(201).json({ data: presentOrder(result.order) });
 });
 
 export const getMyOrders = asyncHandler(async (req, res) => {
@@ -85,7 +86,7 @@ export const getMyOrders = asyncHandler(async (req, res) => {
     lang: req.lang,
   });
 
-  res.status(200).json(result);
+  res.status(200).json(presentOrderPage(result));
 });
 
 export const getMyOrder = asyncHandler(async (req, res) => {
@@ -97,7 +98,7 @@ export const getMyOrder = asyncHandler(async (req, res) => {
     lang: req.lang,
   });
 
-  res.status(200).json({ data: order });
+  res.status(200).json({ data: presentOrder(order) });
 });
 
 export const getGuestOrders = asyncHandler(async (req, res) => {
@@ -115,7 +116,7 @@ export const getGuestOrders = asyncHandler(async (req, res) => {
     lang: req.lang,
   });
 
-  res.status(200).json(result);
+  res.status(200).json(presentOrderPage(result));
 });
 
 export const getGuestOrder = asyncHandler(async (req, res) => {
@@ -132,7 +133,7 @@ export const getGuestOrder = asyncHandler(async (req, res) => {
     lang: req.lang,
   });
 
-  res.status(200).json({ data: order });
+  res.status(200).json({ data: presentOrder(order) });
 });
 
 export const listOrdersForAdmin = asyncHandler(async (req, res) => {
@@ -141,7 +142,7 @@ export const listOrdersForAdmin = asyncHandler(async (req, res) => {
     warehouseScope: req.orderWarehouseScope,
     lang: req.lang,
   });
-  res.status(200).json(result);
+  res.status(200).json(presentOrderPage(result));
 });
 
 export const getOrderForAdmin = asyncHandler(async (req, res) => {
@@ -153,7 +154,7 @@ export const getOrderForAdmin = asyncHandler(async (req, res) => {
     req.orderWarehouseScope,
   );
 
-  res.status(200).json({ data: order });
+  res.status(200).json({ data: presentOrder(order) });
 });
 
 export const updateOrderStatusForAdmin = asyncHandler(async (req, res) => {
@@ -170,7 +171,7 @@ export const updateOrderStatusForAdmin = asyncHandler(async (req, res) => {
     lang,
   });
 
-  res.status(200).json({ data: updated });
+  res.status(200).json({ data: presentOrder(updated) });
 });
 
 export const reorderForUser = asyncHandler(async (req, res) => {
