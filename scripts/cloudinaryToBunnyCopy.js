@@ -267,10 +267,14 @@ async function fetchRecoveryCandidate(url, fetchImpl = fetch) {
   let lastError;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const response = await fetchImpl(url, { signal: AbortSignal.timeout(15000), redirect: "follow" });
+      const requestUrl = new URL(url);
+      if (attempt > 0) requestUrl.searchParams.set("petyard_recovery_attempt", `${Date.now()}-${attempt}`);
+      const response = await fetchImpl(requestUrl.toString(), { signal: AbortSignal.timeout(15000), redirect: "follow" });
       if (response.status === 404) {
         await response.arrayBuffer();
-        return { status: 404 };
+        if (attempt === 2) return { status: 404, attempts: attempt + 1 };
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+        continue;
       }
       if (response.status === 429 || response.status >= 500) {
         await response.arrayBuffer();
@@ -286,7 +290,7 @@ async function fetchRecoveryCandidate(url, fetchImpl = fetch) {
       const metadata = await sharp(buffer).metadata();
       const format = String(metadata.format || "").toLowerCase();
       if (!MIME_BY_FORMAT[format]) return { status: 200, error: "unsupported-recovered-image-format" };
-      return { status: 200, buffer, format, width: metadata.width ?? null, height: metadata.height ?? null };
+      return { status: 200, attempts: attempt + 1, buffer, format, width: metadata.width ?? null, height: metadata.height ?? null };
     } catch (error) {
       lastError = error;
       if (attempt === 2) break;
@@ -336,6 +340,7 @@ export async function recoverUnresolvedGroup(group, {
         status: "confirmed-unavailable",
         adminStatus: 404,
         deliveryStatus: 404,
+        deliveryAttempts: 3,
         urlSha256: group.urls.map(sha256Text).sort(),
         confirmedAt: now(),
       },

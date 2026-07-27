@@ -137,11 +137,16 @@ test("recovery freshly verifies every inherited Bunny object and blocks on a mis
 test("delivery-cache recovery requires valid image bytes and verifies Bunny", async () => {
   const url = "https://res.cloudinary.com/dxemmiorv/image/upload/v1/petyard/products/stale.svg";
   let stored = null;
-  const result = await recoverUnresolvedGroup({ publicId: "petyard/products/stale", urls: [url] }, {
+  const requestedUrls = [];
+  const result = await recoverUnresolvedGroup({ publicId: "petyard/products/stale", sourceCloud: "dxemmiorv", urls: [url] }, {
     env,
     copy: true,
     adminApi: { async resource() { const error = new Error("missing"); error.http_code = 404; throw error; } },
-    fetchImpl: async () => ({ status: 200, headers: { get: () => "image/svg+xml" }, async arrayBuffer() { return svg; } }),
+    fetchImpl: async (requestedUrl) => {
+      requestedUrls.push(requestedUrl);
+      const status = requestedUrls.length === 1 ? 404 : 200;
+      return { status, headers: { get: () => status === 200 ? "image/svg+xml" : "text/plain" }, async arrayBuffer() { return status === 200 ? svg : Buffer.alloc(0); } };
+    },
     transport: { async request(request) {
       if (request.method === "GET" && stored == null) { const error = new Error("missing"); error.response = { status: 404, headers: {} }; throw error; }
       if (request.method === "PUT") { stored = request.data; return { status: 201 }; }
@@ -153,6 +158,8 @@ test("delivery-cache recovery requires valid image bytes and verifies Bunny", as
   assert.equal(result.entry.status, "verified");
   assert.equal(result.entry.recovery.source, "delivery-cache");
   assert.equal(result.entry.target.objectKey, "petyard/products/stale.svg");
+  assert.equal(requestedUrls.length, 2);
+  assert.match(requestedUrls[1], /petyard_recovery_attempt=/);
 });
 
 test("confirmed source deletion records exact URL hashes while mixed failures block", async () => {
@@ -161,18 +168,21 @@ test("confirmed source deletion records exact URL hashes while mixed failures bl
     "https://res.cloudinary.com/dxemmiorv/image/upload/v2/petyard/products/gone.svg",
   ];
   const missingAdmin = { async resource() { const error = new Error("missing"); error.http_code = 404; throw error; } };
-  const unavailable = await recoverUnresolvedGroup({ publicId: "petyard/products/gone", urls }, {
+  let missingAttempts = 0;
+  const unavailable = await recoverUnresolvedGroup({ publicId: "petyard/products/gone", sourceCloud: "dxemmiorv", urls }, {
     adminApi: missingAdmin,
-    fetchImpl: async () => ({ status: 404, headers: { get: () => "text/plain" }, async arrayBuffer() { return Buffer.alloc(0); } }),
+    fetchImpl: async () => { missingAttempts += 1; return { status: 404, headers: { get: () => "text/plain" }, async arrayBuffer() { return Buffer.alloc(0); } }; },
     now: () => "2026-07-27T00:00:00.000Z",
   });
   assert.equal(unavailable.kind, "unavailable");
   assert.equal(unavailable.record.status, "confirmed-unavailable");
+  assert.equal(unavailable.record.deliveryAttempts, 3);
   assert.equal(unavailable.record.urlSha256.length, 2);
   assert.ok(unavailable.record.urlSha256.every((value) => /^[a-f0-9]{64}$/.test(value)));
+  assert.equal(missingAttempts, 6);
 
   let calls = 0;
-  const blocked = await recoverUnresolvedGroup({ publicId: "petyard/products/gone", urls }, {
+  const blocked = await recoverUnresolvedGroup({ publicId: "petyard/products/gone", sourceCloud: "dxemmiorv", urls }, {
     adminApi: missingAdmin,
     fetchImpl: async () => {
       calls += 1;

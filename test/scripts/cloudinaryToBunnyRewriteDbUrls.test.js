@@ -35,6 +35,7 @@ const unavailableRecord = {
   publicId: "petyard/products/gone",
   adminStatus: 404,
   deliveryStatus: 404,
+  deliveryAttempts: 3,
   urlSha256: [crypto.createHash("sha256").update(unavailableUrl).digest("hex")],
   confirmedAt: "2026-07-27T00:00:00.000Z",
 };

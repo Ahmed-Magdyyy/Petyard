@@ -68,6 +68,7 @@ export function createConfirmedUnavailableMap(report) {
       record?.sourceCloud === "dxemmiorv" &&
       record?.adminStatus === 404 &&
       record?.deliveryStatus === 404 &&
+      record?.deliveryAttempts === 3 &&
       typeof record?.publicId === "string" &&
       record.publicId.startsWith("petyard/") &&
       typeof record?.confirmedAt === "string" &&
