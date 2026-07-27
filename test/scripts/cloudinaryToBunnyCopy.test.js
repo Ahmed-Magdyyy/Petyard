@@ -6,9 +6,12 @@ import {
   assertSafePublicId,
   classifyCloudinaryAsset,
   copyOneAsset,
+  createRecoveryProvenance,
   findPreflightBlockers,
+  groupUnresolvedSources,
   parseCopyArguments,
   profileForAsset,
+  recoverUnresolvedGroup,
   runBounded,
   resumeCopyEntry,
   sourceSort,
@@ -16,9 +19,11 @@ import {
   transformAsset,
   validatePreviousManifest,
   verifyManifestEntry,
+  verifyRecoveryBaseEntries,
 } from "../../scripts/cloudinaryToBunnyCopy.js";
 
 const env = {
+  CLOUDINARY_CLOUD_NAME: "dxemmiorv",
   BUNNY_PUBLIC_STORAGE_ZONE: "petyardpublicmedia",
   BUNNY_PUBLIC_STORAGE_ACCESS_KEY: "public-secret-value",
   BUNNY_PUBLIC_STORAGE_ENDPOINT: "https://storage.bunnycdn.com",
@@ -46,6 +51,7 @@ test("copy argument parsing is read-only by default and write confirmation is ex
     copy: false,
     verifyOnly: false,
     manifest: null,
+    recoveryReport: null,
   });
   assert.throws(() => parseCopyArguments(["--copy"]), /--confirm-bunny-write/);
   assert.throws(() => parseCopyArguments(["--only-public", "--only-instapay"]));
@@ -58,7 +64,122 @@ test("copy argument parsing is read-only by default and write confirmation is ex
     copy: true,
     verifyOnly: false,
     manifest: null,
+    recoveryReport: null,
   });
+  assert.throws(() => parseCopyArguments(["--recover-unresolved=report.json"]), /requires --manifest/);
+  assert.throws(() => parseCopyArguments(["--recover-unresolved=report.json", "--manifest=copy.json", "--limit=1"]), /cannot be combined/);
+});
+
+test("unresolved recovery grouping is restricted to exact public snapshot fields", () => {
+  const url = "https://res.cloudinary.com/dxemmiorv/image/upload/v1/petyard/products/stale.svg";
+  const groups = groupUnresolvedSources({ unresolved: [
+    { collection: "orders", path: "items.0.productImageUrl", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
+    { collection: "carts", path: "items.2.productImageUrl", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
+  ] }, { cloudName: "dxemmiorv" });
+  assert.deepEqual(groups, [{ publicId: "petyard/products/stale", sourceCloud: "dxemmiorv", urls: [url] }]);
+  assert.throws(() => groupUnresolvedSources({ unresolved: [
+    { collection: "products", path: "images.0.url", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
+  ] }, { cloudName: "dxemmiorv" }), /unsupported unresolved source/);
+  assert.throws(() => groupUnresolvedSources({ unresolved: [
+    { collection: "orders", path: "items.0.productImageUrl", value: "https://res.cloudinary.com/dxemmiorv/image/upload/v1/petyard/products/%E0%A4%A.webp", publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
+  ] }, { cloudName: "dxemmiorv" }), /identity mismatch/);
+});
+
+test("recovery provenance binds a fully verified parent to the exact dry run", () => {
+  const parent = {
+    sourceCloud: "dxemmiorv",
+    entries: [{ status: "verified" }],
+  };
+  const dryRun = {
+    mode: "dry-run",
+    manifestHash: crypto.createHash("sha256").update(JSON.stringify(parent)).digest("hex"),
+    database: { host: "db.example", name: "petyard" },
+    updatedDocuments: 0,
+    conflicts: 0,
+    unresolvedSourceUrls: 1,
+    unresolved: [{ reason: "unresolved-source-public-id" }],
+  };
+  const provenance = createRecoveryProvenance(parent, dryRun, { cloudName: "dxemmiorv" });
+  assert.equal(provenance.parentManifestHash, dryRun.manifestHash);
+  assert.equal(provenance.database.name, "petyard");
+  assert.throws(() => createRecoveryProvenance(parent, { ...dryRun, manifestHash: "0".repeat(64) }, { cloudName: "dxemmiorv" }), /not bound/);
+  assert.throws(() => createRecoveryProvenance({ ...parent, confirmedUnavailableSources: [{}] }, dryRun, { cloudName: "dxemmiorv" }), /prior recovery metadata/);
+});
+
+test("recovery freshly verifies every inherited Bunny object and blocks on a mismatch", async () => {
+  const targetHash = crypto.createHash("sha256").update(svg).digest("hex");
+  const parent = { entries: [{
+    source: { publicId: "petyard/users/avatar" },
+    classification: "public",
+    status: "verified",
+    target: {
+      zone: "petyardpublicmedia",
+      objectKey: "petyard/users/avatar.svg",
+      unsignedUrl: "https://media.petyardstores.com/petyard/users/avatar.svg",
+      sha256: targetHash,
+    },
+  }] };
+  const verified = await verifyRecoveryBaseEntries(parent, {
+    env,
+    concurrency: 1,
+    transport: { async request() { return { status: 200, data: svg }; } },
+    now: () => "2026-07-27T00:00:00.000Z",
+  });
+  assert.equal(verified[0].status, "verified");
+  assert.equal(verified[0].verifiedAt, "2026-07-27T00:00:00.000Z");
+  await assert.rejects(() => verifyRecoveryBaseEntries(parent, {
+    env,
+    concurrency: 1,
+    transport: { async request() { return { status: 200, data: Buffer.from("different") }; } },
+  }), /inherited Bunny object failed verification/);
+});
+
+test("delivery-cache recovery requires valid image bytes and verifies Bunny", async () => {
+  const url = "https://res.cloudinary.com/dxemmiorv/image/upload/v1/petyard/products/stale.svg";
+  let stored = null;
+  const result = await recoverUnresolvedGroup({ publicId: "petyard/products/stale", urls: [url] }, {
+    env,
+    copy: true,
+    adminApi: { async resource() { const error = new Error("missing"); error.http_code = 404; throw error; } },
+    fetchImpl: async () => ({ status: 200, headers: { get: () => "image/svg+xml" }, async arrayBuffer() { return svg; } }),
+    transport: { async request(request) {
+      if (request.method === "GET" && stored == null) { const error = new Error("missing"); error.response = { status: 404, headers: {} }; throw error; }
+      if (request.method === "PUT") { stored = request.data; return { status: 201 }; }
+      return { status: 200, data: stored };
+    } },
+    now: () => "2026-07-27T00:00:00.000Z",
+  });
+  assert.equal(result.kind, "entry");
+  assert.equal(result.entry.status, "verified");
+  assert.equal(result.entry.recovery.source, "delivery-cache");
+  assert.equal(result.entry.target.objectKey, "petyard/products/stale.svg");
+});
+
+test("confirmed source deletion records exact URL hashes while mixed failures block", async () => {
+  const urls = [
+    "https://res.cloudinary.com/dxemmiorv/image/upload/v1/petyard/products/gone.svg",
+    "https://res.cloudinary.com/dxemmiorv/image/upload/v2/petyard/products/gone.svg",
+  ];
+  const missingAdmin = { async resource() { const error = new Error("missing"); error.http_code = 404; throw error; } };
+  const unavailable = await recoverUnresolvedGroup({ publicId: "petyard/products/gone", urls }, {
+    adminApi: missingAdmin,
+    fetchImpl: async () => ({ status: 404, headers: { get: () => "text/plain" }, async arrayBuffer() { return Buffer.alloc(0); } }),
+    now: () => "2026-07-27T00:00:00.000Z",
+  });
+  assert.equal(unavailable.kind, "unavailable");
+  assert.equal(unavailable.record.status, "confirmed-unavailable");
+  assert.equal(unavailable.record.urlSha256.length, 2);
+  assert.ok(unavailable.record.urlSha256.every((value) => /^[a-f0-9]{64}$/.test(value)));
+
+  let calls = 0;
+  const blocked = await recoverUnresolvedGroup({ publicId: "petyard/products/gone", urls }, {
+    adminApi: missingAdmin,
+    fetchImpl: async () => {
+      calls += 1;
+      return { status: calls === 1 ? 404 : 403, headers: { get: () => "text/plain" }, async arrayBuffer() { return Buffer.alloc(0); } };
+    },
+  });
+  assert.equal(blocked.kind, "blocked");
 });
 
 test("classification, profile mapping, safe IDs, and ordering are deterministic", () => {

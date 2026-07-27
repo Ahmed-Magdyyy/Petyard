@@ -56,6 +56,55 @@ export function createVerifiedManifestMap(report) {
   return result;
 }
 
+export function createConfirmedUnavailableMap(report) {
+  const records = report?.confirmedUnavailableSources;
+  if (records == null) return new Map();
+  if (!Array.isArray(records)) throw new Error("Invalid confirmed unavailable source metadata");
+  const result = new Map();
+  for (const record of records) {
+    const valid =
+      record?.status === "confirmed-unavailable" &&
+      record?.classification === "public" &&
+      record?.sourceCloud === "dxemmiorv" &&
+      record?.adminStatus === 404 &&
+      record?.deliveryStatus === 404 &&
+      typeof record?.publicId === "string" &&
+      record.publicId.startsWith("petyard/") &&
+      typeof record?.confirmedAt === "string" &&
+      Array.isArray(record?.urlSha256) &&
+      record.urlSha256.length > 0 &&
+      record.urlSha256.every((value) => /^[a-f0-9]{64}$/.test(value));
+    if (!valid || result.has(record?.publicId)) throw new Error("Invalid confirmed unavailable source metadata");
+    result.set(record.publicId, new Set(record.urlSha256));
+  }
+  return result;
+}
+
+export function validateRecoveryProvenance(report) {
+  const provenance = report?.recoveryProvenance;
+  if (provenance == null) return null;
+  const valid =
+    provenance?.version === 1 &&
+    /^[a-f0-9]{64}$/.test(provenance?.parentManifestHash || "") &&
+    /^[a-f0-9]{64}$/.test(provenance?.recoveryReportHash || "") &&
+    typeof provenance?.database?.host === "string" &&
+    provenance.database.host &&
+    typeof provenance?.database?.name === "string" &&
+    provenance.database.name &&
+    provenance?.sourceCloud === "dxemmiorv" &&
+    report?.sourceCloud === provenance.sourceCloud;
+  if (!valid) throw new Error("Invalid recovery provenance metadata");
+  return provenance;
+}
+
+export function assertRecoveryDatabaseIdentity(report, database) {
+  const provenance = validateRecoveryProvenance(report);
+  if (!provenance) return;
+  if (provenance.database.host !== database?.host || provenance.database.name !== database?.name) {
+    throw new Error("Recovery provenance database identity does not match the connected database");
+  }
+}
+
 export function getManifestCompletenessErrors(report) {
   if (!report || !Array.isArray(report.entries) || report.entries.length === 0) return ["manifest-has-no-entries"];
   const errors = [];
@@ -73,6 +122,16 @@ export function getManifestCompletenessErrors(report) {
     if (sourceId && seen.has(sourceId)) errors.push("manifest-has-duplicate-source-public-id");
     if (sourceId) seen.add(sourceId);
   }
+  try {
+    const unavailable = createConfirmedUnavailableMap(report);
+    const provenance = validateRecoveryProvenance(report);
+    if (unavailable.size > 0 && !provenance) errors.push("manifest-confirmed-unavailable-source-lacks-recovery-provenance");
+    for (const publicId of unavailable.keys()) {
+      if (seen.has(publicId)) errors.push("manifest-source-is-both-verified-and-unavailable");
+    }
+  } catch {
+    errors.push("manifest-has-invalid-confirmed-unavailable-source");
+  }
   return errors;
 }
 
@@ -82,7 +141,11 @@ export function isPlainRecord(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-export function planDocumentUrlRewrites(document, manifestMap, { pathPrefix = "" } = {}) {
+export function planDocumentUrlRewrites(document, manifestMap, {
+  pathPrefix = "",
+  confirmedUnavailableMap = new Map(),
+  allowConfirmedUnavailable = false,
+} = {}) {
   const changes = []; const unresolved = [];
   const stats = { scannedStringFields: 0, externalUrlsIgnored: 0 };
   const visit = (value, currentPath) => {
@@ -98,7 +161,24 @@ export function planDocumentUrlRewrites(document, manifestMap, { pathPrefix = ""
       }
       if (parsed.unsupported) { unresolved.push({ path: currentPath, value, reason: parsed.reason }); return; }
       const entry = manifestMap.get(parsed.publicId);
-      if (!entry) { unresolved.push({ path: currentPath, value, publicId: parsed.publicId, reason: "unresolved-source-public-id" }); return; }
+      if (!entry) {
+        const exactUnavailable = allowConfirmedUnavailable
+          && /(^|\.)items\.\d+\.productImageUrl$/.test(currentPath)
+          && confirmedUnavailableMap.get(parsed.publicId)?.has(crypto.createHash("sha256").update(value).digest("hex"));
+        if (exactUnavailable) {
+          changes.push({
+            path: currentPath,
+            before: value,
+            after: null,
+            classification: "confirmed-unavailable",
+            cloudName: parsed.cloudName,
+            resolution: "confirmed-unavailable-snapshot-null",
+          });
+          return;
+        }
+        unresolved.push({ path: currentPath, value, publicId: parsed.publicId, reason: "unresolved-source-public-id" });
+        return;
+      }
       changes.push({ path: currentPath, before: value, after: entry.target.unsignedUrl, classification: entry.classification, cloudName: parsed.cloudName }); return;
     }
     if (Array.isArray(value)) value.forEach((item, index) => visit(item, currentPath ? `${currentPath}.${index}` : String(index)));
@@ -126,7 +206,7 @@ async function readJson(filePath) { return JSON.parse(await fs.readFile(filePath
 async function writeReport(report) { await fs.mkdir(REPORT_DIR, { recursive: true }); const output = path.join(REPORT_DIR, `db-rewrite-${new Date().toISOString().replace(/[:.]/g, "-")}.json`); await fs.writeFile(output, `${JSON.stringify(report, null, 2)}\n`); return output; }
 function databaseIdentity(connection) { return { host: connection.connection.host, name: connection.connection.name }; }
 
-export async function buildForwardPlan(connection, manifestMap) {
+export async function buildForwardPlan(connection, manifestMap, confirmedUnavailableMap = new Map()) {
   const plan = []; const unresolved = []; let documents = 0;
   let scannedStringFields = 0; let externalUrlsIgnored = 0;
   const byCollection = {};
@@ -135,7 +215,10 @@ export async function buildForwardPlan(connection, manifestMap) {
     const collection = connection.connection.db.collection(name);
     const cursor = collection.find({});
     for await (const document of cursor) {
-      documents += 1; const result = planDocumentUrlRewrites(document, manifestMap);
+      documents += 1; const result = planDocumentUrlRewrites(document, manifestMap, {
+        confirmedUnavailableMap,
+        allowConfirmedUnavailable: ["favorites", "carts", "orders"].includes(name),
+      });
       byCollection[name] ||= { documents: 0, changedDocuments: 0, changedFields: 0 };
       byCollection[name].documents += 1;
       scannedStringFields += result.stats.scannedStringFields;
@@ -182,13 +265,18 @@ export async function buildRollbackPlan(connection, report) {
   if (!report || !Array.isArray(report.changedFields)) throw new Error("Invalid apply report for rollback");
   const plan = []; const summary = { restored: 0, alreadyRestored: 0, missingDocument: 0, conflicts: 0 };
   for (const field of report.changedFields) {
-    if (!field?.collection || !field?.documentId || typeof field.path !== "string" || typeof field.before !== "string" || typeof field.after !== "string") throw new Error("Invalid rollback field record");
+    const validAfter = typeof field?.after === "string" || field?.after === null;
+    if (!field?.collection || !field?.documentId || typeof field.path !== "string" || typeof field.before !== "string" || !validAfter) throw new Error("Invalid rollback field record");
     const collection = connection.connection.db.collection(field.collection);
     const document = await collection.findOne({ _id: new mongoose.Types.ObjectId(field.documentId) }, { projection: { [field.path]: 1 } });
     if (!document) { summary.missingDocument += 1; continue; }
     const current = field.path.split(".").reduce((value, key) => value?.[key], document);
     const decision = planRollbackField(current, field);
-    if (decision.action === "restore") { summary.restored += 1; plan.push({ collection: field.collection, field, operation: { updateOne: { filter: { _id: document._id, [field.path]: field.after }, update: { $set: { [field.path]: field.before } } } } }); }
+    if (decision.action === "restore") {
+      summary.restored += 1;
+      const expectedAfter = field.after === null ? { $type: 10 } : field.after;
+      plan.push({ collection: field.collection, field, operation: { updateOne: { filter: { _id: document._id, [field.path]: expectedAfter }, update: { $set: { [field.path]: field.before } } } } });
+    }
     else if (decision.action === "already-restored") summary.alreadyRestored += 1;
     else summary.conflicts += 1;
   }
@@ -238,7 +326,10 @@ export async function main(argv = process.argv.slice(2)) {
       if (rollback.summary.conflicts || rollback.summary.missingDocument || results.some((result) => result.matched !== result.expected || result.modified !== result.expected)) process.exitCode = 1;
       return report;
     }
-    const manifestMap = createVerifiedManifestMap(sourceReport); const forward = await buildForwardPlan(connection, manifestMap);
+    assertRecoveryDatabaseIdentity(sourceReport, database);
+    const manifestMap = createVerifiedManifestMap(sourceReport);
+    const confirmedUnavailableMap = createConfirmedUnavailableMap(sourceReport);
+    const forward = await buildForwardPlan(connection, manifestMap, confirmedUnavailableMap);
     if (options.apply && forward.unresolved.length) throw new Error("Refusing apply: unresolved Cloudinary URLs are present");
     const results = options.apply ? await applyForwardPlan(connection, forward.plan) : [];
     const changedFields = forward.plan.flatMap((entry) =>
@@ -261,6 +352,7 @@ export async function main(argv = process.argv.slice(2)) {
       changesByCollection: forward.byCollection,
       publicBunnyReplacements: changedFields.filter((field) => field.classification === "public").length,
       privateBunnyReplacements: changedFields.filter((field) => field.classification === "private").length,
+      confirmedUnavailableSnapshotNulls: changedFields.filter((field) => field.classification === "confirmed-unavailable").length,
       legacyCloudReplacements: changedFields.filter((field) => field.cloudName === "dx5n4ekk2").length,
       externalUrlsIgnored: forward.externalUrlsIgnored,
       unresolvedSourceUrls: forward.unresolved.length,

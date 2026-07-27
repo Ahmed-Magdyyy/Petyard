@@ -37,10 +37,26 @@ export function parseCopyArguments(argv = process.argv.slice(2)) {
   const copy = flags.has("--copy");
   const verifyOnly = flags.has("--verify-only");
   const manifest = values["--manifest"] ? path.resolve(values["--manifest"]) : null;
+  const recoveryReport = values["--recover-unresolved"]
+    ? path.resolve(values["--recover-unresolved"])
+    : null;
   if (copy && !flags.has("--confirm-bunny-write")) throw new Error("--copy requires --confirm-bunny-write");
   if (verifyOnly && !manifest) throw new Error("--verify-only requires --manifest=<report.json>");
   if (copy && verifyOnly) throw new Error("--copy and --verify-only cannot be used together");
-  return { onlyPublic, onlyInstapay, limit: number("--limit", null), concurrency: number("--concurrency", 4, MAX_CONCURRENCY), copy, verifyOnly, manifest };
+  if (recoveryReport && !manifest) throw new Error("--recover-unresolved requires --manifest=<verified-report.json>");
+  if (recoveryReport && (verifyOnly || onlyPublic || onlyInstapay || values["--limit"] != null)) {
+    throw new Error("--recover-unresolved cannot be combined with verify-only, class filters, or limit");
+  }
+  return {
+    onlyPublic,
+    onlyInstapay,
+    limit: number("--limit", null),
+    concurrency: number("--concurrency", 4, MAX_CONCURRENCY),
+    copy,
+    verifyOnly,
+    manifest,
+    recoveryReport,
+  };
 }
 
 export function classifyCloudinaryAsset(asset) {
@@ -64,6 +80,7 @@ export function profileForAsset(asset, classification) {
 }
 
 export function sha256(buffer) { return crypto.createHash("sha256").update(buffer).digest("hex"); }
+export function sha256Text(value) { return sha256(Buffer.from(value, "utf8")); }
 
 export function sourceSort(resources) { return [...resources].sort((a, b) => a.public_id.localeCompare(b.public_id)); }
 
@@ -123,6 +140,227 @@ export async function enumerateCloudinaryResources({ prefix, adminApi = cloudina
     nextCursor = page.next_cursor;
   } while (nextCursor);
   return sourceSort(resources);
+}
+
+const RECOVERABLE_SNAPSHOT_COLLECTIONS = new Set(["favorites", "carts", "orders"]);
+const RECOVERABLE_SNAPSHOT_PATH = /^items\.\d+\.productImageUrl$/;
+
+function parseRecoverySourceUrl(value) {
+  if (typeof value !== "string") return null;
+  let parsed;
+  try { parsed = new URL(value); } catch { return null; }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "res.cloudinary.com") return null;
+  const [, cloudName, resourceType, deliveryType, ...rest] = parsed.pathname.split("/");
+  if (resourceType !== "image" || deliveryType !== "upload") return null;
+  const versionIndex = rest.findIndex((part) => /^v\d+$/.test(part));
+  let identity;
+  try {
+    identity = (versionIndex >= 0 ? rest.slice(versionIndex + 1) : rest)
+      .map((part) => decodeURIComponent(part));
+  } catch {
+    return null;
+  }
+  if (!identity.length) return null;
+  const filename = identity.at(-1);
+  const extensionIndex = filename.lastIndexOf(".");
+  if (extensionIndex <= 0) return null;
+  identity[identity.length - 1] = filename.slice(0, extensionIndex);
+  return {
+    cloudName,
+    publicId: identity.join("/"),
+    version: versionIndex >= 0 ? Number(rest[versionIndex].slice(1)) : null,
+  };
+}
+
+export function groupUnresolvedSources(report, { cloudName = process.env.CLOUDINARY_CLOUD_NAME } = {}) {
+  if (!report || !Array.isArray(report.unresolved)) throw new Error("Invalid DB rewrite report");
+  const groups = new Map();
+  for (const item of report.unresolved) {
+    if (
+      item?.reason !== "unresolved-source-public-id" ||
+      !RECOVERABLE_SNAPSHOT_COLLECTIONS.has(item?.collection) ||
+      !RECOVERABLE_SNAPSHOT_PATH.test(item?.path || "") ||
+      typeof item?.publicId !== "string" ||
+      !item.publicId.startsWith("petyard/")
+    ) {
+      throw new Error("DB rewrite report contains an unsupported unresolved source");
+    }
+    const parsed = parseRecoverySourceUrl(item.value);
+    if (!parsed || parsed.cloudName !== cloudName || parsed.publicId !== item.publicId) {
+      throw new Error("DB rewrite report unresolved source identity mismatch");
+    }
+    const group = groups.get(item.publicId) || { publicId: item.publicId, sourceCloud: cloudName, urls: new Set() };
+    group.urls.add(item.value);
+    groups.set(item.publicId, group);
+  }
+  return [...groups.values()]
+    .map((group) => ({ publicId: group.publicId, sourceCloud: group.sourceCloud, urls: [...group.urls].sort() }))
+    .sort((left, right) => left.publicId.localeCompare(right.publicId));
+}
+
+export function createRecoveryProvenance(previousManifest, recoveryReport, {
+  cloudName = process.env.CLOUDINARY_CLOUD_NAME,
+} = {}) {
+  if (
+    !previousManifest ||
+    !Array.isArray(previousManifest.entries) ||
+    previousManifest.entries.length === 0 ||
+    previousManifest.entries.some((entry) => !["verified", "skipped-existing-identical"].includes(entry?.status))
+  ) {
+    throw new Error("Recovery requires a fully verified parent manifest");
+  }
+  if (previousManifest.recoveryProvenance || (previousManifest.confirmedUnavailableSources?.length ?? 0) > 0) {
+    throw new Error("Recovery parent must not contain prior recovery metadata");
+  }
+  const parentManifestHash = sha256Text(JSON.stringify(previousManifest));
+  const validReport =
+    recoveryReport?.mode === "dry-run" &&
+    recoveryReport?.manifestHash === parentManifestHash &&
+    recoveryReport?.updatedDocuments === 0 &&
+    recoveryReport?.conflicts === 0 &&
+    typeof recoveryReport?.database?.host === "string" &&
+    recoveryReport.database.host &&
+    typeof recoveryReport?.database?.name === "string" &&
+    recoveryReport.database.name &&
+    Array.isArray(recoveryReport?.unresolved) &&
+    recoveryReport.unresolved.length > 0 &&
+    recoveryReport?.unresolvedSourceUrls === recoveryReport.unresolved.length &&
+    typeof cloudName === "string" &&
+    cloudName &&
+    previousManifest?.sourceCloud === cloudName;
+  if (!validReport) throw new Error("Recovery report is not bound to the verified parent manifest and dry-run database");
+  return {
+    version: 1,
+    parentManifestHash,
+    recoveryReportHash: sha256Text(JSON.stringify(recoveryReport)),
+    database: {
+      host: recoveryReport.database.host,
+      name: recoveryReport.database.name,
+    },
+    sourceCloud: cloudName,
+  };
+}
+
+export async function verifyRecoveryBaseEntries(previousManifest, {
+  concurrency = 4,
+  env = process.env,
+  transport,
+  now,
+  onProgress,
+} = {}) {
+  const entries = await runBounded(previousManifest.entries, concurrency, async (entry, index) => {
+    const verified = await verifyManifestEntry(entry, { env, transport, now });
+    onProgress?.(index + 1, previousManifest.entries.length);
+    return verified;
+  });
+  if (entries.some((entry) => entry.status !== "verified")) {
+    throw new Error("Recovery blocked because an inherited Bunny object failed verification");
+  }
+  return entries;
+}
+
+function cloudinaryErrorStatus(error) {
+  return Number(error?.http_code || error?.error?.http_code || error?.response?.status || 0);
+}
+
+async function fetchRecoveryCandidate(url, fetchImpl = fetch) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(15000), redirect: "follow" });
+      if (response.status === 404) {
+        await response.arrayBuffer();
+        return { status: 404 };
+      }
+      if (response.status === 429 || response.status >= 500) {
+        await response.arrayBuffer();
+        throw new Error(`Retryable recovery source status ${response.status}`);
+      }
+      if (response.status !== 200) {
+        await response.arrayBuffer();
+        return { status: response.status, error: "unexpected-delivery-status" };
+      }
+      const contentType = String(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (!contentType.startsWith("image/") || !buffer.length) return { status: 200, error: "delivery-response-is-not-an-image" };
+      const metadata = await sharp(buffer).metadata();
+      const format = String(metadata.format || "").toLowerCase();
+      if (!MIME_BY_FORMAT[format]) return { status: 200, error: "unsupported-recovered-image-format" };
+      return { status: 200, buffer, format, width: metadata.width ?? null, height: metadata.height ?? null };
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  return { status: 0, error: "recovery-source-request-failed" };
+}
+
+export async function recoverUnresolvedGroup(group, {
+  env = process.env,
+  copy = false,
+  adminApi = cloudinary.api,
+  fetchImpl = fetch,
+  transport,
+  now = () => new Date().toISOString(),
+} = {}) {
+  let adminAsset = null;
+  try {
+    adminAsset = await adminApi.resource(group.publicId, { resource_type: "image", type: "upload" });
+  } catch (error) {
+    if (cloudinaryErrorStatus(error) !== 404) {
+      return { kind: "blocked", publicId: group.publicId, error: "cloudinary-admin-lookup-failed" };
+    }
+  }
+
+  if (adminAsset) {
+    if (adminAsset.public_id !== group.publicId) {
+      return { kind: "blocked", publicId: group.publicId, error: "cloudinary-admin-identity-mismatch" };
+    }
+    const entry = await copyOneAsset(adminAsset, { env, copy, transport });
+    return { kind: "entry", entry: { ...entry, recovery: { source: "cloudinary-admin", recoveredAt: now() } } };
+  }
+
+  const probes = [];
+  for (const url of group.urls) probes.push({ url, result: await fetchRecoveryCandidate(url, fetchImpl) });
+  const invalid = probes.find(({ result }) => ![200, 404].includes(result.status) || result.error);
+  if (invalid) return { kind: "blocked", publicId: group.publicId, error: invalid.result.error || "recovery-source-probe-failed" };
+  const available = probes.find(({ result }) => result.status === 200);
+  if (!available) {
+    return {
+      kind: "unavailable",
+      record: {
+        publicId: group.publicId,
+        sourceCloud: group.sourceCloud,
+        classification: "public",
+        status: "confirmed-unavailable",
+        adminStatus: 404,
+        deliveryStatus: 404,
+        urlSha256: group.urls.map(sha256Text).sort(),
+        confirmedAt: now(),
+      },
+    };
+  }
+
+  const parsed = parseRecoverySourceUrl(available.url);
+  const asset = {
+    public_id: group.publicId,
+    resource_type: "image",
+    secure_url: available.url,
+    format: available.result.format,
+    version: parsed?.version ?? null,
+    bytes: available.result.buffer.length,
+    width: available.result.width,
+    height: available.result.height,
+  };
+  const entry = await copyOneAsset(asset, {
+    env,
+    copy,
+    transport,
+    downloadSource: async () => available.result.buffer,
+    now,
+  });
+  return { kind: "entry", entry: { ...entry, recovery: { source: "delivery-cache", recoveredAt: now() } } };
 }
 
 export async function transformAsset(buffer, asset, profile) {
@@ -304,7 +542,49 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   let entries;
-  if (options.verifyOnly) {
+  let confirmedUnavailableSources = Array.isArray(previousManifest?.confirmedUnavailableSources)
+    ? [...previousManifest.confirmedUnavailableSources]
+    : [];
+  let recoveryProvenance = previousManifest?.recoveryProvenance ?? null;
+  if (options.recoveryReport) {
+    const recoverySource = JSON.parse(await fs.readFile(options.recoveryReport, "utf8"));
+    recoveryProvenance = createRecoveryProvenance(previousManifest, recoverySource);
+    const groups = groupUnresolvedSources(recoverySource);
+    const baseEntries = await verifyRecoveryBaseEntries(previousManifest, {
+      concurrency: options.concurrency,
+      onProgress: (completed, total) => {
+        if (completed % 25 === 0 || completed === total) console.log(`Verified inherited ${completed}/${total}`);
+      },
+    });
+    const recovered = await runBounded(groups, options.concurrency, (group) =>
+      recoverUnresolvedGroup(group, { env: process.env, copy: options.copy }),
+    );
+    const existingPublicIds = new Set(baseEntries.map((entry) => entry?.source?.publicId).filter(Boolean));
+    const recoveryEntries = [];
+    for (const result of recovered) {
+      if (result.kind === "unavailable") {
+        confirmedUnavailableSources.push(result.record);
+        continue;
+      }
+      const entry = result.kind === "entry"
+        ? result.entry
+        : { source: { publicId: result.publicId }, classification: "public", status: "blocked", error: result.error };
+      if (existingPublicIds.has(entry?.source?.publicId)) throw new Error("Recovery source already exists in previous manifest");
+      existingPublicIds.add(entry?.source?.publicId);
+      recoveryEntries.push(entry);
+    }
+    const unavailableIds = new Set();
+    confirmedUnavailableSources = confirmedUnavailableSources
+      .sort((left, right) => left.publicId.localeCompare(right.publicId))
+      .filter((record) => {
+        if (unavailableIds.has(record.publicId)) throw new Error("Duplicate confirmed unavailable public ID");
+        unavailableIds.add(record.publicId);
+        if (existingPublicIds.has(record.publicId)) throw new Error("Unavailable source also exists in manifest entries");
+        return true;
+      });
+    entries = [...baseEntries, ...recoveryEntries]
+      .sort((left, right) => left.source.publicId.localeCompare(right.source.publicId));
+  } else if (options.verifyOnly) {
     const eligible = previousManifest.entries
       .filter((entry) => classes.includes(entry.classification))
       .sort((left, right) => left.source.publicId.localeCompare(right.source.publicId));
@@ -358,18 +638,28 @@ export async function main(argv = process.argv.slice(2)) {
     return result;
   }, { sourceBytes: 0, targetBytes: 0 });
   const counts = summarizeEntries(entries);
+  const mode = options.recoveryReport
+    ? options.copy ? "recovery-copy" : "recovery-plan"
+    : options.verifyOnly ? "verify-only"
+      : options.copy ? "copy" : "plan";
   const report = {
-    mode: options.verifyOnly ? "verify-only" : options.copy ? "copy" : "plan",
+    mode,
     sourceCloud: process.env.CLOUDINARY_CLOUD_NAME || null,
     targetZones: classes.map((classification) => getZoneConfiguration(process.env, classification).zone),
     startedAt,
     completedAt: new Date().toISOString(),
-    options: { ...options, manifest: options.manifest ? path.basename(options.manifest) : null },
+    options: {
+      ...options,
+      manifest: options.manifest ? path.basename(options.manifest) : null,
+      recoveryReport: options.recoveryReport ? path.basename(options.recoveryReport) : null,
+    },
     counts,
     totals,
     failureSummaries: Object.fromEntries(
       Object.entries(counts.statuses).filter(([status]) => !["planned", "verified", "skipped-existing-identical"].includes(status)),
     ),
+    recoveryProvenance,
+    confirmedUnavailableSources,
     entries,
   };
   const output = await writeCopyReport(report);
