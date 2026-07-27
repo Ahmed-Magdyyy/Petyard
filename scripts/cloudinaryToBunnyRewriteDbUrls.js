@@ -151,9 +151,19 @@ export async function buildForwardPlan(connection, manifestMap) {
   return { plan, unresolved, documents, scannedStringFields, externalUrlsIgnored, byCollection };
 }
 
+function groupPlanByCollection(plan) {
+  const groups = new Map();
+  for (const entry of plan) {
+    const group = groups.get(entry.collection);
+    if (group) group.push(entry);
+    else groups.set(entry.collection, [entry]);
+  }
+  return groups.values();
+}
+
 export async function applyForwardPlan(connection, plan, { batchSize = 100 } = {}) {
   const results = [];
-  for (const group of Map.groupBy(plan, (entry) => entry.collection).values()) {
+  for (const group of groupPlanByCollection(plan)) {
     const collection = connection.connection.db.collection(group[0].collection);
     for (let index = 0; index < group.length; index += batchSize) {
       const batch = group.slice(index, index + batchSize);
@@ -187,7 +197,7 @@ export async function buildRollbackPlan(connection, report) {
 
 export async function applyRollbackPlan(connection, plan, { batchSize = 100 } = {}) {
   const results = [];
-  for (const group of Map.groupBy(plan, (entry) => entry.collection).values()) {
+  for (const group of groupPlanByCollection(plan)) {
     const collection = connection.connection.db.collection(group[0].collection);
     for (let index = 0; index < group.length; index += batchSize) {
       const batch = group.slice(index, index + batchSize);
