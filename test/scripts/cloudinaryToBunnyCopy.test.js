@@ -4,14 +4,19 @@ import test from "node:test";
 
 import {
   assertSafePublicId,
+  captureUnresolvedGroup,
   classifyCloudinaryAsset,
   copyOneAsset,
+  createRecoveryByteBudget,
   createRecoveryProvenance,
   findPreflightBlockers,
   groupUnresolvedSources,
+  materializeCapturedRecovery,
   parseCopyArguments,
   profileForAsset,
+  readResponseBufferLimited,
   recoverUnresolvedGroup,
+  releaseRecoveryCaptures,
   runBounded,
   resumeCopyEntry,
   sourceSort,
@@ -20,6 +25,7 @@ import {
   validatePreviousManifest,
   verifyManifestEntry,
   verifyRecoveryBaseEntries,
+  withRecoveryCaptureCleanup,
 } from "../../scripts/cloudinaryToBunnyCopy.js";
 
 const env = {
@@ -138,15 +144,25 @@ test("delivery-cache recovery requires valid image bytes and verifies Bunny", as
   const url = "https://res.cloudinary.com/dxemmiorv/image/upload/v1/petyard/products/stale.svg";
   let stored = null;
   const requestedUrls = [];
-  const result = await recoverUnresolvedGroup({ publicId: "petyard/products/stale", sourceCloud: "dxemmiorv", urls: [url] }, {
-    env,
-    copy: true,
+  const captured = await captureUnresolvedGroup({ publicId: "petyard/products/stale", sourceCloud: "dxemmiorv", urls: [url] }, {
     adminApi: { async resource() { const error = new Error("missing"); error.http_code = 404; throw error; } },
     fetchImpl: async (requestedUrl) => {
       requestedUrls.push(requestedUrl);
       const status = requestedUrls.length === 1 ? 404 : 200;
-      return { status, headers: { get: () => status === 200 ? "image/svg+xml" : "text/plain" }, async arrayBuffer() { return status === 200 ? svg : Buffer.alloc(0); } };
+      return new Response(status === 200 ? svg : null, {
+        status,
+        headers: { "content-type": status === 200 ? "image/svg+xml" : "text/plain" },
+      });
     },
+    now: () => "2026-07-27T00:00:00.000Z",
+  });
+  assert.equal(captured.kind, "captured");
+  assert.equal(requestedUrls.length, 2);
+  assert.match(requestedUrls[1], /petyard_recovery_attempt=/);
+
+  const result = await materializeCapturedRecovery(captured, {
+    env,
+    copy: true,
     transport: { async request(request) {
       if (request.method === "GET" && stored == null) { const error = new Error("missing"); error.response = { status: 404, headers: {} }; throw error; }
       if (request.method === "PUT") { stored = request.data; return { status: 201 }; }
@@ -158,8 +174,71 @@ test("delivery-cache recovery requires valid image bytes and verifies Bunny", as
   assert.equal(result.entry.status, "verified");
   assert.equal(result.entry.recovery.source, "delivery-cache");
   assert.equal(result.entry.target.objectKey, "petyard/products/stale.svg");
+  assert.equal(result.entry.recovery.sourceSha256, crypto.createHash("sha256").update(svg).digest("hex"));
   assert.equal(requestedUrls.length, 2);
-  assert.match(requestedUrls[1], /petyard_recovery_attempt=/);
+});
+
+test("recovery streaming cancels oversized bodies and enforces the shared retained-byte budget", async () => {
+  let cancelled = false;
+  let produced = 0;
+  const oversized = new Response(new ReadableStream({
+    pull(controller) {
+      produced += 1;
+      controller.enqueue(Uint8Array.from([produced, produced, produced, produced]));
+      if (produced > 10) controller.close();
+    },
+    cancel() { cancelled = true; },
+  }), { status: 200, headers: { "content-type": "image/webp" } });
+  const perFileBudget = createRecoveryByteBudget(20);
+  await assert.rejects(
+    () => readResponseBufferLimited(oversized, { maxBytes: 5, byteBudget: perFileBudget }),
+    /recovery-source-too-large/,
+  );
+  assert.equal(cancelled, true);
+  assert.equal(perFileBudget.usedBytes, 0);
+
+  const shared = createRecoveryByteBudget(6);
+  const first = await readResponseBufferLimited(new Response(Buffer.from("1234")), { maxBytes: 10, byteBudget: shared });
+  assert.equal(first.length, 4);
+  await assert.rejects(
+    () => readResponseBufferLimited(new Response(Buffer.from("5678")), { maxBytes: 10, byteBudget: shared }),
+    /recovery-capture-total-byte-limit/,
+  );
+  assert.equal(shared.usedBytes, 4);
+  shared.release(first.length);
+  assert.equal(shared.usedBytes, 0);
+});
+
+test("recovery capture cleanup releases successful buffers when another capture is blocked", async () => {
+  const byteBudget = createRecoveryByteBudget(20);
+  const buffer = Buffer.from("captured");
+  byteBudget.reserve(buffer.length);
+  const captures = [
+    { kind: "captured", buffer },
+    { kind: "blocked", error: "source-blocked" },
+  ];
+
+  releaseRecoveryCaptures(captures, byteBudget);
+
+  assert.equal(byteBudget.usedBytes, 0);
+  assert.equal(captures[0].buffer, null);
+});
+
+test("recovery capture cleanup runs when inherited verification fails", async () => {
+  const byteBudget = createRecoveryByteBudget(20);
+  const buffer = Buffer.from("captured");
+  byteBudget.reserve(buffer.length);
+  const captures = [{ kind: "captured", buffer }];
+
+  await assert.rejects(
+    () => withRecoveryCaptureCleanup(captures, byteBudget, async () => {
+      throw new Error("inherited-verification-failed");
+    }),
+    /inherited-verification-failed/,
+  );
+
+  assert.equal(byteBudget.usedBytes, 0);
+  assert.equal(captures[0].buffer, null);
 });
 
 test("confirmed source deletion records exact URL hashes while mixed failures block", async () => {
@@ -171,7 +250,7 @@ test("confirmed source deletion records exact URL hashes while mixed failures bl
   let missingAttempts = 0;
   const unavailable = await recoverUnresolvedGroup({ publicId: "petyard/products/gone", sourceCloud: "dxemmiorv", urls }, {
     adminApi: missingAdmin,
-    fetchImpl: async () => { missingAttempts += 1; return { status: 404, headers: { get: () => "text/plain" }, async arrayBuffer() { return Buffer.alloc(0); } }; },
+    fetchImpl: async () => { missingAttempts += 1; return new Response(null, { status: 404, headers: { "content-type": "text/plain" } }); },
     now: () => "2026-07-27T00:00:00.000Z",
   });
   assert.equal(unavailable.kind, "unavailable");
@@ -186,7 +265,7 @@ test("confirmed source deletion records exact URL hashes while mixed failures bl
     adminApi: missingAdmin,
     fetchImpl: async () => {
       calls += 1;
-      return { status: calls === 1 ? 404 : 403, headers: { get: () => "text/plain" }, async arrayBuffer() { return Buffer.alloc(0); } };
+      return new Response(null, { status: calls === 1 ? 404 : 403, headers: { "content-type": "text/plain" } });
     },
   });
   assert.equal(blocked.kind, "blocked");

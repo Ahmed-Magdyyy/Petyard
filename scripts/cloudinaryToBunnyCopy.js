@@ -15,6 +15,10 @@ import {
 
 const REPORT_DIR = path.resolve("scripts/bunny-migration-reports");
 const MAX_CONCURRENCY = 8;
+const MAX_RECOVERY_SOURCE_BYTES = 25 * 1024 * 1024;
+// Buffer.concat can briefly duplicate retained chunks, so cap retained bytes at
+// 50 MiB to keep capture data below a 100 MiB peak even during concatenation.
+const MAX_RECOVERY_TOTAL_BYTES = 50 * 1024 * 1024;
 const MIME_BY_FORMAT = Object.freeze({
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
   gif: "image/gif", svg: "image/svg+xml",
@@ -81,6 +85,78 @@ export function profileForAsset(asset, classification) {
 
 export function sha256(buffer) { return crypto.createHash("sha256").update(buffer).digest("hex"); }
 export function sha256Text(value) { return sha256(Buffer.from(value, "utf8")); }
+
+export function createRecoveryByteBudget(maxBytes = MAX_RECOVERY_TOTAL_BYTES) {
+  let usedBytes = 0;
+  return {
+    get usedBytes() { return usedBytes; },
+    reserve(byteLength) {
+      if (!Number.isSafeInteger(byteLength) || byteLength < 0 || usedBytes + byteLength > maxBytes) {
+        const error = new Error("recovery-capture-total-byte-limit");
+        error.retryable = false;
+        throw error;
+      }
+      usedBytes += byteLength;
+    },
+    release(byteLength) {
+      usedBytes = Math.max(0, usedBytes - Number(byteLength || 0));
+    },
+  };
+}
+
+export function releaseRecoveryCaptures(captures, byteBudget) {
+  for (const capture of captures ?? []) {
+    if (capture?.kind !== "captured" || !Buffer.isBuffer(capture.buffer)) continue;
+    byteBudget.release(capture.buffer.length);
+    capture.buffer = null;
+  }
+}
+
+export async function withRecoveryCaptureCleanup(captures, byteBudget, operation) {
+  try {
+    return await operation();
+  } finally {
+    releaseRecoveryCaptures(captures, byteBudget);
+  }
+}
+
+export async function readResponseBufferLimited(response, {
+  maxBytes = MAX_RECOVERY_SOURCE_BYTES,
+  byteBudget = createRecoveryByteBudget(),
+} = {}) {
+  const advertised = response.headers.get("content-length");
+  const contentLength = advertised == null ? null : Number(advertised);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await response.body?.cancel().catch(() => {});
+    const error = new Error("recovery-source-too-large");
+    error.retryable = false;
+    throw error;
+  }
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let retainedBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+      if (retainedBytes + chunk.length > maxBytes) {
+        const error = new Error("recovery-source-too-large");
+        error.retryable = false;
+        throw error;
+      }
+      byteBudget.reserve(chunk.length);
+      retainedBytes += chunk.length;
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks, retainedBytes);
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    byteBudget.release(retainedBytes);
+    throw error;
+  }
+}
 
 export function sourceSort(resources) { return [...resources].sort((a, b) => a.public_id.localeCompare(b.public_id)); }
 
@@ -263,36 +339,48 @@ function cloudinaryErrorStatus(error) {
   return Number(error?.http_code || error?.error?.http_code || error?.response?.status || 0);
 }
 
-async function fetchRecoveryCandidate(url, fetchImpl = fetch) {
+async function fetchRecoveryCandidate(url, fetchImpl = fetch, byteBudget = createRecoveryByteBudget()) {
   let lastError;
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    let retainedBuffer = null;
     try {
       const requestUrl = new URL(url);
       if (attempt > 0) requestUrl.searchParams.set("petyard_recovery_attempt", `${Date.now()}-${attempt}`);
       const response = await fetchImpl(requestUrl.toString(), { signal: AbortSignal.timeout(15000), redirect: "follow" });
       if (response.status === 404) {
-        await response.arrayBuffer();
+        await response.body?.cancel().catch(() => {});
         if (attempt === 2) return { status: 404, attempts: attempt + 1 };
         await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
         continue;
       }
       if (response.status === 429 || response.status >= 500) {
-        await response.arrayBuffer();
+        await response.body?.cancel().catch(() => {});
         throw new Error(`Retryable recovery source status ${response.status}`);
       }
       if (response.status !== 200) {
-        await response.arrayBuffer();
+        await response.body?.cancel().catch(() => {});
         return { status: response.status, error: "unexpected-delivery-status" };
       }
       const contentType = String(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-      const buffer = Buffer.from(await response.arrayBuffer());
-      if (!contentType.startsWith("image/") || !buffer.length) return { status: 200, error: "delivery-response-is-not-an-image" };
+      if (!contentType.startsWith("image/")) {
+        await response.body?.cancel().catch(() => {});
+        return { status: 200, error: "delivery-response-is-not-an-image" };
+      }
+      const buffer = await readResponseBufferLimited(response, { byteBudget });
+      retainedBuffer = buffer;
+      if (!buffer.length) return { status: 200, error: "delivery-response-is-not-an-image" };
       const metadata = await sharp(buffer).metadata();
       const format = String(metadata.format || "").toLowerCase();
-      if (!MIME_BY_FORMAT[format]) return { status: 200, error: "unsupported-recovered-image-format" };
+      if (!MIME_BY_FORMAT[format]) {
+        byteBudget.release(buffer.length);
+        retainedBuffer = null;
+        return { status: 200, error: "unsupported-recovered-image-format" };
+      }
       return { status: 200, attempts: attempt + 1, buffer, format, width: metadata.width ?? null, height: metadata.height ?? null };
     } catch (error) {
+      if (retainedBuffer?.length) byteBudget.release(retainedBuffer.length);
       lastError = error;
+      if (error?.retryable === false) return { status: 0, error: error.message };
       if (attempt === 2) break;
       await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     }
@@ -300,12 +388,10 @@ async function fetchRecoveryCandidate(url, fetchImpl = fetch) {
   return { status: 0, error: "recovery-source-request-failed" };
 }
 
-export async function recoverUnresolvedGroup(group, {
-  env = process.env,
-  copy = false,
+export async function captureUnresolvedGroup(group, {
   adminApi = cloudinary.api,
   fetchImpl = fetch,
-  transport,
+  byteBudget = createRecoveryByteBudget(),
   now = () => new Date().toISOString(),
 } = {}) {
   let adminAsset = null;
@@ -321,15 +407,37 @@ export async function recoverUnresolvedGroup(group, {
     if (adminAsset.public_id !== group.publicId) {
       return { kind: "blocked", publicId: group.publicId, error: "cloudinary-admin-identity-mismatch" };
     }
-    const entry = await copyOneAsset(adminAsset, { env, copy, transport });
-    return { kind: "entry", entry: { ...entry, recovery: { source: "cloudinary-admin", recoveredAt: now() } } };
+    const candidate = await fetchRecoveryCandidate(adminAsset.secure_url, fetchImpl, byteBudget);
+    if (candidate.status !== 200 || candidate.error) {
+      return { kind: "blocked", publicId: group.publicId, error: candidate.error || "cloudinary-admin-delivery-failed" };
+    }
+    return {
+      kind: "captured",
+      source: "cloudinary-admin",
+      capturedAt: now(),
+      captureAttempts: candidate.attempts,
+      buffer: candidate.buffer,
+      asset: {
+        ...adminAsset,
+        format: candidate.format,
+        bytes: candidate.buffer.length,
+        width: candidate.width,
+        height: candidate.height,
+      },
+    };
   }
 
-  const probes = [];
-  for (const url of group.urls) probes.push({ url, result: await fetchRecoveryCandidate(url, fetchImpl) });
-  const invalid = probes.find(({ result }) => ![200, 404].includes(result.status) || result.error);
-  if (invalid) return { kind: "blocked", publicId: group.publicId, error: invalid.result.error || "recovery-source-probe-failed" };
-  const available = probes.find(({ result }) => result.status === 200);
+  let available = null;
+  for (const url of group.urls) {
+    const result = await fetchRecoveryCandidate(url, fetchImpl, byteBudget);
+    if (![200, 404].includes(result.status) || result.error) {
+      return { kind: "blocked", publicId: group.publicId, error: result.error || "recovery-source-probe-failed" };
+    }
+    if (result.status === 200) {
+      available = { url, result };
+      break;
+    }
+  }
   if (!available) {
     return {
       kind: "unavailable",
@@ -358,14 +466,51 @@ export async function recoverUnresolvedGroup(group, {
     width: available.result.width,
     height: available.result.height,
   };
-  const entry = await copyOneAsset(asset, {
+  return {
+    kind: "captured",
+    source: "delivery-cache",
+    capturedAt: now(),
+    captureAttempts: available.result.attempts,
+    buffer: available.result.buffer,
+    asset,
+  };
+}
+
+export async function materializeCapturedRecovery(capture, {
+  env = process.env,
+  copy = false,
+  transport,
+  now = () => new Date().toISOString(),
+} = {}) {
+  if (capture?.kind !== "captured" || !Buffer.isBuffer(capture.buffer) || !capture.buffer.length) {
+    return { kind: "blocked", publicId: capture?.asset?.public_id || null, error: "invalid-recovery-capture" };
+  }
+  const entry = await copyOneAsset(capture.asset, {
     env,
     copy,
     transport,
-    downloadSource: async () => available.result.buffer,
+    downloadSource: async () => capture.buffer,
     now,
   });
-  return { kind: "entry", entry: { ...entry, recovery: { source: "delivery-cache", recoveredAt: now() } } };
+  return {
+    kind: "entry",
+    entry: {
+      ...entry,
+      recovery: {
+        source: capture.source,
+        capturedAt: capture.capturedAt,
+        sourceSha256: sha256(capture.buffer),
+        sourceByteLength: capture.buffer.length,
+        captureAttempts: capture.captureAttempts,
+      },
+    },
+  };
+}
+
+export async function recoverUnresolvedGroup(group, options = {}) {
+  const captured = await captureUnresolvedGroup(group, options);
+  if (captured.kind !== "captured") return captured;
+  return materializeCapturedRecovery(captured, options);
 }
 
 export async function transformAsset(buffer, asset, profile) {
@@ -555,14 +700,29 @@ export async function main(argv = process.argv.slice(2)) {
     const recoverySource = JSON.parse(await fs.readFile(options.recoveryReport, "utf8"));
     recoveryProvenance = createRecoveryProvenance(previousManifest, recoverySource);
     const groups = groupUnresolvedSources(recoverySource);
-    const baseEntries = await verifyRecoveryBaseEntries(previousManifest, {
-      concurrency: options.concurrency,
-      onProgress: (completed, total) => {
-        if (completed % 25 === 0 || completed === total) console.log(`Verified inherited ${completed}/${total}`);
+    const recoveryByteBudget = createRecoveryByteBudget();
+    const captures = await runBounded(groups, options.concurrency, (group) =>
+      captureUnresolvedGroup(group, { byteBudget: recoveryByteBudget }),
+    );
+    const { baseEntries, recovered } = await withRecoveryCaptureCleanup(
+      captures,
+      recoveryByteBudget,
+      async () => {
+        const blockedCapture = captures.find((capture) => capture.kind === "blocked");
+        if (blockedCapture) throw new Error(`Recovery capture blocked: ${blockedCapture.error}`);
+        const baseEntries = await verifyRecoveryBaseEntries(previousManifest, {
+          concurrency: options.concurrency,
+          onProgress: (completed, total) => {
+            if (completed % 25 === 0 || completed === total) console.log(`Verified inherited ${completed}/${total}`);
+          },
+        });
+        const recovered = await runBounded(captures, options.concurrency, (capture) =>
+          capture.kind === "captured"
+            ? materializeCapturedRecovery(capture, { env: process.env, copy: options.copy })
+            : capture,
+        );
+        return { baseEntries, recovered };
       },
-    });
-    const recovered = await runBounded(groups, options.concurrency, (group) =>
-      recoverUnresolvedGroup(group, { env: process.env, copy: options.copy }),
     );
     const existingPublicIds = new Set(baseEntries.map((entry) => entry?.source?.publicId).filter(Boolean));
     const recoveryEntries = [];
