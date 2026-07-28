@@ -220,6 +220,15 @@ export async function enumerateCloudinaryResources({ prefix, adminApi = cloudina
 
 const RECOVERABLE_SNAPSHOT_COLLECTIONS = new Set(["favorites", "carts", "orders"]);
 const RECOVERABLE_SNAPSHOT_PATH = /^items\.\d+\.productImageUrl$/;
+const RECOVERABLE_PRODUCT_IMAGE_PATH =
+  /^(?:images\.\d+\.url|variants\.\d+\.images\.\d+\.url)$/;
+
+function isRecoverableUnresolvedLocation(collection, fieldPath) {
+  if (RECOVERABLE_SNAPSHOT_COLLECTIONS.has(collection)) {
+    return RECOVERABLE_SNAPSHOT_PATH.test(fieldPath);
+  }
+  return collection === "products" && RECOVERABLE_PRODUCT_IMAGE_PATH.test(fieldPath);
+}
 
 function parseRecoverySourceUrl(value) {
   if (typeof value !== "string") return null;
@@ -254,8 +263,7 @@ export function groupUnresolvedSources(report, { cloudName = process.env.CLOUDIN
   for (const item of report.unresolved) {
     if (
       item?.reason !== "unresolved-source-public-id" ||
-      !RECOVERABLE_SNAPSHOT_COLLECTIONS.has(item?.collection) ||
-      !RECOVERABLE_SNAPSHOT_PATH.test(item?.path || "") ||
+      !isRecoverableUnresolvedLocation(item?.collection, item?.path || "") ||
       typeof item?.publicId !== "string" ||
       !item.publicId.startsWith("petyard/")
     ) {

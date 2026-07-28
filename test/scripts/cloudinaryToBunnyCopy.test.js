@@ -76,15 +76,20 @@ test("copy argument parsing is read-only by default and write confirmation is ex
   assert.throws(() => parseCopyArguments(["--recover-unresolved=report.json", "--manifest=copy.json", "--limit=1"]), /cannot be combined/);
 });
 
-test("unresolved recovery grouping is restricted to exact public snapshot fields", () => {
+test("unresolved recovery grouping is restricted to exact public image fields", () => {
   const url = "https://res.cloudinary.com/dxemmiorv/image/upload/v1/petyard/products/stale.svg";
   const groups = groupUnresolvedSources({ unresolved: [
     { collection: "orders", path: "items.0.productImageUrl", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
     { collection: "carts", path: "items.2.productImageUrl", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
+    { collection: "products", path: "images.0.url", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
+    { collection: "products", path: "variants.0.images.0.url", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
   ] }, { cloudName: "dxemmiorv" });
   assert.deepEqual(groups, [{ publicId: "petyard/products/stale", sourceCloud: "dxemmiorv", urls: [url] }]);
   assert.throws(() => groupUnresolvedSources({ unresolved: [
-    { collection: "products", path: "images.0.url", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
+    { collection: "products", path: "images.0.caption", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
+  ] }, { cloudName: "dxemmiorv" }), /unsupported unresolved source/);
+  assert.throws(() => groupUnresolvedSources({ unresolved: [
+    { collection: "products", path: "variants.0.images.0.alt", value: url, publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
   ] }, { cloudName: "dxemmiorv" }), /unsupported unresolved source/);
   assert.throws(() => groupUnresolvedSources({ unresolved: [
     { collection: "orders", path: "items.0.productImageUrl", value: "https://res.cloudinary.com/dxemmiorv/image/upload/v1/petyard/products/%E0%A4%A.webp", publicId: "petyard/products/stale", reason: "unresolved-source-public-id" },
