@@ -464,6 +464,10 @@ export async function loginService({ identifier, password }) {
       await sendOtpSms(user.phone, otp);
     } catch (err) {
       console.error("Failed to send OTP SMS during login", err.message);
+      throw new ApiError(
+        "Failed to send verification SMS, please try again later",
+        502,
+      );
     }
 
     throw new ApiError("Please verify your phone first", 401);
