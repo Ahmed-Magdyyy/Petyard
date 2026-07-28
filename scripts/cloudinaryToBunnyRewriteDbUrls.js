@@ -98,10 +98,33 @@ export function validateRecoveryProvenance(report) {
   return provenance;
 }
 
+export function normalizeDatabaseHost(host) {
+  if (typeof host !== "string") return null;
+  const normalized = host.trim().toLowerCase().replace(/\.$/, "");
+  if (!normalized) return null;
+  const atlasMember = normalized.match(
+    /^([a-z0-9-]+-shard-\d+)-\d+(\.[a-z0-9-]+\.mongodb\.net)$/,
+  );
+  return atlasMember ? `${atlasMember[1]}${atlasMember[2]}` : normalized;
+}
+
+export function databaseIdentitiesMatch(expected, actual) {
+  const expectedHost = normalizeDatabaseHost(expected?.host);
+  const actualHost = normalizeDatabaseHost(actual?.host);
+  return Boolean(
+    expectedHost &&
+    actualHost &&
+    expectedHost === actualHost &&
+    typeof expected?.name === "string" &&
+    expected.name &&
+    expected.name === actual?.name
+  );
+}
+
 export function assertRecoveryDatabaseIdentity(report, database) {
   const provenance = validateRecoveryProvenance(report);
   if (!provenance) return;
-  if (provenance.database.host !== database?.host || provenance.database.name !== database?.name) {
+  if (!databaseIdentitiesMatch(provenance.database, database)) {
     throw new Error("Recovery provenance database identity does not match the connected database");
   }
 }
@@ -315,7 +338,7 @@ export async function main(argv = process.argv.slice(2)) {
     const database = databaseIdentity(connection); console.log(`Connected to database ${database.host}/${database.name}`);
     if (options.rollbackReport) {
       if (!sourceReport.database?.host || !sourceReport.database?.name) throw new Error("Rollback report database identity is required");
-      if (sourceReport.database.host !== database.host || sourceReport.database.name !== database.name) throw new Error("Rollback report database identity does not match the connected database");
+      if (!databaseIdentitiesMatch(sourceReport.database, database)) throw new Error("Rollback report database identity does not match the connected database");
       const rollback = await buildRollbackPlan(connection, sourceReport);
       const results = options.apply ? await applyRollbackPlan(connection, rollback.plan) : [];
       const report = {

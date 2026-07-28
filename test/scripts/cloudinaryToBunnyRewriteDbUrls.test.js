@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   createVerifiedManifestMap,
   createConfirmedUnavailableMap,
+  databaseIdentitiesMatch,
   getManifestCompletenessErrors,
   applyForwardPlan,
   applyRollbackPlan,
@@ -153,6 +154,45 @@ test("apply requires every manifest entry to be verified and complete", () => {
   assert.equal(validateRecoveryProvenance(recoveryManifest), recoveryProvenance);
   assert.doesNotThrow(() => assertRecoveryDatabaseIdentity(recoveryManifest, { host: "db.example", name: "petyard" }));
   assert.throws(() => assertRecoveryDatabaseIdentity(recoveryManifest, { host: "other-db.example", name: "petyard" }), /does not match/);
+});
+
+test("database identity accepts Atlas member rotation while preserving cluster and database boundaries", () => {
+  const expected = {
+    host: "ac-fd0dokp-shard-00-01.sliubts.mongodb.net",
+    name: "petyard",
+  };
+  assert.equal(databaseIdentitiesMatch(expected, {
+    host: "ac-fd0dokp-shard-00-00.sliubts.mongodb.net",
+    name: "petyard",
+  }), true);
+  assert.equal(databaseIdentitiesMatch(expected, {
+    host: "AC-FD0DOKP-SHARD-00-02.SLIUBTS.MONGODB.NET.",
+    name: "petyard",
+  }), true);
+  assert.equal(databaseIdentitiesMatch(expected, {
+    host: "ac-other-shard-00-01.sliubts.mongodb.net",
+    name: "petyard",
+  }), false);
+  assert.equal(databaseIdentitiesMatch(expected, {
+    host: "ac-fd0dokp-shard-01-01.sliubts.mongodb.net",
+    name: "petyard",
+  }), false);
+  assert.equal(databaseIdentitiesMatch(expected, {
+    host: "ac-fd0dokp-shard-00-01.other.mongodb.net",
+    name: "petyard",
+  }), false);
+  assert.equal(databaseIdentitiesMatch(expected, {
+    host: "ac-fd0dokp-shard-00-00.sliubts.mongodb.net",
+    name: "other",
+  }), false);
+  assert.equal(databaseIdentitiesMatch(
+    { host: "db.example", name: "petyard" },
+    { host: "DB.EXAMPLE.", name: "petyard" },
+  ), true);
+  assert.equal(databaseIdentitiesMatch(
+    { host: "db.example", name: "petyard" },
+    { host: "other-db.example", name: "petyard" },
+  ), false);
 });
 
 test("forward and rollback batch writers continue after an independent batch error", async () => {
