@@ -7,12 +7,15 @@ import { addMyAddressService } from '../../src/domains/address/address.service.j
 import { CartModel } from '../../src/domains/cart/cart.model.js';
 import { getCartService } from '../../src/domains/cart/cart.service.js';
 import { getCheckoutSummaryService } from '../../src/domains/checkout/checkout.service.js';
+import { BrandModel } from '../../src/domains/brand/brand.model.js';
 import { CollectionModel } from '../../src/domains/collection/collection.model.js';
 import { resolveLocationByCoordinatesService } from '../../src/domains/location/location.service.js';
+import { OrderModel } from '../../src/domains/order/order.model.js';
 import { resolveOrderCartWarehouse } from '../../src/domains/order/order.service.js';
 import { ProductModel } from '../../src/domains/product/product.model.js';
 import { getProductsService } from '../../src/domains/product/product.service.js';
 import { warehouseFulfillmentStatusEnum } from '../../src/shared/constants/enums.js';
+import { SubcategoryModel } from '../../src/domains/subcategory/subcategory.model.js';
 import { WarehouseModel } from '../../src/domains/warehouse/warehouse.model.js';
 
 function queryResult(value) {
@@ -168,12 +171,125 @@ test('public products use fallback warehouse stock', async (t) => {
   });
   t.mock.method(ProductModel, 'find', () => queryResult([]));
 
-  const result = await getProductsService({ warehouse: String(source._id) });
+  const result = await getProductsService(
+    { warehouse: String(source._id), isActive: false },
+    'en',
+    { onlyActive: true },
+  );
   const serializedFilter = JSON.stringify(productFilter);
 
   assert.equal(result.results, 0);
+  assert.match(serializedFilter, /"isActive":true/);
+  assert.doesNotMatch(serializedFilter, /"isActive":false/);
   assert.match(serializedFilter, new RegExp(String(fallback._id)));
   assert.doesNotMatch(serializedFilter, new RegExp(String(source._id)));
+});
+
+test('admin product listings are not forced to active products', async (t) => {
+  let productFilter = null;
+
+  t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
+  t.mock.method(ProductModel, 'countDocuments', async (filter) => {
+    productFilter = filter;
+    return 0;
+  });
+  t.mock.method(ProductModel, 'find', () => queryResult([]));
+
+  await getProductsService({}, 'en', { includeZeroStockInWarehouse: true });
+
+  assert.equal(productFilter.isActive, undefined);
+});
+
+test('q search includes simple and variant SKUs', async (t) => {
+  let productFilter = null;
+
+  t.mock.method(BrandModel, 'find', () => queryResult([]));
+  t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
+  t.mock.method(ProductModel, 'countDocuments', async (filter) => {
+    productFilter = filter;
+    return 0;
+  });
+  t.mock.method(ProductModel, 'find', () => queryResult([]));
+
+  await getProductsService(
+    { q: '0123456789012' },
+    'en',
+    { includeZeroStockInWarehouse: true },
+  );
+
+  const searchCondition = productFilter.$and.find((condition) => condition.$or);
+  assert.ok(searchCondition.$or.some((condition) => condition.sku));
+  assert.ok(searchCondition.$or.some((condition) => condition['variants.sku']));
+});
+
+test('best_seller sorts products by quantities sold before unsold products', async (t) => {
+  const firstSold = new mongoose.Types.ObjectId();
+  const secondSold = new mongoose.Types.ObjectId();
+  const unsold = new mongoose.Types.ObjectId();
+
+  const makeProduct = (id, name) => ({
+    _id: id,
+    slug: name.toLowerCase(),
+    type: 'SIMPLE',
+    name_en: name,
+    name_ar: name,
+    price: 100,
+    images: [],
+    warehouseStocks: [],
+    variants: [],
+    category: null,
+    subcategory: null,
+    brand: null,
+  });
+
+  const productsById = new Map([
+    [String(firstSold), makeProduct(firstSold, 'First sold')],
+    [String(secondSold), makeProduct(secondSold, 'Second sold')],
+    [String(unsold), makeProduct(unsold, 'Unsold')],
+  ]);
+
+  t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
+  t.mock.method(CollectionModel, 'find', () => queryResult([]));
+  t.mock.method(SubcategoryModel, 'find', () => queryResult([]));
+  t.mock.method(ProductModel, 'countDocuments', async () => 3);
+  t.mock.method(OrderModel, 'aggregate', async () => [
+    { _id: secondSold, totalQuantitySold: 10 },
+    { _id: firstSold, totalQuantitySold: 4 },
+  ]);
+  t.mock.method(ProductModel, 'find', (filter) => {
+    const clauses = filter?.$and || [];
+    const idClause = clauses.find((clause) => clause?._id)?._id || filter?._id;
+
+    if (idClause?.$nin) {
+      return queryResult([productsById.get(String(unsold))]);
+    }
+
+    if (clauses.length > 0 && idClause?.$in) {
+      return queryResult([{ _id: firstSold }, { _id: secondSold }]);
+    }
+
+    if (idClause?.$in) {
+      // Deliberately return them in the wrong order; the service must restore
+      // the quantity-sold ranking after this query.
+      return queryResult([
+        productsById.get(String(firstSold)),
+        productsById.get(String(secondSold)),
+      ]);
+    }
+
+    return queryResult([]);
+  });
+
+  const result = await getProductsService(
+    { sortKey: 'best_seller', limit: 3 },
+    'en',
+    { includeZeroStockInWarehouse: true },
+  );
+
+  assert.deepEqual(
+    result.data.map((product) => String(product.id)),
+    [String(secondSold), String(firstSold), String(unsold)],
+  );
 });
 
 test('new guest cart is assigned to the effective warehouse', async (t) => {

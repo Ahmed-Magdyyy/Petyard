@@ -391,6 +391,7 @@ export const listProductsQueryValidator = [
       "price_desc",
       "date_asc",
       "date_desc",
+      "best_seller",
     ])
     .withMessage("Invalid sortKey"),
 

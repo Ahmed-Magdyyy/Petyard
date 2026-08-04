@@ -36,6 +36,10 @@ export function findProducts(
   return query;
 }
 
+export function findProductIds(filter = {}) {
+  return ProductModel.find(filter).select("_id").lean();
+}
+
 export function findProductById(id) {
   return ProductModel.findById(id);
 }

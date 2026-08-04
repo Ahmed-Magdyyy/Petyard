@@ -1,6 +1,7 @@
 import {
   countProducts,
   findProducts,
+  findProductIds,
   findProductById,
   findProductByIdWithRefs,
   findProductBySlug,
@@ -24,6 +25,7 @@ import {
   productTypeEnum,
   roles,
   enabledControls,
+  orderStatusEnum,
 } from "../../shared/constants/enums.js";
 import {
   buildPagination,
@@ -56,6 +58,7 @@ import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
 import { CategoryModel } from "../category/category.model.js";
 import { countWarehouses } from "../warehouse/warehouse.repository.js";
 import { FavoriteModel } from "../favorite/favorite.model.js";
+import { OrderModel } from "../order/order.model.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
 
@@ -84,6 +87,52 @@ function normalizeLang(lang) {
 
 function normalizeTags(tags) {
   return normalizeTagsInput(tags);
+}
+
+/**
+ * `removedImagePublicIds` is an opt-in signal for the merge image-update
+ * contract. Older clients omit it and retain the legacy replacement behavior.
+ */
+function parseRemovedImagePublicIds(value) {
+  if (value === undefined) {
+    return { useImageMerge: false, publicIds: [] };
+  }
+
+  let rawValue = value;
+  if (typeof rawValue === "string") {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      return { useImageMerge: true, publicIds: [] };
+    }
+
+    try {
+      rawValue = JSON.parse(trimmed);
+    } catch {
+      throw new ApiError(
+        "removedImagePublicIds must be a JSON array of image public IDs",
+        400,
+      );
+    }
+  }
+
+  if (!Array.isArray(rawValue)) {
+    throw new ApiError(
+      "removedImagePublicIds must be an array of image public IDs",
+      400,
+    );
+  }
+
+  const publicIds = rawValue.map((publicId) => {
+    if (typeof publicId !== "string" || !publicId.trim()) {
+      throw new ApiError(
+        "removedImagePublicIds must contain only non-empty strings",
+        400,
+      );
+    }
+    return publicId.trim();
+  });
+
+  return { useImageMerge: true, publicIds: [...new Set(publicIds)] };
 }
 
 function normalizeProductOptions(options) {
@@ -244,6 +293,101 @@ function mapProductSortKey(sortKey) {
     default:
       return null;
   }
+}
+
+function isBestSellerSort(sortKey) {
+  return String(sortKey || "") === "best_seller";
+}
+
+async function findBestSellingProducts({
+  mongoFilter,
+  skip,
+  limit,
+  select,
+  fallbackSort,
+}) {
+  const excludedOrderStatuses = [
+    orderStatusEnum.CANCELLED,
+    orderStatusEnum.RETURNED,
+  ];
+
+  // Rank at the product level, combining quantities across all variants.
+  const salesRows = await OrderModel.aggregate([
+    { $match: { status: { $nin: excludedOrderStatuses } } },
+    { $unwind: "$items" },
+    {
+      $group: {
+        _id: "$items.product",
+        totalQuantitySold: { $sum: "$items.quantity" },
+      },
+    },
+    { $sort: { totalQuantitySold: -1, _id: 1 } },
+    { $project: { _id: 1 } },
+  ]);
+
+  const soldProductIds = salesRows
+    .map((row) => row?._id)
+    .filter(Boolean);
+
+  if (soldProductIds.length === 0) {
+    return findProducts(mongoFilter, {
+      skip,
+      limit,
+      sort: fallbackSort,
+      select,
+      lean: true,
+    });
+  }
+
+  // Apply the current catalogue filters (category, active state, warehouse,
+  // search text, etc.) before paginating the sales ranking.
+  const matchingSoldProducts = await findProductIds({
+    $and: [mongoFilter, { _id: { $in: soldProductIds } }],
+  });
+  const matchingSoldIds = new Set(
+    matchingSoldProducts.map((product) => String(product._id)),
+  );
+  const rankedMatchingSoldIds = soldProductIds.filter((id) =>
+    matchingSoldIds.has(String(id)),
+  );
+
+  const soldIdsForPage = rankedMatchingSoldIds.slice(skip, skip + limit);
+  const unsoldLimit = Math.max(limit - soldIdsForPage.length, 0);
+  const unsoldSkip = Math.max(skip - rankedMatchingSoldIds.length, 0);
+
+  const [soldProducts, unsoldProducts] = await Promise.all([
+    soldIdsForPage.length > 0
+      ? findProducts(
+          { _id: { $in: soldIdsForPage } },
+          { select, lean: true },
+        )
+      : Promise.resolve([]),
+    unsoldLimit > 0
+      ? findProducts(
+          {
+            $and: [mongoFilter, { _id: { $nin: soldProductIds } }],
+          },
+          {
+            skip: unsoldSkip,
+            limit: unsoldLimit,
+            sort: fallbackSort,
+            select,
+            lean: true,
+          },
+        )
+      : Promise.resolve([]),
+  ]);
+
+  // MongoDB does not preserve the order of an $in clause, so restore the
+  // quantity-sold ordering after fetching the populated product documents.
+  const soldProductsById = new Map(
+    soldProducts.map((product) => [String(product._id), product]),
+  );
+  const orderedSoldProducts = soldIdsForPage
+    .map((id) => soldProductsById.get(String(id)))
+    .filter(Boolean);
+
+  return [...orderedSoldProducts, ...unsoldProducts];
 }
 
 let lastAutoHideExpiredCollectionsRunAt = 0;
@@ -751,7 +895,10 @@ async function getProductsService(
   } = queryParams;
 
   const normalizedLang = normalizeLang(lang);
-  const { includeZeroStockInWarehouse = false } = options || {};
+  const {
+    includeZeroStockInWarehouse = false,
+    onlyActive = false,
+  } = options || {};
 
   const effectiveWarehouseId =
     warehouse && !includeZeroStockInWarehouse
@@ -798,20 +945,32 @@ async function getProductsService(
       filter.isActive = false;
   }
 
+  // User-facing listings must never expose inactive products. Apply this
+  // after the optional query filter so ?isActive=false cannot override it.
+  if (onlyActive) {
+    filter.isActive = true;
+  }
+
   // Collection filter
   if (collection) {
     const collectionFilter = await resolveCollectionFilter(collection);
     Object.assign(filter, collectionFilter);
   }
 
-  // Free-text search on name_en, name_ar, tags, and matched brands
+  // Free-text search on names, tags, product/variant SKUs, and matched brands.
   const orConditions = [];
   if (typeof q === "string" && q.trim()) {
     const regex = {
       $regex: buildFlexibleSearchPattern(q.trim()),
       $options: "i",
     };
-    orConditions.push({ name_en: regex }, { name_ar: regex }, { tags: regex });
+    orConditions.push(
+      { name_en: regex },
+      { name_ar: regex },
+      { tags: regex },
+      { sku: regex },
+      { "variants.sku": regex },
+    );
 
     // Also search by brand name — find brands matching q, then include their products
     const matchedBrands = await BrandModel.find({
@@ -912,7 +1071,10 @@ async function getProductsService(
 
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 10);
 
-  let sort = mapProductSortKey(sortKey);
+  const useBestSellerSort = isBestSellerSort(sortKey);
+  let sort = useBestSellerSort
+    ? { createdAt: -1 }
+    : mapProductSortKey(sortKey);
   if (!sort) {
     sort = buildSort(queryParams, "-createdAt");
   }
@@ -925,13 +1087,21 @@ async function getProductsService(
 
     const [totalProductsCount, products] = await Promise.all([
       countProducts(mongoFilter),
-      findProducts(mongoFilter, {
-        skip,
-        limit: limitNum,
-        sort,
-        select: listSelect,
-        lean: true,
-      }),
+      useBestSellerSort
+        ? findBestSellingProducts({
+            mongoFilter,
+            skip,
+            limit: limitNum,
+            select: listSelect,
+            fallbackSort: sort,
+          })
+        : findProducts(mongoFilter, {
+            skip,
+            limit: limitNum,
+            sort,
+            select: listSelect,
+            lean: true,
+          }),
     ]);
 
     const now = new Date();
@@ -968,6 +1138,7 @@ async function getProductsService(
         `products:list:v1:${await getProductListCacheVersion()}:${normalizedLang}:${stableStringify({
           queryParams,
           warehouse: selectedWarehouseId || null,
+          onlyActive,
         })}`,
         productCacheConfig.listTtlSeconds,
         fetchProductList,
@@ -1246,6 +1417,53 @@ function cloneMediaDescriptor(image) {
   };
 }
 
+function cloneProductImage(image) {
+  const descriptor = cloneMediaDescriptor(image);
+  if (!descriptor) return null;
+  return { ...descriptor, isMain: !!image.isMain };
+}
+
+function mergeProductImages(
+  existingImages,
+  uploadedImages,
+  removedPublicIds,
+  mainImageIndex,
+) {
+  const removedIds = new Set(removedPublicIds);
+  const keptImages = existingImages.filter(
+    (image) => !removedIds.has(image.public_id),
+  );
+  const mergedImages = [...keptImages, ...uploadedImages];
+
+  if (mergedImages.length === 0) return [];
+
+  let selectedMainIndex = mergedImages.findIndex((image) => image.isMain);
+  const hasRequestedNewMain =
+    mainImageIndex !== undefined &&
+    mainImageIndex !== null &&
+    String(mainImageIndex).trim() !== "";
+
+  // In merge mode, mainImageIndex remains relative to the newly uploaded
+  // files. When it is omitted, preserve the existing main image if possible.
+  if (hasRequestedNewMain && uploadedImages.length > 0) {
+    const parsed = Number(mainImageIndex);
+    if (Number.isFinite(parsed)) {
+      const uploadIndex = Math.min(
+        Math.max(Math.trunc(parsed), 0),
+        uploadedImages.length - 1,
+      );
+      selectedMainIndex = keptImages.length + uploadIndex;
+    }
+  }
+
+  if (selectedMainIndex < 0) selectedMainIndex = 0;
+
+  return mergedImages.map((image, index) => ({
+    ...image,
+    isMain: index === selectedMainIndex,
+  }));
+}
+
 async function createProductService(payload, files = []) {
   const {
     type,
@@ -1465,6 +1683,7 @@ async function updateProductService(id, payload, files = []) {
     variants,
     options,
     mainImageIndex,
+    removedImagePublicIds,
     isActive,
     isFeatured,
   } = payload;
@@ -1668,13 +1887,16 @@ async function updateProductService(id, payload, files = []) {
     product.isFeatured = !!isFeatured;
   }
 
-  let newImages = null;
   let newUploadedImages = [];
-  const oldImages = Array.isArray(product.images)
+  const { useImageMerge, publicIds: removedPublicIds } =
+    parseRemovedImagePublicIds(removedImagePublicIds);
+  const existingImages = Array.isArray(product.images)
     ? product.images
-        .map(cloneMediaDescriptor)
+        .map(cloneProductImage)
         .filter(Boolean)
     : [];
+  const oldImages = existingImages.map(cloneMediaDescriptor).filter(Boolean);
+  let imagesWereUpdated = false;
 
   if (Array.isArray(files) && files.length > 0) {
     const uploadResult = await uploadProductImages(
@@ -1682,10 +1904,34 @@ async function updateProductService(id, payload, files = []) {
       product.slug,
       mainImageIndex,
     );
-    newImages = uploadResult.images;
     newUploadedImages = uploadResult.uploadedImages;
-    product.images = newImages;
+    product.images = useImageMerge
+      ? mergeProductImages(
+          existingImages,
+          uploadResult.images,
+          removedPublicIds,
+          mainImageIndex,
+        )
+      : uploadResult.images;
+    imagesWereUpdated = true;
+  } else if (useImageMerge && removedPublicIds.length > 0) {
+    product.images = mergeProductImages(
+      existingImages,
+      [],
+      removedPublicIds,
+      mainImageIndex,
+    );
+    imagesWereUpdated = true;
   }
+
+  const finalImageKeys = new Set(
+    (Array.isArray(product.images) ? product.images : []).map(
+      mediaDescriptorKey,
+    ),
+  );
+  const imagesToDeleteAfterSave = imagesWereUpdated
+    ? oldImages.filter((image) => !finalImageKeys.has(mediaDescriptorKey(image)))
+    : [];
 
   if (
     product.type === productTypeEnum.VARIANT &&
@@ -1710,14 +1956,9 @@ async function updateProductService(id, payload, files = []) {
   try {
     const updated = await product.save();
 
-    // Only remove replaced media after the product has saved successfully.
-    if (Array.isArray(newUploadedImages) && newUploadedImages.length > 0) {
-      const newKeys = new Set(newUploadedImages.map(mediaDescriptorKey));
-      for (const oldImage of oldImages) {
-        if (!newKeys.has(mediaDescriptorKey(oldImage))) {
-          await deleteImage(oldImage);
-        }
-      }
+    // Only remove replaced or explicitly removed media after a successful save.
+    for (const oldImage of imagesToDeleteAfterSave) {
+      await deleteImage(oldImage);
     }
 
     await invalidateProductCaches(id);

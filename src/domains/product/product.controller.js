@@ -13,7 +13,12 @@ import {
 
 export const getProducts = asyncHandler(async (req, res) => {
   const userId = req.user?._id || null;
-  const result = await getProductsService(req.query, req.lang, {}, userId);
+  const result = await getProductsService(
+    req.query,
+    req.lang,
+    { onlyActive: true },
+    userId,
+  );
 
   res.status(200).json(result);
 });
@@ -76,7 +81,8 @@ export const createProduct = asyncHandler(async (req, res) => {
 });
 
 export const updateProduct = asyncHandler(async (req, res) => {
-  console.log("updateProduct req.body:", req.body);
+  console.log("updateProduct req.files:", req.files);
+  console.log("updateProduct req.body:", JSON.stringify(req.body, null, 2));
   const updated = await updateProductService(
     req.params.id,
     req.body,

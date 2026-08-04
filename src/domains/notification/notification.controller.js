@@ -53,9 +53,7 @@ export const registerGuestDevice = asyncHandler(async (req, res) => {
   const guestId = getGuestId(req);
   if (!guestId) {
     throw new ApiError("x-guest-id header is required", 400);
-  }
-  console.log("from notification : ",req.headers);
-  
+  }  
 
   const { token, platform, lang } = req.body || {};
 
