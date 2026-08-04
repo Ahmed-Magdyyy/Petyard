@@ -89,6 +89,17 @@ function normalizeTags(tags) {
   return normalizeTagsInput(tags);
 }
 
+function parseProductPriceBound(value, fieldName) {
+  if (value === undefined) return undefined;
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new ApiError(`${fieldName} must be a non-negative number`, 400);
+  }
+
+  return parsed;
+}
+
 /**
  * `removedImagePublicIds` is an opt-in signal for the merge image-update
  * contract. Older clients omit it and retain the legacy replacement behavior.
@@ -478,6 +489,33 @@ function computeProductStockForWarehouse(product, warehouseId) {
   return 0;
 }
 
+function buildInStockFilter(warehouseId, productType) {
+  const stockMatch = warehouseId
+    ? {
+        warehouse: String(warehouseId),
+        quantity: { $gt: 0 },
+      }
+    : { quantity: { $gt: 0 } };
+
+  const simpleFilter = {
+    type: productTypeEnum.SIMPLE,
+    warehouseStocks: { $elemMatch: stockMatch },
+  };
+  const variantFilter = {
+    type: productTypeEnum.VARIANT,
+    variants: {
+      $elemMatch: {
+        warehouseStocks: { $elemMatch: stockMatch },
+      },
+    },
+  };
+
+  if (productType === productTypeEnum.SIMPLE) return simpleFilter;
+  if (productType === productTypeEnum.VARIANT) return variantFilter;
+
+  return { $or: [simpleFilter, variantFilter] };
+}
+
 function computeCardPricingForProduct(product, promoPercent) {
   let cardPrice = typeof product?.price === "number" ? product.price : null;
   let cardDiscountedPrice =
@@ -570,6 +608,7 @@ function mapProductToCardDto(p, { lang, promotion, warehouseId } = {}) {
     slug: p.slug,
     name: pickLocalizedField(p, "name", normalizedLang),
     type: p.type,
+    isActive: p.isActive !== false,
     category,
     subcategory,
     brand,
@@ -774,6 +813,7 @@ function mapProductToDetailDto(
     id: product._id,
     slug: product.slug,
     type: product.type,
+    isActive: product.isActive !== false,
     category,
     subcategory,
     brand,
@@ -890,6 +930,8 @@ async function getProductsService(
     type,
     isFeatured,
     isActive,
+    minPrice,
+    maxPrice,
     collection,
     ...rest
   } = queryParams;
@@ -897,11 +939,12 @@ async function getProductsService(
   const normalizedLang = normalizeLang(lang);
   const {
     includeZeroStockInWarehouse = false,
+    prioritizeInStock = false,
     onlyActive = false,
   } = options || {};
 
   const effectiveWarehouseId =
-    warehouse && !includeZeroStockInWarehouse
+    warehouse && (!includeZeroStockInWarehouse || prioritizeInStock)
       ? String((await resolveEffectiveWarehouse(warehouse)).effectiveWarehouse._id)
       : warehouse;
 
@@ -949,6 +992,36 @@ async function getProductsService(
   // after the optional query filter so ?isActive=false cannot override it.
   if (onlyActive) {
     filter.isActive = true;
+  }
+
+  const parsedMinPrice = parseProductPriceBound(minPrice, "minPrice");
+  const parsedMaxPrice = parseProductPriceBound(maxPrice, "maxPrice");
+  if (
+    parsedMinPrice !== undefined &&
+    parsedMaxPrice !== undefined &&
+    parsedMinPrice > parsedMaxPrice
+  ) {
+    throw new ApiError("minPrice cannot be greater than maxPrice", 400);
+  }
+
+  let priceRangeFilter = null;
+  if (parsedMinPrice !== undefined || parsedMaxPrice !== undefined) {
+    const price = {
+      ...(parsedMinPrice !== undefined && { $gte: parsedMinPrice }),
+      ...(parsedMaxPrice !== undefined && { $lte: parsedMaxPrice }),
+    };
+
+    // Simple products use their product price; variant products match when at
+    // least one variant price is in the requested inclusive range.
+    priceRangeFilter = {
+      $or: [
+        { type: productTypeEnum.SIMPLE, price },
+        {
+          type: productTypeEnum.VARIANT,
+          variants: { $elemMatch: { price } },
+        },
+      ],
+    };
   }
 
   // Collection filter
@@ -1004,61 +1077,15 @@ async function getProductsService(
       // (not just quantity 0, but missing from warehouseStocks entirely)
       // are still returned.
       if (!includeZeroStockInWarehouse) {
-        if (filter.type === productTypeEnum.SIMPLE) {
-          warehouseFilter = {
-            warehouseStocks: {
-              $elemMatch: {
-                warehouse: warehouseId,
-                quantity: { $gt: 0 },
-              },
-            },
-          };
-        } else if (filter.type === productTypeEnum.VARIANT) {
-          warehouseFilter = {
-            variants: {
-              $elemMatch: {
-                warehouseStocks: {
-                  $elemMatch: {
-                    warehouse: warehouseId,
-                    quantity: { $gt: 0 },
-                  },
-                },
-              },
-            },
-          };
-        } else {
-          warehouseFilter = {
-            $or: [
-              {
-                type: productTypeEnum.SIMPLE,
-                warehouseStocks: {
-                  $elemMatch: {
-                    warehouse: warehouseId,
-                    quantity: { $gt: 0 },
-                  },
-                },
-              },
-              {
-                type: productTypeEnum.VARIANT,
-                variants: {
-                  $elemMatch: {
-                    warehouseStocks: {
-                      $elemMatch: {
-                        warehouse: warehouseId,
-                        quantity: { $gt: 0 },
-                      },
-                    },
-                  },
-                },
-              },
-            ],
-          };
-        }
+        warehouseFilter = buildInStockFilter(warehouseId, filter.type);
       }
     }
   }
 
   const andConditions = [filter];
+  if (priceRangeFilter) {
+    andConditions.push(priceRangeFilter);
+  }
   if (warehouseFilter) {
     andConditions.push(warehouseFilter);
   }
@@ -1080,29 +1107,67 @@ async function getProductsService(
   }
 
   const listSelect =
-    "_id slug type name_en name_ar tags price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
+    "_id slug type isActive name_en name_ar tags price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
 
   const fetchProductList = async () => {
     await autoHideExpiredCollectionsThrottled();
 
-    const [totalProductsCount, products] = await Promise.all([
-      countProducts(mongoFilter),
+    const findPage = (pageFilter, pageSkip, pageLimit) =>
       useBestSellerSort
         ? findBestSellingProducts({
-            mongoFilter,
-            skip,
-            limit: limitNum,
+            mongoFilter: pageFilter,
+            skip: pageSkip,
+            limit: pageLimit,
             select: listSelect,
             fallbackSort: sort,
           })
-        : findProducts(mongoFilter, {
-            skip,
-            limit: limitNum,
+        : findProducts(pageFilter, {
+            skip: pageSkip,
+            limit: pageLimit,
             sort,
             select: listSelect,
             lean: true,
-          }),
-    ]);
+          });
+
+    let totalProductsCount;
+    let products;
+
+    if (prioritizeInStock) {
+      const inStockFilter = buildInStockFilter(selectedWarehouseId, filter.type);
+      const inStockMongoFilter = { $and: [mongoFilter, inStockFilter] };
+      const outOfStockMongoFilter = {
+        $and: [mongoFilter, { $nor: [inStockFilter] }],
+      };
+
+      const [totalCount, inStockCount] = await Promise.all([
+        countProducts(mongoFilter),
+        countProducts(inStockMongoFilter),
+      ]);
+      totalProductsCount = totalCount;
+
+      if (skip < inStockCount) {
+        const inStockLimit = Math.min(limitNum, inStockCount - skip);
+        const outOfStockLimit = limitNum - inStockLimit;
+        const [inStockProducts, outOfStockProducts] = await Promise.all([
+          findPage(inStockMongoFilter, skip, inStockLimit),
+          outOfStockLimit > 0
+            ? findPage(outOfStockMongoFilter, 0, outOfStockLimit)
+            : Promise.resolve([]),
+        ]);
+        products = [...inStockProducts, ...outOfStockProducts];
+      } else {
+        products = await findPage(
+          outOfStockMongoFilter,
+          skip - inStockCount,
+          limitNum,
+        );
+      }
+    } else {
+      [totalProductsCount, products] = await Promise.all([
+        countProducts(mongoFilter),
+        findPage(mongoFilter, skip, limitNum),
+      ]);
+    }
 
     const now = new Date();
     const promotionsByProductId = await findActivePromotionsForProducts(
@@ -1132,10 +1197,10 @@ async function getProductsService(
     };
   };
 
-  const shouldCachePublicList = !includeZeroStockInWarehouse;
+  const shouldCachePublicList = onlyActive;
   const productListResult = shouldCachePublicList
     ? await getOrSetCache(
-        `products:list:v1:${await getProductListCacheVersion()}:${normalizedLang}:${stableStringify({
+        `products:list:v2:${await getProductListCacheVersion()}:${normalizedLang}:${stableStringify({
           queryParams,
           warehouse: selectedWarehouseId || null,
           onlyActive,
@@ -2217,6 +2282,7 @@ export async function searchProductsService({
 
     // ── Round 2: product results (uses brandIds from round 1) ─────────────
     const productQFilter = {
+      ...(!includeZeroStock ? { isActive: true } : {}),
       $or: [
         { name_en: regex },
         { name_ar: regex },
@@ -2226,7 +2292,7 @@ export async function searchProductsService({
     };
 
     const listSelect =
-      "_id slug type name_en name_ar price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
+      "_id slug type isActive name_en name_ar price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
 
     // findProducts() already populates brand with name_en, name_ar — we use
     // this to extract brand suggestion text from REAL, in-stock products.

@@ -70,5 +70,5 @@ test("collection product results only include active products", async (t) => {
   );
 
   assert.equal(result.products.results, 0);
-  assert.equal(productFilter.isActive, true);
+  assert.match(JSON.stringify(productFilter), /"isActive":true/);
 });

@@ -13,7 +13,10 @@ import { resolveLocationByCoordinatesService } from '../../src/domains/location/
 import { OrderModel } from '../../src/domains/order/order.model.js';
 import { resolveOrderCartWarehouse } from '../../src/domains/order/order.service.js';
 import { ProductModel } from '../../src/domains/product/product.model.js';
-import { getProductsService } from '../../src/domains/product/product.service.js';
+import {
+  getProductsService,
+  searchProductsService,
+} from '../../src/domains/product/product.service.js';
 import { warehouseFulfillmentStatusEnum } from '../../src/shared/constants/enums.js';
 import { SubcategoryModel } from '../../src/domains/subcategory/subcategory.model.js';
 import { WarehouseModel } from '../../src/domains/warehouse/warehouse.model.js';
@@ -185,6 +188,69 @@ test('public products use fallback warehouse stock', async (t) => {
   assert.doesNotMatch(serializedFilter, new RegExp(String(source._id)));
 });
 
+test('public product listings return out-of-stock items after available items', async (t) => {
+  const { source, fallback } = makeWarehousePair();
+  const inStock = new mongoose.Types.ObjectId();
+  const outOfStock = new mongoose.Types.ObjectId();
+  const findFilters = [];
+
+  mockWarehouseLookup(t, source, fallback);
+  t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
+  t.mock.method(CollectionModel, 'find', () => queryResult([]));
+  t.mock.method(SubcategoryModel, 'find', () => queryResult([]));
+  t.mock.method(ProductModel, 'countDocuments', async (filter) =>
+    filter?.$and ? 1 : 2,
+  );
+  t.mock.method(ProductModel, 'find', (filter) => {
+    findFilters.push(filter);
+    const serializedFilter = JSON.stringify(filter);
+    const product = serializedFilter.includes('"$nor"')
+      ? {
+          _id: outOfStock,
+          slug: 'out-of-stock',
+          type: 'SIMPLE',
+          name_en: 'Out of stock',
+          name_ar: 'Out of stock',
+          price: 100,
+          images: [],
+          warehouseStocks: [{ warehouse: fallback._id, quantity: 0 }],
+          variants: [],
+        }
+      : {
+          _id: inStock,
+          slug: 'in-stock',
+          type: 'SIMPLE',
+          name_en: 'In stock',
+          name_ar: 'In stock',
+          price: 100,
+          images: [],
+          warehouseStocks: [{ warehouse: fallback._id, quantity: 3 }],
+          variants: [],
+        };
+    return queryResult([product]);
+  });
+
+  const result = await getProductsService(
+    { warehouse: String(source._id), limit: 2 },
+    'en',
+    {
+      onlyActive: true,
+      includeZeroStockInWarehouse: true,
+      prioritizeInStock: true,
+    },
+  );
+
+  assert.deepEqual(
+    result.data.map((product) => String(product.id)),
+    [String(inStock), String(outOfStock)],
+  );
+  assert.deepEqual(
+    result.data.map((product) => product.inStock),
+    [true, false],
+  );
+  assert.match(JSON.stringify(findFilters), new RegExp(String(fallback._id)));
+});
+
 test('admin product listings are not forced to active products', async (t) => {
   let productFilter = null;
 
@@ -198,6 +264,34 @@ test('admin product listings are not forced to active products', async (t) => {
   await getProductsService({}, 'en', { includeZeroStockInWarehouse: true });
 
   assert.equal(productFilter.isActive, undefined);
+});
+
+test('price range filters simple products and variant products inclusively', async (t) => {
+  let productFilter = null;
+
+  t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
+  t.mock.method(ProductModel, 'countDocuments', async (filter) => {
+    productFilter = filter;
+    return 0;
+  });
+  t.mock.method(ProductModel, 'find', () => queryResult([]));
+
+  await getProductsService(
+    { minPrice: '50', maxPrice: '100' },
+    'en',
+    { includeZeroStockInWarehouse: true },
+  );
+
+  const priceRange = productFilter.$and.find((condition) => condition.$or);
+  assert.deepEqual(priceRange, {
+    $or: [
+      { type: 'SIMPLE', price: { $gte: 50, $lte: 100 } },
+      {
+        type: 'VARIANT',
+        variants: { $elemMatch: { price: { $gte: 50, $lte: 100 } } },
+      },
+    ],
+  });
 });
 
 test('q search includes simple and variant SKUs', async (t) => {
@@ -222,6 +316,27 @@ test('q search includes simple and variant SKUs', async (t) => {
   assert.ok(searchCondition.$or.some((condition) => condition['variants.sku']));
 });
 
+test('public live search excludes inactive products', async (t) => {
+  const { source, fallback } = makeWarehousePair();
+  let productFilter = null;
+
+  mockWarehouseLookup(t, source, fallback);
+  t.mock.method(BrandModel, 'find', () => queryResult([]));
+  t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
+  t.mock.method(ProductModel, 'find', (filter) => {
+    productFilter = filter;
+    return queryResult([]);
+  });
+
+  await searchProductsService({
+    q: 'roy',
+    warehouse: String(source._id),
+    lang: 'en',
+  });
+
+  assert.equal(productFilter.$and[0].isActive, true);
+});
+
 test('best_seller sorts products by quantities sold before unsold products', async (t) => {
   const firstSold = new mongoose.Types.ObjectId();
   const secondSold = new mongoose.Types.ObjectId();
@@ -231,6 +346,7 @@ test('best_seller sorts products by quantities sold before unsold products', asy
     _id: id,
     slug: name.toLowerCase(),
     type: 'SIMPLE',
+    isActive: name !== 'First sold',
     name_en: name,
     name_ar: name,
     price: 100,
@@ -289,6 +405,10 @@ test('best_seller sorts products by quantities sold before unsold products', asy
   assert.deepEqual(
     result.data.map((product) => String(product.id)),
     [String(secondSold), String(firstSold), String(unsold)],
+  );
+  assert.deepEqual(
+    result.data.map((product) => product.isActive),
+    [true, false, true],
   );
 });
 

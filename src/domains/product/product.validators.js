@@ -424,6 +424,25 @@ export const listProductsQueryValidator = [
     .isBoolean()
     .withMessage("isActive must be a boolean"),
 
+  query("minPrice")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("minPrice must be a non-negative number"),
+
+  query("maxPrice")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("maxPrice must be a non-negative number")
+    .custom((maxPrice, { req }) => {
+      if (
+        req.query.minPrice !== undefined &&
+        Number(req.query.minPrice) > Number(maxPrice)
+      ) {
+        throw new Error("minPrice cannot be greater than maxPrice");
+      }
+      return true;
+    }),
+
   query("collection")
     .optional()
     .isMongoId()
@@ -469,6 +488,34 @@ export const adminSearchProductsQueryValidator = [
     .isMongoId()
     .withMessage("warehouse must be a valid id"),
 
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 20 })
+    .withMessage("limit must be an integer between 1 and 20"),
+
+  validatorMiddleware,
+];
+
+export const commitProductSearchValidator = [
+  body("q")
+    .exists()
+    .withMessage("q is required")
+    .bail()
+    .isString()
+    .withMessage("q must be a string")
+    .bail()
+    .customSanitizer((value) =>
+      value.trim().replace(/\s+/gu, " "),
+    )
+    .custom((value) => Array.from(value).length >= 2)
+    .withMessage("q must be at least 2 characters")
+    .custom((value) => Array.from(value).length <= 100)
+    .withMessage("q must not exceed 100 characters"),
+
+  validatorMiddleware,
+];
+
+export const popularProductSearchesQueryValidator = [
   query("limit")
     .optional()
     .isInt({ min: 1, max: 20 })

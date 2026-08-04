@@ -10,13 +10,22 @@ import {
   deleteProductService,
   searchProductsService,
 } from "./product.service.js";
+import {
+  commitProductSearchService,
+  getPopularProductSearchesService,
+  getProductSearchHistoryService,
+} from "./productSearchHistory.service.js";
 
 export const getProducts = asyncHandler(async (req, res) => {
   const userId = req.user?._id || null;
   const result = await getProductsService(
     req.query,
     req.lang,
-    { onlyActive: true },
+    {
+      onlyActive: true,
+      includeZeroStockInWarehouse: true,
+      prioritizeInStock: true,
+    },
     userId,
   );
 
@@ -158,4 +167,27 @@ export const searchProductsForAdmin = asyncHandler(async (req, res) => {
   });
 
   res.status(200).json(result);
+});
+
+export const commitProductSearch = asyncHandler(async (req, res) => {
+  const data = await commitProductSearchService({
+    userId: req.user._id,
+    q: req.body.q,
+  });
+
+  res.status(200).json({ data });
+});
+
+export const getProductSearchHistory = asyncHandler(async (req, res) => {
+  const data = await getProductSearchHistoryService({ userId: req.user._id });
+
+  res.status(200).json({ data });
+});
+
+export const getPopularProductSearches = asyncHandler(async (req, res) => {
+  const data = await getPopularProductSearchesService({
+    limit: req.query.limit === undefined ? 10 : Number(req.query.limit),
+  });
+
+  res.status(200).json({ data });
 });

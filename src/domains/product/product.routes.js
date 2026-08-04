@@ -10,6 +10,9 @@ import {
   deleteProduct,
   searchProducts,
   searchProductsForAdmin,
+  commitProductSearch,
+  getProductSearchHistory,
+  getPopularProductSearches,
 } from "./product.controller.js";
 
 import {
@@ -32,6 +35,8 @@ import {
   listProductsQueryValidator,
   searchProductsQueryValidator,
   adminSearchProductsQueryValidator,
+  commitProductSearchValidator,
+  popularProductSearchesQueryValidator,
 } from "./product.validators.js";
 
 import { uploadMultipleImages } from "../../shared/middlewares/uploadMiddleware.js";
@@ -78,6 +83,23 @@ router.get(
   scopeProductsToModeratorWarehouses,
   adminSearchProductsQueryValidator,
   searchProductsForAdmin,
+);
+
+// These routes intentionally sit apart from GET /search: live typeahead is
+// read-only, while history is only written after an explicit committed search.
+router.post(
+  "/search/history",
+  protect,
+  commitProductSearchValidator,
+  commitProductSearch,
+);
+
+router.get("/search/history", protect, getProductSearchHistory);
+
+router.get(
+  "/search/popular",
+  popularProductSearchesQueryValidator,
+  getPopularProductSearches,
 );
 
 router.get("/:id", optionalProtect, productIdParamValidator, getProduct);
