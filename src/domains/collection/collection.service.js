@@ -233,6 +233,7 @@ export async function getCollectionWithProductsService(
   const products = await getProductsService(
     { ...queryParams, collection: id },
     lang,
+    { onlyActive: true },
   );
   return { collection, products };
 }
