@@ -148,12 +148,6 @@ export const createProductValidator = [
 
   body("type").custom((value, { req }) => {
     if (value === productTypeEnum.SIMPLE) {
-      if (
-        !Array.isArray(req.body.warehouseStocks) ||
-        req.body.warehouseStocks.length === 0
-      ) {
-        throw new Error("warehouseStocks is required for SIMPLE products");
-      }
       if (req.body.price == null) {
         throw new Error("price is required for SIMPLE products");
       }
@@ -514,6 +508,9 @@ export const commitProductSearchValidator = [
 
   validatorMiddleware,
 ];
+
+export const removeProductSearchHistoryTermValidator =
+  commitProductSearchValidator;
 
 export const popularProductSearchesQueryValidator = [
   query("limit")

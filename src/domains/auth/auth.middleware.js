@@ -79,6 +79,41 @@ export const protect = asyncHandler(async (req, res, next) => {
   next();
 });
 
+// Accept either a normal authenticated user or the same x-guest-id identity
+// used by carts, favorites, guest orders, and guest notification devices.
+export const protectUserOrGuest = asyncHandler(async (req, res, next) => {
+  if (req.headers.authorization?.startsWith("Bearer")) {
+    const currentUser = await resolveAuthenticatedUser(req);
+
+    if (!currentUser.phoneVerified && !isPhoneVerificationRoute(req)) {
+      throw new ApiError(
+        "No verified phone found. Please verify your phone first",
+        403,
+      );
+    }
+
+    req.user = currentUser;
+    req.guestId = null;
+    return next();
+  }
+
+  const headerValue = req.headers["x-guest-id"];
+  const guestId =
+    typeof headerValue === "string" && headerValue.trim()
+      ? headerValue.trim()
+      : null;
+
+  if (!guestId) {
+    throw new ApiError(
+      "Authentication or x-guest-id header is required",
+      401,
+    );
+  }
+
+  req.guestId = guestId;
+  return next();
+});
+
 export const protectAllowUnverifiedPhone = asyncHandler(
   async (req, res, next) => {
     req.user = await resolveAuthenticatedUser(req);

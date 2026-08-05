@@ -56,11 +56,36 @@ import { brandExists } from "../brand/brand.repository.js";
 import { BrandModel } from "../brand/brand.model.js";
 import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
 import { CategoryModel } from "../category/category.model.js";
-import { countWarehouses } from "../warehouse/warehouse.repository.js";
+import {
+  countWarehouses,
+  findWarehouseIds,
+} from "../warehouse/warehouse.repository.js";
 import { FavoriteModel } from "../favorite/favorite.model.js";
 import { OrderModel } from "../order/order.model.js";
+import { queueProductForSubcategoryDigest } from "../subcategorySubscription/subcategoryProductDigest.service.js";
+import {
+  cleanupRestockSubscriptionsForProduct,
+  getMyRestockSubscriptionsService,
+  getRestockSubscribedProductIdsForUser,
+  getRestockSubscriptionStatusService,
+  processRestockSubscriptionsForProduct,
+} from "../restockSubscription/restockSubscription.service.js";
+import { completeWarehouseStocks } from "./productWarehouseStocks.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+
+const PRODUCT_CARD_SELECT =
+  "_id slug type isActive name_en name_ar tags price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
+
+function processRestockSubscriptionsBestEffort(productId, warehouseIds) {
+  processRestockSubscriptionsForProduct({ productId, warehouseIds }).catch(
+    (error) =>
+      console.error(
+        "[Product] Failed to process restock subscriptions:",
+        error?.message || error,
+      ),
+  );
+}
 
 async function getUserFavoriteProductIds(userId) {
   if (!userId) return new Set();
@@ -71,8 +96,20 @@ async function getUserFavoriteProductIds(userId) {
   return new Set(fav.items.map((item) => String(item.product)));
 }
 
+async function getFavoriteProductIdsForIdentity({ userId, guestId }) {
+  if (userId) return getUserFavoriteProductIds(userId);
+  if (!guestId) return new Set();
+
+  const favorite = await FavoriteModel.findOne({ guestId })
+    .select("items.product")
+    .lean();
+  if (!favorite || !Array.isArray(favorite.items)) return new Set();
+  return new Set(favorite.items.map((item) => String(item.product)));
+}
+
 export {
   getProductsService,
+  getMyRestockSubscribedProductsService,
   getProductByIdService,
   createProductService,
   updateProductService,
@@ -917,6 +954,7 @@ async function getProductsService(
   lang = "en",
   options = {},
   userId = null,
+  guestId = null,
 ) {
   const {
     page,
@@ -1106,9 +1144,6 @@ async function getProductsService(
     sort = buildSort(queryParams, "-createdAt");
   }
 
-  const listSelect =
-    "_id slug type isActive name_en name_ar tags price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
-
   const fetchProductList = async () => {
     await autoHideExpiredCollectionsThrottled();
 
@@ -1118,14 +1153,14 @@ async function getProductsService(
             mongoFilter: pageFilter,
             skip: pageSkip,
             limit: pageLimit,
-            select: listSelect,
+            select: PRODUCT_CARD_SELECT,
             fallbackSort: sort,
           })
         : findProducts(pageFilter, {
             skip: pageSkip,
             limit: pageLimit,
             sort,
-            select: listSelect,
+            select: PRODUCT_CARD_SELECT,
             lean: true,
           });
 
@@ -1183,6 +1218,7 @@ async function getProductsService(
         warehouseId: selectedWarehouseId,
       });
       dto.isFavorite = false;
+      dto.isRestockNotificationRequested = false;
       return dto;
     });
 
@@ -1210,14 +1246,26 @@ async function getProductsService(
       )
     : await fetchProductList();
 
-  if (!userId) {
+  if (!userId && !guestId) {
     return productListResult;
   }
 
-  const favoriteProductIds = await getUserFavoriteProductIds(userId);
+  const productIds = (productListResult.data || []).map((dto) => dto.id);
+  const [favoriteProductIds, restockSubscribedProductIds] = await Promise.all([
+    getFavoriteProductIdsForIdentity({ userId, guestId }),
+    getRestockSubscribedProductIdsForUser({
+      userId,
+      guestId,
+      productIds,
+      warehouseId: selectedWarehouseId,
+    }),
+  ]);
   const data = (productListResult.data || []).map((dto) => ({
     ...dto,
     isFavorite: favoriteProductIds.has(String(dto.id)),
+    isRestockNotificationRequested: restockSubscribedProductIds.has(
+      String(dto.id),
+    ),
   }));
 
   return {
@@ -1226,11 +1274,65 @@ async function getProductsService(
   };
 }
 
+async function getMyRestockSubscribedProductsService({
+  userId,
+  guestId,
+  lang = "en",
+} = {}) {
+  const normalizedLang = normalizeLang(lang);
+  const subscriptions = await getMyRestockSubscriptionsService({
+    userId,
+    guestId,
+  });
+
+  const productIds = [
+    ...new Set(
+      subscriptions
+        .map((subscription) => subscription.productId)
+        .filter(Boolean)
+        .map(String),
+    ),
+  ];
+  if (!productIds.length) return [];
+
+  const products = await findProducts(
+    { _id: { $in: productIds }, isActive: true },
+    { select: PRODUCT_CARD_SELECT, lean: true },
+  );
+  const [promotionsByProductId, favoriteProductIds] = await Promise.all([
+    findActivePromotionsForProducts(products, new Date()),
+    getFavoriteProductIdsForIdentity({ userId, guestId }),
+  ]);
+  const productById = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
+
+  return subscriptions
+    .map((subscription) => {
+      const product = productById.get(String(subscription.productId));
+      if (!product) return null;
+
+      return {
+        ...mapProductToCardDto(product, {
+          lang: normalizedLang,
+          promotion:
+            promotionsByProductId.get(String(product._id)) || null,
+          warehouseId: subscription.warehouseId,
+        }),
+        warehouseId: subscription.warehouseId,
+        isFavorite: favoriteProductIds.has(String(product._id)),
+        isRestockNotificationRequested: true,
+      };
+    })
+    .filter(Boolean);
+}
+
 async function getProductByIdService(
   id,
   lang = "en",
   user = null,
   warehouseId = null,
+  guestId = null,
 ) {
   const normalizedLang = normalizeLang(lang);
   const includeAllLanguages =
@@ -1277,9 +1379,23 @@ async function getProductByIdService(
   // isFavorite is user-specific, so add it outside the cache.
   // Shallow-clone to avoid mutating the cached object.
   const userId = user?._id || user?.id || null;
-  const favoriteProductIds = await getUserFavoriteProductIds(userId);
+  const favoriteProductIds = await getFavoriteProductIdsForIdentity({
+    userId,
+    guestId,
+  });
   const output = { ...result };
   output.isFavorite = favoriteProductIds.has(String(id));
+  output.isRestockNotificationRequested = false;
+
+  if ((userId || guestId) && warehouseId) {
+    const restockStatus = await getRestockSubscriptionStatusService({
+      userId,
+      guestId,
+      productId: id,
+      warehouseId,
+    });
+    output.isRestockNotificationRequested = restockStatus.subscribed;
+  }
 
   return output;
 }
@@ -1342,12 +1458,22 @@ function mapWarehouseStocks(rawStocks) {
   }));
 }
 
+async function getAllWarehouseIds() {
+  const warehouses = await findWarehouseIds();
+  return warehouses.map((warehouse) => warehouse._id);
+}
+
 // Maps raw variant payloads into clean variant subdocuments.
 // - productImages: used to resolve imageIndex into a concrete image object.
 // - existingVariantsById (optional): when provided, and when the payload
 //   includes an _id that matches an existing variant, we reuse that _id so
 //   variant identity stays stable across updates (important for carts/orders).
-function mapVariantPayloads(rawVariants, productImages, existingVariantsById) {
+function mapVariantPayloads(
+  rawVariants,
+  productImages,
+  existingVariantsById,
+  warehouseIds,
+) {
   if (!Array.isArray(rawVariants)) return [];
 
   const hasProductImages =
@@ -1381,7 +1507,9 @@ function mapVariantPayloads(rawVariants, productImages, existingVariantsById) {
             }))
             .filter((o) => o.name && o.value)
         : [],
-      warehouseStocks: mapWarehouseStocks(v.warehouseStocks),
+      warehouseStocks: warehouseIds
+        ? completeWarehouseStocks(v.warehouseStocks, warehouseIds)
+        : mapWarehouseStocks(v.warehouseStocks),
       isDefault,
     };
 
@@ -1617,22 +1745,14 @@ async function createProductService(payload, files = []) {
   let simpleWarehouseStocks = [];
   let simplePrice;
   let simpleDiscountedPrice;
+  let allWarehouseIds;
 
   if (normalizedType === productTypeEnum.SIMPLE) {
-    if (!Array.isArray(warehouseStocks) || warehouseStocks.length === 0) {
-      throw new ApiError(
-        "warehouseStocks is required for SIMPLE products",
-        400,
-      );
-    }
-
-    const warehouseIds = warehouseStocks
-      .filter((ws) => ws && ws.warehouse)
-      .map((ws) => ws.warehouse);
-
-    await ensureWarehousesExist(warehouseIds);
-
-    simpleWarehouseStocks = mapWarehouseStocks(warehouseStocks);
+    allWarehouseIds = await getAllWarehouseIds();
+    simpleWarehouseStocks = completeWarehouseStocks(
+      warehouseStocks,
+      allWarehouseIds,
+    );
     simplePrice =
       typeof price === "number"
         ? price
@@ -1655,23 +1775,7 @@ async function createProductService(payload, files = []) {
     }
 
     validateVariantOptionsMatrix(normalizedOptions, variants);
-
-    const allWarehouseIds = [];
-    for (const v of variants) {
-      if (!Array.isArray(v.warehouseStocks) || v.warehouseStocks.length === 0) {
-        throw new ApiError(
-          "Each variant must have at least one warehouseStocks entry",
-          400,
-        );
-      }
-      for (const ws of v.warehouseStocks) {
-        if (ws && ws.warehouse) {
-          allWarehouseIds.push(ws.warehouse);
-        }
-      }
-    }
-
-    await ensureWarehousesExist(allWarehouseIds);
+    allWarehouseIds = await getAllWarehouseIds();
   }
 
   const { images, uploadedImages } = await uploadProductImages(
@@ -1684,7 +1788,12 @@ async function createProductService(payload, files = []) {
     // Map each variant to a single image (if provided) by referencing
     // the already-uploaded product images array. This avoids duplicate
     // uploads while still giving each variant its own images field.
-    variantDocs = mapVariantPayloads(variants, images);
+    variantDocs = mapVariantPayloads(
+      variants,
+      images,
+      undefined,
+      allWarehouseIds,
+    );
   }
 
   try {
@@ -1716,6 +1825,13 @@ async function createProductService(payload, files = []) {
     });
 
     await invalidateProductCaches(product._id);
+
+    queueProductForSubcategoryDigest({ product }).catch((error) =>
+      console.error(
+        "[Product] Failed to queue subcategory digest:",
+        error?.message || error,
+      ),
+    );
 
     return product;
   } catch (err) {
@@ -1873,6 +1989,7 @@ async function updateProductService(id, payload, files = []) {
       : [];
 
   let shouldRemapVariantsFromPayload = false;
+  let variantWarehouseIds;
 
   if (product.type === productTypeEnum.SIMPLE) {
     if (price !== undefined) {
@@ -1894,20 +2011,11 @@ async function updateProductService(id, payload, files = []) {
     }
 
     if (warehouseStocks !== undefined) {
-      if (!Array.isArray(warehouseStocks) || warehouseStocks.length === 0) {
-        throw new ApiError(
-          "warehouseStocks is required for SIMPLE products",
-          400,
-        );
-      }
-
-      const warehouseIds = warehouseStocks
-        .filter((ws) => ws && ws.warehouse)
-        .map((ws) => ws.warehouse);
-
-      await ensureWarehousesExist(warehouseIds);
-
-      product.warehouseStocks = mapWarehouseStocks(warehouseStocks);
+      const warehouseIds = await getAllWarehouseIds();
+      product.warehouseStocks = completeWarehouseStocks(
+        warehouseStocks,
+        warehouseIds,
+      );
     }
   }
 
@@ -1917,23 +2025,7 @@ async function updateProductService(id, payload, files = []) {
     }
 
     validateVariantOptionsMatrix(currentVariantOptions, variants);
-
-    const allWarehouseIds = [];
-    for (const v of variants) {
-      if (!Array.isArray(v.warehouseStocks) || v.warehouseStocks.length === 0) {
-        throw new ApiError(
-          "Each variant must have at least one warehouseStocks entry",
-          400,
-        );
-      }
-      for (const ws of v.warehouseStocks) {
-        if (ws && ws.warehouse) {
-          allWarehouseIds.push(ws.warehouse);
-        }
-      }
-    }
-
-    await ensureWarehousesExist(allWarehouseIds);
+    variantWarehouseIds = await getAllWarehouseIds();
     shouldRemapVariantsFromPayload = true;
   } else if (
     product.type === productTypeEnum.VARIANT &&
@@ -2015,6 +2107,7 @@ async function updateProductService(id, payload, files = []) {
       variants,
       effectiveImages,
       existingVariantsById,
+      variantWarehouseIds,
     );
   }
 
@@ -2027,6 +2120,8 @@ async function updateProductService(id, payload, files = []) {
     }
 
     await invalidateProductCaches(id);
+
+    processRestockSubscriptionsBestEffort(id);
 
     return updated;
   } catch (err) {
@@ -2066,6 +2161,26 @@ async function updateProductStockService(id, payload, warehouseScope) {
   const scopeSet = warehouseScope
     ? new Set(warehouseScope.map(String))
     : null;
+
+  const incomingWarehouseIds =
+    product.type === productTypeEnum.SIMPLE
+      ? (Array.isArray(payload.warehouseStocks)
+          ? payload.warehouseStocks
+          : []
+        )
+          .map((entry) => entry?.warehouse)
+          .filter(Boolean)
+      : (Array.isArray(payload.variants) ? payload.variants : []).flatMap(
+          (variant) =>
+            (Array.isArray(variant?.warehouseStocks)
+              ? variant.warehouseStocks
+              : []
+            )
+              .map((entry) => entry?.warehouse)
+              .filter(Boolean),
+        );
+
+  await ensureWarehousesExist(incomingWarehouseIds);
 
   if (product.type === productTypeEnum.SIMPLE) {
     const incomingStocks = Array.isArray(payload.warehouseStocks)
@@ -2155,6 +2270,8 @@ async function updateProductStockService(id, payload, warehouseScope) {
 
   await invalidateProductCaches(id);
 
+  processRestockSubscriptionsBestEffort(id);
+
   return updated;
 }
 
@@ -2196,6 +2313,13 @@ async function deleteProductService(id) {
   await deleteProductById(id);
 
   await invalidateProductCaches(id);
+
+  cleanupRestockSubscriptionsForProduct(id).catch((error) =>
+    console.error(
+      "[Product] Failed to clean up restock subscriptions:",
+      error?.message || error,
+    ),
+  );
 }
 
 // ─── Search Suggestions ──────────────────────────────────────────────────────

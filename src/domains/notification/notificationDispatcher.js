@@ -434,6 +434,71 @@ export async function dispatchNotificationToUsers({
 }
 
 /**
+ * Dispatch a push notification to one or more guest identities.
+ * Guests do not have persistent in-app notification inboxes because those
+ * records are owned by a registered User document.
+ */
+export async function dispatchNotificationToGuests({
+  guestIds,
+  notification,
+  action,
+  source,
+  pushOptions,
+}) {
+  const ids = Array.isArray(guestIds)
+    ? Array.from(
+        new Set(
+          guestIds
+            .map((guestId) =>
+              typeof guestId === "string" ? guestId.trim() : "",
+            )
+            .filter(Boolean),
+        ),
+      )
+    : [];
+
+  if (!ids.length) {
+    return { push: null, inApp: null };
+  }
+
+  try {
+    const tokens = await getDistinctDeviceTokens({ guestId: { $in: ids } });
+    const push = await sendPushToTokens({
+      tokens,
+      notification: {
+        title: notification?.title_en || notification?.title || "",
+        body: notification?.body_en || notification?.body || "",
+      },
+      data: {
+        type: action?.type || source?.event || "notification",
+        screen: action?.screen || "",
+        ...(action?.params || {}),
+        ...(source?.referenceId ? { referenceId: source.referenceId } : {}),
+      },
+      pushOptions,
+    });
+
+    return {
+      inApp: null,
+      push: {
+        guestCount: ids.length,
+        deviceCount: tokens.length,
+        ...push,
+      },
+    };
+  } catch (error) {
+    console.error(
+      "[Dispatcher] Failed to send push to guests:",
+      error.message,
+    );
+    return {
+      inApp: null,
+      push: { success: false, error: error.message },
+    };
+  }
+}
+
+/**
  * Broadcast notification to all devices (push only for guests too)
  * In-app only created for registered users
  */

@@ -7,6 +7,8 @@ import warehouseRoutes from "../domains/warehouse/warehouse.routes.js";
 import locationRoutes from "../domains/location/location.routes.js";
 import categoryRoutes from "../domains/category/category.routes.js";
 import subcategoryRoutes from "../domains/subcategory/subcategory.routes.js";
+import subcategorySubscriptionRoutes from "../domains/subcategorySubscription/subcategorySubscription.routes.js";
+import restockSubscriptionRoutes from "../domains/restockSubscription/restockSubscription.routes.js";
 import brandRoutes from "../domains/brand/brand.routes.js";
 import productRoutes from "../domains/product/product.routes.js";
 import cartRoutes from "../domains/cart/cart.routes.js";
@@ -51,6 +53,11 @@ export function mountRoutes(app) {
   app.use("/api/v1/locations", locationRoutes);
   app.use("/api/v1/categories", categoryRoutes);
   app.use("/api/v1/subcategories", subcategoryRoutes);
+  app.use(
+    "/api/v1/subcategory-subscriptions",
+    subcategorySubscriptionRoutes,
+  );
+  app.use("/api/v1/restock-subscriptions", restockSubscriptionRoutes);
   app.use("/api/v1/brands", brandRoutes);
   app.use("/api/v1/collections", collectionRoutes);
   app.use("/api/v1/products", productRoutes);

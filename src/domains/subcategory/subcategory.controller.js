@@ -7,12 +7,20 @@ import {
   deleteSubcategoryService,
 } from "./subcategory.service.js";
 
+function getGuestId(req) {
+  const headerValue = req.headers["x-guest-id"];
+  return typeof headerValue === "string" && headerValue.trim()
+    ? headerValue.trim()
+    : null;
+}
+
 // GET /subcategories
 export const getSubcategories = asyncHandler(async (req, res) => {
   const data = await getSubcategoriesService(
     req.query,
     req.lang,
     req.user || null,
+    req.user ? null : getGuestId(req),
   );
   res.status(200).json({ data });
 });
@@ -23,6 +31,7 @@ export const getSubcategory = asyncHandler(async (req, res) => {
     req.params.id,
     req.lang,
     req.user || null,
+    req.user ? null : getGuestId(req),
   );
   res.status(200).json({ data });
 });

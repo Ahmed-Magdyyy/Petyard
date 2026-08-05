@@ -20,6 +20,8 @@ import {
 } from "../notification/notification.service.js";
 import { deductLoyaltyPointsOnReturnService } from "../loyalty/loyalty.service.js";
 import { refundTransaction } from "../payment/paymob.service.js";
+import { invalidateProductCaches } from "../product/productCache.service.js";
+import { processRestockSubscriptionsForProduct } from "../restockSubscription/restockSubscription.service.js";
 
 const RETURN_WINDOW_DAYS = 14;
 
@@ -326,6 +328,7 @@ export async function processReturnRequestService({
 
   const session = await mongoose.startSession();
   let updatedReturn;
+  let restoredStockContext = null;
 
   try {
     await session.withTransaction(async () => {
@@ -405,6 +408,10 @@ export async function processReturnRequestService({
 
         // ── Restore stock ──
         await restoreStockForOrder({ session, order });
+        restoredStockContext = {
+          productIds: (order.items || []).map((item) => item.product),
+          warehouseId: order.warehouse,
+        };
 
         // ── Update order status ──
         order.status = orderStatusEnum.RETURNED;
@@ -432,6 +439,27 @@ export async function processReturnRequestService({
     });
   } finally {
     session.endSession();
+  }
+
+  if (restoredStockContext) {
+    const productIds = [
+      ...new Set(restoredStockContext.productIds.filter(Boolean).map(String)),
+    ];
+    await invalidateProductCaches(productIds);
+
+    Promise.all(
+      productIds.map((productId) =>
+        processRestockSubscriptionsForProduct({
+          productId,
+          warehouseIds: [String(restoredStockContext.warehouseId)],
+        }),
+      ),
+    ).catch((error) =>
+      console.error(
+        "[Return] Failed to process restock subscriptions:",
+        error?.message || error,
+      ),
+    );
   }
 
   // ── Card refund (external API — must run outside MongoDB transaction) ──

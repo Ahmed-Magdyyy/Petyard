@@ -1,8 +1,9 @@
 import { ApiError } from "../../shared/utils/ApiError.js";
 import {
   findPopularSearches,
-  findUserSearchHistory,
-  upsertUserSearchHistory,
+  findSearchHistory,
+  removeSearchHistoryTerm,
+  upsertSearchHistory,
 } from "./productSearchHistory.repository.js";
 
 const MAX_SEARCH_LENGTH = 100;
@@ -37,9 +38,9 @@ function newestFirst(entries = []) {
     .map(toSearchDto);
 }
 
-export async function commitProductSearchService({ userId, q }) {
+export async function commitProductSearchService({ userId, guestId, q }) {
   const normalizedTerm = normalizeCommittedSearchTerm(q);
-  const history = await upsertUserSearchHistory(userId, {
+  const history = await upsertSearchHistory({ userId, guestId }, {
     ...normalizedTerm,
     searchedAt: new Date(),
   });
@@ -47,8 +48,21 @@ export async function commitProductSearchService({ userId, q }) {
   return newestFirst(history?.entries);
 }
 
-export async function getProductSearchHistoryService({ userId }) {
-  const history = await findUserSearchHistory(userId);
+export async function getProductSearchHistoryService({ userId, guestId }) {
+  const history = await findSearchHistory({ userId, guestId });
+  return newestFirst(history?.entries);
+}
+
+export async function removeProductSearchHistoryTermService({
+  userId,
+  guestId,
+  q,
+}) {
+  const { normalized } = normalizeCommittedSearchTerm(q);
+  const history = await removeSearchHistoryTerm(
+    { userId, guestId },
+    normalized,
+  );
   return newestFirst(history?.entries);
 }
 

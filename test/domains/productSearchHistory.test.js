@@ -8,6 +8,7 @@ import {
   commitProductSearchService,
   getPopularProductSearchesService,
   getProductSearchHistoryService,
+  removeProductSearchHistoryTermService,
 } from "../../src/domains/product/productSearchHistory.service.js";
 import {
   commitProductSearchValidator,
@@ -17,23 +18,38 @@ import {
 function mockHistoryStorage(t) {
   const documents = new Map();
 
+  const identityKey = (filter) =>
+    filter.user ? `user:${String(filter.user)}` : `guest:${filter.guestId}`;
+
   t.mock.method(
     ProductSearchHistoryModel,
     "findOneAndUpdate",
-    (filter, pipeline) => ({
+    (filter, update) => ({
+      select() {
+        return this;
+      },
       lean: async () => {
-        const userId = String(filter.user);
-        const entry =
-          pipeline[0].$set.entries.$let.in.$slice[0].$concatArrays[0][0];
-        const current = documents.get(userId) || { user: filter.user, entries: [] };
-        const entries = [
-          entry,
-          ...current.entries.filter(
-            (existing) => existing.normalized !== entry.normalized,
-          ),
-        ].slice(0, 10);
+        const key = identityKey(filter);
+        const current = documents.get(key) || { ...filter, entries: [] };
+        let entries;
+
+        if (Array.isArray(update)) {
+          const entry =
+            update[0].$set.entries.$let.in.$slice[0].$concatArrays[0][0];
+          entries = [
+            entry,
+            ...current.entries.filter(
+              (existing) => existing.normalized !== entry.normalized,
+            ),
+          ].slice(0, 10);
+        } else {
+          entries = current.entries.filter(
+            (entry) => entry.normalized !== update.$pull.entries.normalized,
+          );
+        }
+
         const updated = { ...current, entries };
-        documents.set(userId, updated);
+        documents.set(key, updated);
         return updated;
       },
     }),
@@ -43,11 +59,35 @@ function mockHistoryStorage(t) {
     select() {
       return this;
     },
-    lean: async () => documents.get(String(filter.user)) || null,
+    lean: async () => documents.get(identityKey(filter)) || null,
   }));
 
   return documents;
 }
+
+test("search-history upserts explicitly enable Mongoose pipeline updates", async (t) => {
+  let receivedOptions;
+
+  t.mock.method(
+    ProductSearchHistoryModel,
+    "findOneAndUpdate",
+    (_filter, _pipeline, options) => {
+      receivedOptions = options;
+      return {
+        lean: async () => ({ entries: [] }),
+      };
+    },
+  );
+
+  await commitProductSearchService({
+    userId: new mongoose.Types.ObjectId(),
+    q: "Royal Canin",
+  });
+
+  assert.equal(receivedOptions.updatePipeline, true);
+  assert.equal(receivedOptions.upsert, true);
+  assert.equal(receivedOptions.new, true);
+});
 
 test("committed history stays at ten unique terms and repeated terms move to the front", async (t) => {
   const documents = mockHistoryStorage(t);
@@ -57,7 +97,7 @@ test("committed history stays at ten unique terms and repeated terms move to the
     await commitProductSearchService({ userId, q: `Search ${index}` });
   }
 
-  const afterEleven = documents.get(String(userId));
+  const afterEleven = documents.get(`user:${String(userId)}`);
   assert.equal(afterEleven.entries.length, 10);
   assert.equal(afterEleven.entries[0].q, "Search 10");
   assert.equal(afterEleven.entries.at(-1).q, "Search 1");
@@ -73,6 +113,83 @@ test("committed history stays at ten unique terms and repeated terms move to the
     recent.filter((entry) => entry.q.toLocaleLowerCase() === "search 5").length,
     1,
   );
+});
+
+test("guests can save, list, and remove only their own search terms", async (t) => {
+  mockHistoryStorage(t);
+  const guestId = "guest-search-history";
+  const otherGuestId = "guest-search-history-other";
+
+  await commitProductSearchService({ guestId, q: "Royal Canin" });
+  await commitProductSearchService({ guestId, q: "Cat Food" });
+  await commitProductSearchService({
+    guestId: otherGuestId,
+    q: "Royal Canin",
+  });
+
+  const remaining = await removeProductSearchHistoryTermService({
+    guestId,
+    q: "  ROYAL   CANIN ",
+  });
+
+  assert.deepEqual(remaining.map((entry) => entry.q), ["Cat Food"]);
+  assert.deepEqual(
+    (await getProductSearchHistoryService({ guestId })).map(
+      (entry) => entry.q,
+    ),
+    ["Cat Food"],
+  );
+  assert.deepEqual(
+    (await getProductSearchHistoryService({ guestId: otherGuestId })).map(
+      (entry) => entry.q,
+    ),
+    ["Royal Canin"],
+  );
+});
+
+test("search-history ownership and indexes support either one user or one guest", async () => {
+  const userHistory = new ProductSearchHistoryModel({
+    user: new mongoose.Types.ObjectId(),
+    entries: [],
+  });
+  const guestHistory = new ProductSearchHistoryModel({
+    guestId: " guest-search-owner ",
+    entries: [],
+  });
+
+  await userHistory.validate();
+  await guestHistory.validate();
+  assert.equal(guestHistory.guestId, "guest-search-owner");
+
+  await assert.rejects(
+    new ProductSearchHistoryModel({ entries: [] }).validate(),
+    /exactly one user or guest/i,
+  );
+  await assert.rejects(
+    new ProductSearchHistoryModel({
+      user: new mongoose.Types.ObjectId(),
+      guestId: "guest-search-owner",
+      entries: [],
+    }).validate(),
+    /exactly one user or guest/i,
+  );
+
+  const indexes = ProductSearchHistoryModel.schema.indexes();
+  const userIndex = indexes.find(
+    ([fields]) => fields.user === 1 && Object.keys(fields).length === 1,
+  );
+  const guestIndex = indexes.find(
+    ([fields]) => fields.guestId === 1 && Object.keys(fields).length === 1,
+  );
+
+  assert.equal(userIndex[1].unique, true);
+  assert.deepEqual(userIndex[1].partialFilterExpression, {
+    user: { $type: "objectId" },
+  });
+  assert.equal(guestIndex[1].unique, true);
+  assert.deepEqual(guestIndex[1].partialFilterExpression, {
+    guestId: { $type: "string" },
+  });
 });
 
 test("search history is isolated to the authenticated user", async (t) => {
@@ -109,7 +226,7 @@ test("popular searches aggregate distinct users, preserve ranking, and respect t
     { q: "Royal Canin", userCount: 4 },
     { q: "Cat Food", userCount: 2 },
   ]);
-  assert.deepEqual(receivedPipeline[2].$group.users, { $addToSet: "$user" });
+  assert.ok(receivedPipeline[2].$group.identities.$addToSet.$cond);
   assert.deepEqual(receivedPipeline[4], { $match: { userCount: { $gte: 2 } } });
   assert.deepEqual(receivedPipeline[5], {
     $sort: { userCount: -1, mostRecentAt: -1, q: 1 },

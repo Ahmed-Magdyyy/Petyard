@@ -12,6 +12,7 @@ import { PetModel } from "../../domains/pet/pet.model.js";
 import { serviceReservationStatusEnum } from "../constants/enums.js";
 import { dispatchNotification } from "../../domains/notification/notificationDispatcher.js";
 import { deleteExpiredNotificationsService } from "../../domains/notification/inAppNotification.service.js";
+import { processDueSubcategoryProductDigests } from "../../domains/subcategorySubscription/subcategoryProductDigest.service.js";
 
 let initialized = false;
 
@@ -217,6 +218,22 @@ async function cleanupExpiredNotifications() {
   }
 }
 
+async function sendSubcategoryProductDigests() {
+  try {
+    const result = await processDueSubcategoryProductDigests();
+    if (result.claimed > 0 || result.failed > 0) {
+      console.log("[notification.jobs] Subcategory digests:", result);
+    }
+    return result;
+  } catch (error) {
+    console.error(
+      "[notification.jobs] Subcategory digest error:",
+      error?.message || error,
+    );
+    return { error: error?.message || String(error) };
+  }
+}
+
 /**
  * Start all notification cron jobs
  */
@@ -238,6 +255,15 @@ export function startNotificationJobs() {
   cron.schedule("0 22 * * *", async () => {
     await cleanupExpiredNotifications();
   });
+
+  // Process due daily subcategory digests. The digest service computes the
+  // 8 PM Cairo delivery window and claims make this safe across instances.
+  cron.schedule("*/5 * * * *", async () => {
+    await sendSubcategoryProductDigests();
+  });
+
+  // Catch up promptly after downtime instead of waiting for the next tick.
+  sendSubcategoryProductDigests();
 
   console.log("[notification.jobs] Notification cron jobs started");
 }

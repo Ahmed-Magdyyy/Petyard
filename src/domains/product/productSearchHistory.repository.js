@@ -1,14 +1,27 @@
 import { ProductSearchHistoryModel } from "./productSearchHistory.model.js";
 
-export async function upsertUserSearchHistory(userId, entry) {
+export function buildProductSearchHistoryIdentityFilter({ userId, guestId }) {
+  if (userId) return { user: userId };
+
+  const normalizedGuestId =
+    typeof guestId === "string" ? guestId.trim() : "";
+  if (normalizedGuestId) return { guestId: normalizedGuestId };
+
+  throw new Error("Exactly one of userId or guestId is required");
+}
+
+export async function upsertSearchHistory(identity, entry) {
   const now = entry.searchedAt;
+  const owner = buildProductSearchHistoryIdentityFilter(identity);
+  const ownerField = owner.user ? "user" : "guestId";
+  const ownerValue = owner[ownerField];
 
   // A pipeline update keeps the operation atomic: concurrent commits cannot
   // create duplicate normalized terms or grow the embedded history past ten.
   const update = [
     {
       $set: {
-        user: { $ifNull: ["$user", userId] },
+        [ownerField]: { $ifNull: [`$${ownerField}`, ownerValue] },
         entries: {
           $let: {
             vars: {
@@ -40,9 +53,9 @@ export async function upsertUserSearchHistory(userId, entry) {
   ];
 
   const runUpdate = (upsert) => ProductSearchHistoryModel.findOneAndUpdate(
-    { user: userId },
+    owner,
     update,
-    { upsert, new: true },
+    { upsert, new: true, updatePipeline: true },
   ).lean();
 
   try {
@@ -57,8 +70,20 @@ export async function upsertUserSearchHistory(userId, entry) {
   }
 }
 
-export function findUserSearchHistory(userId) {
-  return ProductSearchHistoryModel.findOne({ user: userId })
+export function findSearchHistory(identity) {
+  return ProductSearchHistoryModel.findOne(
+    buildProductSearchHistoryIdentityFilter(identity),
+  )
+    .select("entries")
+    .lean();
+}
+
+export function removeSearchHistoryTerm(identity, normalized) {
+  return ProductSearchHistoryModel.findOneAndUpdate(
+    buildProductSearchHistoryIdentityFilter(identity),
+    { $pull: { entries: { normalized } } },
+    { new: true },
+  )
     .select("entries")
     .lean();
 }
@@ -71,7 +96,15 @@ export function findPopularSearches(limit) {
       $group: {
         _id: "$entries.normalized",
         q: { $first: "$entries.q" },
-        users: { $addToSet: "$user" },
+        identities: {
+          $addToSet: {
+            $cond: [
+              { $ne: [{ $ifNull: ["$user", null] }, null] },
+              { $concat: ["user:", { $toString: "$user" }] },
+              { $concat: ["guest:", "$guestId"] },
+            ],
+          },
+        },
         mostRecentAt: { $max: "$entries.searchedAt" },
       },
     },
@@ -79,7 +112,7 @@ export function findPopularSearches(limit) {
       $project: {
         _id: 0,
         q: 1,
-        userCount: { $size: "$users" },
+        userCount: { $size: "$identities" },
         mostRecentAt: 1,
       },
     },

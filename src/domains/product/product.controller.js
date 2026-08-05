@@ -14,10 +14,19 @@ import {
   commitProductSearchService,
   getPopularProductSearchesService,
   getProductSearchHistoryService,
+  removeProductSearchHistoryTermService,
 } from "./productSearchHistory.service.js";
+
+function getGuestId(req) {
+  const headerValue = req.headers["x-guest-id"];
+  return typeof headerValue === "string" && headerValue.trim()
+    ? headerValue.trim()
+    : null;
+}
 
 export const getProducts = asyncHandler(async (req, res) => {
   const userId = req.user?._id || null;
+  const guestId = userId ? null : getGuestId(req);
   const result = await getProductsService(
     req.query,
     req.lang,
@@ -27,6 +36,7 @@ export const getProducts = asyncHandler(async (req, res) => {
       prioritizeInStock: true,
     },
     userId,
+    guestId,
   );
 
   res.status(200).json(result);
@@ -73,11 +83,13 @@ export const getProductsForAdmin = asyncHandler(async (req, res) => {
 });
 
 export const getProduct = asyncHandler(async (req, res) => {
+  const guestId = req.user ? null : getGuestId(req);
   const data = await getProductByIdService(
     req.params.id,
     req.lang,
     req.user || null,
     req.query.warehouse || null,
+    guestId,
   );
 
   res.status(200).json({ data });
@@ -171,7 +183,8 @@ export const searchProductsForAdmin = asyncHandler(async (req, res) => {
 
 export const commitProductSearch = asyncHandler(async (req, res) => {
   const data = await commitProductSearchService({
-    userId: req.user._id,
+    userId: req.user?._id,
+    guestId: req.guestId,
     q: req.body.q,
   });
 
@@ -179,7 +192,20 @@ export const commitProductSearch = asyncHandler(async (req, res) => {
 });
 
 export const getProductSearchHistory = asyncHandler(async (req, res) => {
-  const data = await getProductSearchHistoryService({ userId: req.user._id });
+  const data = await getProductSearchHistoryService({
+    userId: req.user?._id,
+    guestId: req.guestId,
+  });
+
+  res.status(200).json({ data });
+});
+
+export const removeProductSearchHistoryTerm = asyncHandler(async (req, res) => {
+  const data = await removeProductSearchHistoryTermService({
+    userId: req.user?._id,
+    guestId: req.guestId,
+    q: req.body.q,
+  });
 
   res.status(200).json({ data });
 });

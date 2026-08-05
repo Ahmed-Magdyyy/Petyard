@@ -174,6 +174,25 @@ export async function registerDeviceForGuestService({
   };
 }
 
+export async function mergeGuestNotificationDevicesService({
+  userId,
+  guestId,
+}) {
+  if (!userId || !guestId) {
+    throw new ApiError("Both userId and guestId are required", 400);
+  }
+
+  const result = await NotificationDeviceModel.updateMany(
+    { guestId },
+    {
+      $set: { user: userId, lastUsedAt: new Date() },
+      $unset: { guestId: 1 },
+    },
+  );
+
+  return { mergedCount: result.modifiedCount || 0 };
+}
+
 export async function detachDevicesForUserService({ userId, token } = {}) {
   if (!userId) {
     throw new ApiError("userId is required", 400);

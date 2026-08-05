@@ -26,6 +26,10 @@ export async function findWarehouseById(id) {
   return WarehouseModel.findById(id);
 }
 
+export function findWarehouseIds() {
+  return WarehouseModel.find({}).select("_id").sort({ _id: 1 }).lean();
+}
+
 export async function createWarehouse(doc) {
   return WarehouseModel.create(doc);
 }

@@ -12,11 +12,13 @@ import {
   searchProductsForAdmin,
   commitProductSearch,
   getProductSearchHistory,
+  removeProductSearchHistoryTerm,
   getPopularProductSearches,
 } from "./product.controller.js";
 
 import {
   protect,
+  protectUserOrGuest,
   optionalProtect,
   allowedTo,
   enabledControls as enabledControlsMiddleware,
@@ -36,6 +38,7 @@ import {
   searchProductsQueryValidator,
   adminSearchProductsQueryValidator,
   commitProductSearchValidator,
+  removeProductSearchHistoryTermValidator,
   popularProductSearchesQueryValidator,
 } from "./product.validators.js";
 
@@ -89,12 +92,19 @@ router.get(
 // read-only, while history is only written after an explicit committed search.
 router.post(
   "/search/history",
-  protect,
+  protectUserOrGuest,
   commitProductSearchValidator,
   commitProductSearch,
 );
 
-router.get("/search/history", protect, getProductSearchHistory);
+router.get("/search/history", protectUserOrGuest, getProductSearchHistory);
+
+router.delete(
+  "/search/history",
+  protectUserOrGuest,
+  removeProductSearchHistoryTermValidator,
+  removeProductSearchHistoryTerm,
+);
 
 router.get(
   "/search/popular",

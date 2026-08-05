@@ -17,6 +17,7 @@ import {
 } from "../../shared/constants/enums.js";
 import { escapeRegex } from "../../shared/utils/escapeRegex.js";
 import { invalidateProductCaches } from "../product/productCache.service.js";
+import { processRestockSubscriptionsForProduct } from "../restockSubscription/restockSubscription.service.js";
 import { validateAndApplyCoupon } from "../coupon/coupon.application.js";
 import { sendOrderStatusChangedNotification, sendNewOrderNotificationToAdminsAndModerators } from "../notification/notification.service.js";
 import { dispatchNotification } from "../notification/notificationDispatcher.js";
@@ -53,6 +54,27 @@ import {
 } from "../../shared/utils/imageUpload.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+
+function processRestockedOrderProductsBestEffort(productIds, warehouseId) {
+  const uniqueProductIds = [
+    ...new Set((productIds || []).filter(Boolean).map(String)),
+  ];
+  if (!uniqueProductIds.length || !warehouseId) return;
+
+  Promise.all(
+    uniqueProductIds.map((productId) =>
+      processRestockSubscriptionsForProduct({
+        productId,
+        warehouseIds: [String(warehouseId)],
+      }),
+    ),
+  ).catch((error) =>
+    console.error(
+      "[Order] Failed to process restock subscriptions:",
+      error?.message || error,
+    ),
+  );
+}
 
 export async function resolveOrderCartWarehouse(cart) {
   if (!cart?.warehouse) {
@@ -2018,6 +2040,7 @@ export async function updateOrderStatusService({
 
   const session = await mongoose.startSession();
   let updated;
+  let stockWasRestored = false;
 
   try {
     await session.withTransaction(async () => {
@@ -2070,6 +2093,7 @@ export async function updateOrderStatusService({
 
       if (shouldRestoreStock) {
         await restoreStockForOrder({ session, order });
+        stockWasRestored = true;
       }
 
       // Cancellation: refund wallet amount that was used to pay
@@ -2353,6 +2377,10 @@ export async function updateOrderStatusService({
   ) {
     const productIds = (updated.items || []).map((i) => i.product);
     await invalidateProductCaches(productIds);
+
+    if (stockWasRestored) {
+      processRestockedOrderProductsBestEffort(productIds, updated.warehouse);
+    }
   }
 
   // Guest + card: refund via Paymob (external API, outside txn)
@@ -2770,6 +2798,7 @@ export async function failOrderPaymentService(orderId) {
 
   // Legacy flow: restore stock, wallet, coupon
   const session = await mongoose.startSession();
+  let stockWasRestored = false;
 
   try {
     await session.withTransaction(async () => {
@@ -2778,6 +2807,7 @@ export async function failOrderPaymentService(orderId) {
       if (freshOrder.status !== orderStatusEnum.AWAITING_PAYMENT) return;
 
       await restoreStockForOrder({ session, order: freshOrder });
+      stockWasRestored = true;
 
       if (
         freshOrder.user &&
@@ -2840,6 +2870,13 @@ export async function failOrderPaymentService(orderId) {
   if (freshOrder) {
     const productIds = (freshOrder.items || []).map((i) => i.product);
     await invalidateProductCaches(productIds);
+
+    if (stockWasRestored) {
+      processRestockedOrderProductsBestEffort(
+        productIds,
+        freshOrder.warehouse,
+      );
+    }
   }
 }
 

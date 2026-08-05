@@ -38,6 +38,8 @@ scripts/*
 !scripts/cloudinaryToBunnyRewriteDbUrls.js
 !scripts/cloudinaryToBunnyAudit.js
 !scripts/bunnyMediaCanary.js
+!scripts/setWarehouseStockZero.js
+!scripts/normalizeProductWarehouseStocks.js
 scripts/bunny-migration-reports/
 BUNNY_MEDIA_MIGRATION_IMPLEMENTATION_PLAN.md
 CLOUDINARY_DELIVERY_OPTIMIZATION_IMPLEMENTATION_PLAN.md

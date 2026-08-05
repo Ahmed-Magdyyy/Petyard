@@ -25,6 +25,11 @@ import {
   IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
 import { buildFlexibleSearchPattern } from "../../shared/utils/escapeRegex.js";
+import {
+  cleanupSubscriptionsForSubcategory,
+  getSubscribedSubcategoryIdsForIdentity,
+  isUserSubscribedToSubcategory,
+} from "../subcategorySubscription/subcategorySubscription.service.js";
 
 const SUBCATEGORY_CACHE_VERSION_KEY = "subcategories:version";
 const SUBCATEGORY_CACHE_TTL_SECONDS = parseBoundedInt(
@@ -41,10 +46,53 @@ async function invalidateSubcategoryCaches() {
   ]);
 }
 
+function addSubscriptionState(nodes, subscribedIds) {
+  return (Array.isArray(nodes) ? nodes : []).map((node) => ({
+    ...node,
+    isSubscribed: subscribedIds.has(String(node.id)),
+    children: Array.isArray(node.children)
+      ? addSubscriptionState(node.children, subscribedIds)
+      : node.children,
+  }));
+}
+
+export function mapSubcategoryToListDto(
+  subcategory,
+  { lang = "en", includeAllLanguages = false } = {},
+) {
+  const normalizedLang = lang === "ar" ? "ar" : "en";
+  return {
+    id: subcategory._id,
+    category: subcategory.category?._id || subcategory.category,
+    slug: subcategory.slug,
+    updatedAt: subcategory.updatedAt,
+    ...(includeAllLanguages
+      ? {
+          name: pickLocalizedField(subcategory, "name", normalizedLang),
+          name_en: subcategory.name_en,
+          name_ar: subcategory.name_ar,
+          desc: pickLocalizedField(subcategory, "desc", normalizedLang),
+          desc_en: subcategory.desc_en,
+          desc_ar: subcategory.desc_ar,
+        }
+      : {
+          name: pickLocalizedField(subcategory, "name", normalizedLang),
+          desc: pickLocalizedField(subcategory, "desc", normalizedLang),
+        }),
+    image: getImageDeliveryUrl(
+      subcategory.image?.url || null,
+      IMAGE_DELIVERY_PRESETS.SUBCATEGORY_TILE,
+    ),
+    parent: subcategory.parent?._id || subcategory.parent || null,
+    children: [],
+  };
+}
+
 export async function getSubcategoriesService(
   query = {},
   lang = "en",
   user = null,
+  guestId = null,
 ) {
   const { category, subcategory: parentId, q } = query;
   const normalizedLang = lang === "ar" ? "ar" : "en";
@@ -125,35 +173,13 @@ export async function getSubcategoriesService(
       ? allSubcategories.filter((s) => matchFilter.has(String(s._id)))
       : allSubcategories;
 
-    // Format each subcategory
-    const formatSubcategory = (s) => ({
-      id: s._id,
-      category: s.category?._id || s.category,
-      slug: s.slug,
-      updatedAt: s.updatedAt,
-      ...(includeAllLanguages
-        ? {
-            name: pickLocalizedField(s, "name", normalizedLang),
-            name_en: s.name_en,
-            name_ar: s.name_ar,
-            desc: pickLocalizedField(s, "desc", normalizedLang),
-            desc_en: s.desc_en,
-            desc_ar: s.desc_ar,
-          }
-        : {
-            name: pickLocalizedField(s, "name", normalizedLang),
-            desc: pickLocalizedField(s, "desc", normalizedLang),
-          }),
-      image: getImageDeliveryUrl(
-        s.image?.url || null,
-        IMAGE_DELIVERY_PRESETS.SUBCATEGORY_TILE,
-      ),
-      parent: s.parent?._id || s.parent || null,
-      children: [],
-    });
-
     // Build a map of all formatted subcategories by ID
-    const formatted = subcategories.map(formatSubcategory);
+    const formatted = subcategories.map((subcategory) =>
+      mapSubcategoryToListDto(subcategory, {
+        lang: normalizedLang,
+        includeAllLanguages,
+      }),
+    );
     const map = new Map();
     for (const s of formatted) {
       map.set(String(s.id), s);
@@ -199,19 +225,63 @@ export async function getSubcategoriesService(
     return roots;
   };
 
+  let data;
   if (includeAllLanguages) {
-    return fetchSubcategories();
+    data = await fetchSubcategories();
+  } else {
+    const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
+    data = await getOrSetCache(
+      `subcategories:list:v2:${IMAGE_DELIVERY_CACHE_NAMESPACE}:${version}:${normalizedLang}:${stableStringify(query || {})}`,
+      SUBCATEGORY_CACHE_TTL_SECONDS,
+      fetchSubcategories,
+    );
   }
 
-  const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
-  return getOrSetCache(
-    `subcategories:list:v2:${IMAGE_DELIVERY_CACHE_NAMESPACE}:${version}:${normalizedLang}:${stableStringify(query || {})}`,
-    SUBCATEGORY_CACHE_TTL_SECONDS,
-    fetchSubcategories,
-  );
+  const userId = user?._id || user?.id || null;
+  const subscribedIds = userId || guestId
+    ? new Set(
+        await getSubscribedSubcategoryIdsForIdentity({ userId, guestId }),
+      )
+    : new Set();
+  return addSubscriptionState(data, subscribedIds);
 }
 
-export async function getSubcategoryByIdService(id, lang = "en", user = null) {
+export async function getMySubscribedSubcategoriesService({
+  userId,
+  guestId,
+  lang = "en",
+} = {}) {
+  const subscribedIds = await getSubscribedSubcategoryIdsForIdentity({
+    userId,
+    guestId,
+  });
+  if (!subscribedIds.length) return [];
+
+  const subcategories = await SubcategoryModel.find({
+    _id: { $in: subscribedIds },
+  })
+    .populate("category", "_id slug name_en name_ar")
+    .populate("parent", "_id slug name_en name_ar")
+    .lean();
+  const subcategoryById = new Map(
+    subcategories.map((subcategory) => [String(subcategory._id), subcategory]),
+  );
+
+  return subscribedIds
+    .map((id) => subcategoryById.get(String(id)))
+    .filter(Boolean)
+    .map((subcategory) => ({
+      ...mapSubcategoryToListDto(subcategory, { lang }),
+      isSubscribed: true,
+    }));
+}
+
+export async function getSubcategoryByIdService(
+  id,
+  lang = "en",
+  user = null,
+  guestId = null,
+) {
   const normalizedLang = lang === "ar" ? "ar" : "en";
   const includeAllLanguages =
     user &&
@@ -253,16 +323,27 @@ export async function getSubcategoryByIdService(id, lang = "en", user = null) {
     };
   };
 
+  let data;
   if (includeAllLanguages) {
-    return fetchSubcategory();
+    data = await fetchSubcategory();
+  } else {
+    const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
+    data = await getOrSetCache(
+      `subcategories:detail:v2:${IMAGE_DELIVERY_CACHE_NAMESPACE}:${version}:${id}:${normalizedLang}`,
+      SUBCATEGORY_CACHE_TTL_SECONDS,
+      fetchSubcategory,
+    );
   }
 
-  const version = await getCacheVersion(SUBCATEGORY_CACHE_VERSION_KEY);
-  return getOrSetCache(
-    `subcategories:detail:v2:${IMAGE_DELIVERY_CACHE_NAMESPACE}:${version}:${id}:${normalizedLang}`,
-    SUBCATEGORY_CACHE_TTL_SECONDS,
-    fetchSubcategory,
-  );
+  const userId = user?._id || user?.id || null;
+  const isSubscribed = userId || guestId
+    ? await isUserSubscribedToSubcategory({
+        userId,
+        guestId,
+        subcategoryId: id,
+      })
+    : false;
+  return { ...data, isSubscribed };
 }
 
 export async function createSubcategoryService(payload, file) {
@@ -403,6 +484,14 @@ export async function deleteSubcategoryService(id) {
   }
 
   await SubcategoryModel.deleteOne({ _id: id });
+  try {
+    await cleanupSubscriptionsForSubcategory(id);
+  } catch (error) {
+    console.error(
+      "[Subcategory] Failed to clean subscription records:",
+      error?.message || error,
+    );
+  }
   await invalidateSubcategoryCaches();
 }
 

@@ -323,15 +323,46 @@ export const mergeGuest = asyncHandler(async (req, res) => {
     await import("../favorite/favorite.service.js");
   const { mergeGuestAddressesService } =
     await import("../address/address.service.js");
+  const { mergeGuestNotificationDevicesService } =
+    await import("../notification/notification.service.js");
+  const { mergeGuestRestockSubscriptions } =
+    await import("../restockSubscription/restockSubscription.service.js");
+  const { mergeGuestSubcategorySubscriptions } =
+    await import(
+      "../subcategorySubscription/subcategorySubscription.service.js"
+    );
 
-  const [cart, favorites, addresses] = await Promise.all([
+  // Move devices first. Restock subscription merging immediately processes
+  // products that became available during login, so their push lookup must
+  // already use the authenticated user identity.
+  const notificationDevices = await mergeGuestNotificationDevicesService({
+    userId,
+    guestId,
+  });
+
+  const [
+    cart,
+    favorites,
+    addresses,
+    restockSubscriptions,
+    subcategorySubscriptions,
+  ] = await Promise.all([
     mergeGuestCartService({ userId, guestId, warehouseId: warehouse }),
     mergeGuestFavoriteService({ userId, guestId }),
     mergeGuestAddressesService({ userId, guestId }),
+    mergeGuestRestockSubscriptions({ userId, guestId }),
+    mergeGuestSubcategorySubscriptions({ userId, guestId }),
   ]);
 
   res.status(200).json({
     message: "Guest merged successfully",
-    data: { cart, favorites, addresses },
+    data: {
+      cart,
+      favorites,
+      addresses,
+      notificationDevices,
+      restockSubscriptions,
+      subcategorySubscriptions,
+    },
   });
 });
