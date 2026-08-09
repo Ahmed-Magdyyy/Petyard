@@ -28,6 +28,12 @@ const brandSchema = new Schema(
       type: String,
       trim: true,
     },
+    bgColor: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      match: /^#(?:[0-9A-F]{3}|[0-9A-F]{6})$/,
+    },
     image: {
       public_id: { type: String },
       url: { type: String },

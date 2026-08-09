@@ -49,6 +49,7 @@ export async function getBrandsService(query = {}, lang = "en", user = null) {
           name: pickLocalizedField(b, "name", normalizedLang),
           desc: pickLocalizedField(b, "desc", normalizedLang),
         }),
+    bgColor: b.bgColor || null,
     image: b.image?.url || null,
   }));
 }
@@ -83,12 +84,13 @@ export async function getBrandByIdService(id, lang = "en", user = null) {
           name: pickLocalizedField(brand, "name", normalizedLang),
           desc: pickLocalizedField(brand, "desc", normalizedLang),
         }),
+    bgColor: brand.bgColor || null,
     image: brand.image?.url || null,
   };
 }
 
 export async function createBrandService(payload, file) {
-  const { name_en, name_ar, desc_en, desc_ar } = payload;
+  const { name_en, name_ar, desc_en, desc_ar, bgColor } = payload;
 
   const normalizedSlug = slugify(String(name_en), {
     lower: true,
@@ -126,6 +128,7 @@ export async function createBrandService(payload, file) {
       name_ar,
       desc_en,
       desc_ar,
+      bgColor,
       ...(image && { image }),
     });
 
@@ -144,12 +147,13 @@ export async function updateBrandService(id, payload, file) {
     throw new ApiError(`No brand found for this id: ${id}`, 404);
   }
 
-  const { name_en, name_ar, desc_en, desc_ar } = payload;
+  const { name_en, name_ar, desc_en, desc_ar, bgColor } = payload;
 
   if (name_en !== undefined) brand.name_en = name_en;
   if (name_ar !== undefined) brand.name_ar = name_ar;
   if (desc_en !== undefined) brand.desc_en = desc_en;
   if (desc_ar !== undefined) brand.desc_ar = desc_ar;
+  if (bgColor !== undefined) brand.bgColor = bgColor;
 
   let newImage;
   let oldImage;

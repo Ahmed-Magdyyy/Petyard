@@ -19,6 +19,12 @@ export const createBrandValidator = [
     .isString()
     .withMessage("Arabic description must be a string"),
 
+  body("bgColor")
+    .optional()
+    .isString()
+    .matches(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+    .withMessage("bgColor must be a hex color such as #FFF or #FFFFFF"),
+
   validatorMiddleware,
 ];
 
@@ -49,6 +55,12 @@ export const updateBrandValidator = [
     .optional()
     .isString()
     .withMessage("Arabic description must be a string"),
+
+  body("bgColor")
+    .optional()
+    .isString()
+    .matches(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+    .withMessage("bgColor must be a hex color such as #FFF or #FFFFFF"),
 
   validatorMiddleware,
 ];
