@@ -10,6 +10,7 @@ const GOOGLE_SOURCE = "google_play";
 const APPLE_SOURCE = "app_store_connect";
 const ANDROID_METRIC = "daily_user_installs";
 const IOS_METRIC = "app_units";
+const DEFAULT_ANDROID_SYNC_OVERLAP_DAYS = 7;
 
 function splitList(value, fallback = []) {
   if (!value) return fallback;
@@ -32,6 +33,17 @@ function getDefaultSyncWindow() {
   };
 }
 
+function getAndroidSyncOverlapDays() {
+  const overlapDays = Number(
+    process.env.APP_DOWNLOAD_ANDROID_SYNC_OVERLAP_DAYS
+      ?? DEFAULT_ANDROID_SYNC_OVERLAP_DAYS,
+  );
+
+  return Number.isInteger(overlapDays) && overlapDays >= 0
+    ? overlapDays
+    : DEFAULT_ANDROID_SYNC_OVERLAP_DAYS;
+}
+
 function normalizeDateKey(value) {
   if (!value) return null;
   const str = String(value).trim();
@@ -52,6 +64,44 @@ function normalizeDateKey(value) {
     zone: "UTC",
   });
   return appleDatePadded.isValid ? appleDatePadded.toISODate() : null;
+}
+
+export function resolveAndroidSyncFrom({
+  requestedFrom,
+  defaultFrom,
+  latestDateKey,
+  overlapDays = DEFAULT_ANDROID_SYNC_OVERLAP_DAYS,
+}) {
+  const explicitFrom = normalizeDateKey(requestedFrom);
+  if (explicitFrom) return explicitFrom;
+
+  const fallbackFrom = normalizeDateKey(defaultFrom);
+  const latestStoredDate = normalizeDateKey(latestDateKey);
+  if (!fallbackFrom || !latestStoredDate) return fallbackFrom || defaultFrom;
+
+  const safeOverlapDays = Number.isInteger(overlapDays) && overlapDays >= 0
+    ? overlapDays
+    : DEFAULT_ANDROID_SYNC_OVERLAP_DAYS;
+  const watermarkFrom = DateTime.fromISO(latestStoredDate, { zone: "UTC" })
+    .minus({ days: safeOverlapDays })
+    .toISODate();
+
+  // Keep the usual rolling window when Google is current. If Google stalls,
+  // anchor the window behind our last stored day so late rows never age out.
+  return watermarkFrom < fallbackFrom ? watermarkFrom : fallbackFrom;
+}
+
+async function getLatestAndroidDateKey() {
+  const latestMetric = await AppDownloadMetricModel.findOne({
+    platform: "android",
+    source: GOOGLE_SOURCE,
+    metric: ANDROID_METRIC,
+  })
+    .sort({ dateKey: -1 })
+    .select({ dateKey: 1, _id: 0 })
+    .lean();
+
+  return latestMetric?.dateKey || null;
 }
 
 function dateKeyToUtcDate(dateKey) {
@@ -481,21 +531,35 @@ export async function syncAppDownloadsService({
   const syncTo = to || defaultWindow.to;
 
   const results = {};
+  const windows = {};
 
   if (platform === "all" || platform === "android") {
+    const latestAndroidDateKey = from
+      ? null
+      : await getLatestAndroidDateKey();
+    const androidSyncFrom = resolveAndroidSyncFrom({
+      requestedFrom: from,
+      defaultFrom: syncFrom,
+      latestDateKey: latestAndroidDateKey,
+      overlapDays: getAndroidSyncOverlapDays(),
+    });
+
+    windows.android = { from: androidSyncFrom, to: syncTo };
     results.android = await syncGooglePlayDownloads({
-      from: syncFrom,
+      from: androidSyncFrom,
       to: syncTo,
     });
   }
 
   if (platform === "all" || platform === "ios") {
+    windows.ios = { from: syncFrom, to: syncTo };
     results.ios = await syncAppStoreDownloads({ from: syncFrom, to: syncTo });
   }
 
   return {
     from: syncFrom,
     to: syncTo,
+    windows,
     results,
   };
 }
