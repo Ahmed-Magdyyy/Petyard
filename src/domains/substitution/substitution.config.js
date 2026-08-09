@@ -15,6 +15,13 @@ const warehouseAllowlist = new Set(
     .filter(Boolean),
 );
 
+const canaryOrderAllowlist = new Set(
+  String(process.env.ORDER_SUBSTITUTION_CANARY_ORDER_ALLOWLIST || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => /^[a-f0-9]{24}$/.test(value)),
+);
+
 export function getSubstitutionExpiryMinutes(value) {
   const parsed = Number(value);
   return SUBSTITUTION_EXPIRY_PRESETS.includes(parsed)
@@ -28,10 +35,17 @@ export function isOrderSubstitutionEnabledForWarehouse(warehouseId) {
   return warehouseAllowlist.has(String(warehouseId || ""));
 }
 
+export function isOrderSubstitutionEnabledForOrder(order) {
+  const orderId = String(order?._id || "").toLowerCase();
+  if (canaryOrderAllowlist.has(orderId)) return true;
+  return isOrderSubstitutionEnabledForWarehouse(order?.warehouse);
+}
+
 export function getOrderSubstitutionFeatureConfig() {
   return Object.freeze({
     enabled: substitutionsEnabled,
     warehouseAllowlist: Object.freeze([...warehouseAllowlist]),
+    canaryOrderAllowlist: Object.freeze([...canaryOrderAllowlist]),
     expiryPresets: SUBSTITUTION_EXPIRY_PRESETS,
     defaultExpiryMinutes: DEFAULT_SUBSTITUTION_EXPIRY_MINUTES,
   });

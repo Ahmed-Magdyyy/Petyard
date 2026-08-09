@@ -114,9 +114,11 @@ function baseStoredRequest({ user, guestId } = {}) {
   };
 }
 
-async function loadFeatureConfig({ enabled, allowlist } = {}) {
+async function loadFeatureConfig({ enabled, allowlist, canaryOrders } = {}) {
   const savedEnabled = process.env.ORDER_SUBSTITUTIONS_ENABLED;
   const savedAllowlist = process.env.ORDER_SUBSTITUTION_WAREHOUSE_ALLOWLIST;
+  const savedCanaryOrders =
+    process.env.ORDER_SUBSTITUTION_CANARY_ORDER_ALLOWLIST;
   try {
     if (enabled === undefined) delete process.env.ORDER_SUBSTITUTIONS_ENABLED;
     else process.env.ORDER_SUBSTITUTIONS_ENABLED = enabled;
@@ -124,6 +126,11 @@ async function loadFeatureConfig({ enabled, allowlist } = {}) {
       delete process.env.ORDER_SUBSTITUTION_WAREHOUSE_ALLOWLIST;
     } else {
       process.env.ORDER_SUBSTITUTION_WAREHOUSE_ALLOWLIST = allowlist;
+    }
+    if (canaryOrders === undefined) {
+      delete process.env.ORDER_SUBSTITUTION_CANARY_ORDER_ALLOWLIST;
+    } else {
+      process.env.ORDER_SUBSTITUTION_CANARY_ORDER_ALLOWLIST = canaryOrders;
     }
     const moduleUrl = pathToFileURL(
       resolve("src/domains/substitution/substitution.config.js"),
@@ -136,6 +143,11 @@ async function loadFeatureConfig({ enabled, allowlist } = {}) {
       delete process.env.ORDER_SUBSTITUTION_WAREHOUSE_ALLOWLIST;
     } else {
       process.env.ORDER_SUBSTITUTION_WAREHOUSE_ALLOWLIST = savedAllowlist;
+    }
+    if (savedCanaryOrders === undefined) {
+      delete process.env.ORDER_SUBSTITUTION_CANARY_ORDER_ALLOWLIST;
+    } else {
+      process.env.ORDER_SUBSTITUTION_CANARY_ORDER_ALLOWLIST = savedCanaryOrders;
     }
   }
 }
@@ -154,6 +166,40 @@ test("substitution configuration is disabled by default and scopes an enabled ro
   assert.equal(enabled.isOrderSubstitutionEnabledForWarehouse("warehouse-a"), true);
   assert.equal(enabled.isOrderSubstitutionEnabledForWarehouse("warehouse-b"), true);
   assert.equal(enabled.isOrderSubstitutionEnabledForWarehouse("warehouse-c"), false);
+});
+
+test("an exact-order canary enables only that substitution flow while warehouse rollout stays disabled", async () => {
+  const canaryOrderId = "6a786100330d5adf9e4d7c05";
+  const config = await loadFeatureConfig({
+    enabled: "false",
+    canaryOrders: `${canaryOrderId.toUpperCase()}, invalid-order-id`,
+  });
+
+  assert.equal(
+    config.isOrderSubstitutionEnabledForOrder({
+      _id: canaryOrderId,
+      warehouse: "live-warehouse",
+    }),
+    true,
+  );
+  assert.equal(
+    config.isOrderSubstitutionEnabledForOrder({
+      _id: "6a786100330d5adf9e4d7c06",
+      warehouse: "live-warehouse",
+    }),
+    false,
+  );
+  assert.equal(
+    config.isOrderSubstitutionEnabledForWarehouse("live-warehouse"),
+    false,
+  );
+  assert.deepEqual(config.getOrderSubstitutionFeatureConfig(), {
+    enabled: false,
+    warehouseAllowlist: [],
+    canaryOrderAllowlist: [canaryOrderId],
+    expiryPresets: [15, 30, 60, 120],
+    defaultExpiryMinutes: 30,
+  });
 });
 
 test("candidate snapshot reads only the stored order warehouse and locks the effective price in piastres", () => {

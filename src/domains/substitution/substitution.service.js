@@ -46,7 +46,7 @@ import {
 } from "../../shared/utils/imageUpload.js";
 import {
   getSubstitutionExpiryMinutes,
-  isOrderSubstitutionEnabledForWarehouse,
+  isOrderSubstitutionEnabledForOrder,
 } from "./substitution.config.js";
 import { calculateSubstitutionQuote } from "./substitution.pricing.js";
 import {
@@ -93,9 +93,9 @@ function assertWarehouseScope(order, warehouseScope) {
 }
 
 function assertFeatureEnabled(order) {
-  if (!isOrderSubstitutionEnabledForWarehouse(order?.warehouse)) {
+  if (!isOrderSubstitutionEnabledForOrder(order)) {
     throw substitutionError(
-      "Product substitutions are not enabled for this warehouse",
+      "Product substitutions are not enabled for this order",
       409,
       "SUBSTITUTIONS_DISABLED",
     );
