@@ -12,7 +12,9 @@ import {
   respondToSubstitutionService,
 } from "./substitution.service.js";
 import {
+  presentSubstitutionPayment,
   presentSubstitutionQuote,
+  presentSubstitutionRefund,
   presentSubstitutionRequest,
 } from "./substitution.presenter.js";
 
@@ -57,7 +59,10 @@ export const createSubstitutionOffer = asyncHandler(async (req, res) => {
     shortages: req.body.shortages,
   });
   res.status(result.idempotent ? 200 : 201).json({
-    data: presentSubstitutionRequest(result.request, { staff: true }),
+    data: presentSubstitutionRequest(result.request, {
+      staff: true,
+      lang: req.lang,
+    }),
     idempotent: result.idempotent,
   });
 });
@@ -70,7 +75,7 @@ export const listSubstitutionRequestsForStaff = asyncHandler(
     });
     res.status(200).json({
       results: requests.length,
-      data: presentList(requests, { staff: true }),
+      data: presentList(requests, { staff: true, lang: req.lang }),
     });
   },
 );
@@ -82,7 +87,10 @@ export const getSubstitutionRequestForStaff = asyncHandler(async (req, res) => {
     warehouseScope: req.orderWarehouseScope,
   });
   res.status(200).json({
-    data: presentSubstitutionRequest(request, { staff: true }),
+    data: presentSubstitutionRequest(request, {
+      staff: true,
+      lang: req.lang,
+    }),
   });
 });
 
@@ -93,7 +101,7 @@ async function listForOwner(req, res, owner) {
   });
   res.status(200).json({
     results: requests.length,
-    data: presentList(requests),
+    data: presentList(requests, { lang: req.lang }),
   });
 }
 
@@ -103,7 +111,9 @@ async function getForOwner(req, res, owner) {
     requestId: req.params.requestId,
     ...owner,
   });
-  res.status(200).json({ data: presentSubstitutionRequest(request) });
+  res.status(200).json({
+    data: presentSubstitutionRequest(request, { lang: req.lang }),
+  });
 }
 
 async function quoteForOwner(req, res, owner) {
@@ -131,11 +141,11 @@ async function respondForOwner(req, res, owner) {
     ...owner,
   });
   res.status(200).json({
-    data: presentSubstitutionRequest(result.request),
+    data: presentSubstitutionRequest(result.request, { lang: req.lang }),
     action: result.action,
     idempotent: result.idempotent,
-    payment: result.payment || null,
-    refund: result.refund || null,
+    payment: presentSubstitutionPayment(result.payment),
+    refund: presentSubstitutionRefund(result.refund),
   });
 }
 
@@ -148,7 +158,9 @@ async function retryPaymentForOwner(req, res, owner) {
     savedCardId: req.body.savedCardId,
     ...owner,
   });
-  res.status(200).json({ data: result.payment });
+  res.status(200).json({
+    data: presentSubstitutionPayment(result.payment),
+  });
 }
 
 export const listMySubstitutionRequests = asyncHandler((req, res) =>

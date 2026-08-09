@@ -1,4 +1,7 @@
+import { assertPiastres, EGP_PIASTRES_PER_POUND } from "../../shared/utils/money.js";
 import { getPrivateImageDeliveryUrl } from "../../shared/utils/privateImageDelivery.js";
+
+const SUBSTITUTION_CURRENCY = "EGP";
 
 function toPlain(value) {
   if (value == null) return value;
@@ -15,7 +18,25 @@ function presentReferenceId(value) {
   return value;
 }
 
-function presentCustomerVariantOptions(value) {
+function normalizeLang(lang) {
+  return lang === "ar" ? "ar" : "en";
+}
+
+function localizedName(value, lang) {
+  return normalizeLang(lang) === "ar"
+    ? value?.productName_ar || value?.productName_en
+    : value?.productName_en || value?.productName_ar;
+}
+
+function presentMoney(value, field, { allowNegative = false } = {}) {
+  if (value == null) return value;
+  return (
+    assertPiastres(value, field, { allowNegative }) /
+    EGP_PIASTRES_PER_POUND
+  );
+}
+
+function presentVariantOptions(value) {
   if (!Array.isArray(value)) return [];
   return value.map((option) => ({
     name: option?.name,
@@ -23,36 +44,75 @@ function presentCustomerVariantOptions(value) {
   }));
 }
 
-function presentCustomerAlternative(value) {
+function presentCustomerAlternative(value, lang) {
   return {
     candidateId: value?.candidateId,
-    productName_en: value?.productName_en,
-    productName_ar: value?.productName_ar,
+    productName: localizedName(value, lang),
     productImageUrl: value?.productImageUrl || null,
-    variantOptions: presentCustomerVariantOptions(value?.variantOptions),
-    unitPricePiastres: value?.unitPricePiastres,
+    variantOptions: presentVariantOptions(value?.variantOptions),
+    unitPrice: presentMoney(
+      value?.unitPricePiastres,
+      "unitPricePiastres",
+    ),
     maxQuantity: value?.maxQuantity,
   };
 }
 
-function presentCustomerShortage(value) {
+function presentStaffAlternative(value, lang) {
+  return {
+    ...presentCustomerAlternative(value, lang),
+    product: presentReferenceId(value?.product),
+    variantId: presentReferenceId(value?.variantId) || null,
+    productType: value?.productType,
+    stockQuantitySnapshot: value?.stockQuantitySnapshot,
+    stockRevisionSnapshot: value?.stockRevisionSnapshot,
+  };
+}
+
+function presentCustomerShortage(value, lang) {
   return {
     shortageId: value?.shortageId,
-    productName_en: value?.productName_en,
-    productName_ar: value?.productName_ar,
+    productName: localizedName(value, lang),
     productImageUrl: value?.productImageUrl || null,
-    variantOptions: presentCustomerVariantOptions(value?.variantOptions),
+    variantOptions: presentVariantOptions(value?.variantOptions),
     quantityBefore: value?.quantityBefore,
     deliverableOriginalQuantity: value?.deliverableOriginalQuantity,
     unavailableQuantity: value?.unavailableQuantity,
-    originalUnitPricePiastres: value?.originalUnitPricePiastres,
+    originalUnitPrice: presentMoney(
+      value?.originalUnitPricePiastres,
+      "originalUnitPricePiastres",
+    ),
     alternatives: Array.isArray(value?.alternatives)
-      ? value.alternatives.map(presentCustomerAlternative)
+      ? value.alternatives.map((alternative) =>
+          presentCustomerAlternative(alternative, lang),
+        )
       : [],
   };
 }
 
-function presentCustomerSelections(value) {
+function presentStaffShortage(value, lang) {
+  return {
+    ...presentCustomerShortage(value, lang),
+    lineId: value?.lineId,
+    product: presentReferenceId(value?.product),
+    variantId: presentReferenceId(value?.variantId) || null,
+    productType: value?.productType,
+    finalizedUnavailableStart: value?.finalizedUnavailableStart,
+    finalizedUnavailableEnd: value?.finalizedUnavailableEnd,
+    expectedUnallocatedQuantity: value?.expectedUnallocatedQuantity,
+    expectedStockRevision: value?.expectedStockRevision,
+    correctedUnallocatedQuantity: value?.correctedUnallocatedQuantity,
+    correctionReason: value?.correctionReason,
+    correctionNote: value?.correctionNote || null,
+    alternatives: Array.isArray(value?.alternatives)
+      ? value.alternatives.map((alternative) =>
+          presentStaffAlternative(alternative, lang),
+        )
+      : [],
+  };
+}
+
+function presentSelections(value) {
   if (!Array.isArray(value)) return [];
   return value.map((selection) => ({
     shortageId: selection?.shortageId,
@@ -66,35 +126,100 @@ function presentCustomerSelections(value) {
   }));
 }
 
+function presentPricing(value) {
+  if (!value) return null;
+  return {
+    previousOrderValue: presentMoney(
+      value.previousOrderValuePiastres,
+      "previousOrderValuePiastres",
+    ),
+    finalMerchandiseGross: presentMoney(
+      value.finalMerchandiseGrossPiastres,
+      "finalMerchandiseGrossPiastres",
+    ),
+    preservedCouponDiscount: presentMoney(
+      value.preservedCouponDiscountPiastres,
+      "preservedCouponDiscountPiastres",
+    ),
+    lockedNetShipping: presentMoney(
+      value.lockedNetShippingPiastres,
+      "lockedNetShippingPiastres",
+    ),
+    newOrderValue: presentMoney(
+      value.newOrderValuePiastres,
+      "newOrderValuePiastres",
+    ),
+    delta: presentMoney(value.deltaPiastres, "deltaPiastres", {
+      allowNegative: true,
+    }),
+    walletToUse: presentMoney(
+      value.walletToUsePiastres,
+      "walletToUsePiastres",
+    ),
+    additionalPayment: presentMoney(
+      value.additionalPaymentPiastres,
+      "additionalPaymentPiastres",
+    ),
+    refundOrCredit: presentMoney(
+      value.refundOrCreditPiastres,
+      "refundOrCreditPiastres",
+    ),
+    deliveryDue: presentMoney(
+      value.deliveryDuePiastres,
+      "deliveryDuePiastres",
+    ),
+  };
+}
+
+function presentReservation(value) {
+  if (!value) return null;
+  return {
+    operationId: value.operationId || null,
+    state: value.state,
+    items: Array.isArray(value.items)
+      ? value.items.map((item) => ({
+          product: presentReferenceId(item?.product),
+          variantId: presentReferenceId(item?.variantId) || null,
+          quantity: item?.quantity,
+        }))
+      : [],
+  };
+}
+
+function presentLifecycle(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => ({
+    at: entry?.at,
+    from: entry?.from || null,
+    to: entry?.to,
+    reason: entry?.reason || null,
+    actorType: entry?.actorType,
+    actorUser: presentReferenceId(entry?.actorUser) || null,
+  }));
+}
+
 export function presentSubstitutionQuote(quote) {
   if (!quote) return quote;
   return {
-    selections: presentCustomerSelections(quote.selections),
+    currency: SUBSTITUTION_CURRENCY,
+    selections: presentSelections(quote.selections),
     quote: {
-      previousOrderValuePiastres: quote.quote?.previousOrderValuePiastres,
-      finalMerchandiseGrossPiastres:
-        quote.quote?.finalMerchandiseGrossPiastres,
-      preservedCouponDiscountPiastres:
-        quote.quote?.preservedCouponDiscountPiastres,
-      lockedNetShippingPiastres: quote.quote?.lockedNetShippingPiastres,
-      newOrderValuePiastres: quote.quote?.newOrderValuePiastres,
-      deltaPiastres: quote.quote?.deltaPiastres,
-      walletToUsePiastres: quote.quote?.walletToUsePiastres,
-      additionalPaymentPiastres: quote.quote?.additionalPaymentPiastres,
-      refundOrCreditPiastres: quote.quote?.refundOrCreditPiastres,
-      deliveryDuePiastres: quote.quote?.deliveryDuePiastres,
+      ...presentPricing(quote.quote),
       requiresAdditionalInstapayScreenshot: Boolean(
         quote.quote?.requiresAdditionalInstapayScreenshot,
       ),
     },
     quoteRevision: quote.quoteRevision,
-    walletBalancePiastres: quote.walletBalancePiastres,
+    walletBalance: presentMoney(
+      quote.walletBalancePiastres,
+      "walletBalancePiastres",
+    ),
   };
 }
 
 export function presentSubstitutionRequest(
   request,
-  { staff = false, deliveryOptions } = {},
+  { staff = false, deliveryOptions, lang } = {},
 ) {
   const value = toPlain(request);
   if (!value) return value;
@@ -103,6 +228,7 @@ export function presentSubstitutionRequest(
     id: value._id || value.id,
     orderId: presentReferenceId(value.order),
     orderNumber: value.orderNumber,
+    currency: SUBSTITUTION_CURRENCY,
     requestSequence: value.requestSequence,
     paymentMethod: value.paymentMethod,
     status: value.status,
@@ -111,10 +237,12 @@ export function presentSubstitutionRequest(
     offerExpiresAt: value.offerExpiresAt,
     paymentExpiresAt: value.paymentExpiresAt || null,
     shortages: Array.isArray(value.shortages)
-      ? value.shortages.map(presentCustomerShortage)
+      ? value.shortages.map((shortage) =>
+          presentCustomerShortage(shortage, lang),
+        )
       : [],
-    selections: presentCustomerSelections(value.selections),
-    pricing: value.pricingSnapshot || null,
+    selections: presentSelections(value.selections),
+    pricing: presentPricing(value.pricingSnapshot),
     additionalInstapayScreenshotSubmitted: Boolean(
       value.additionalInstapayScreenshot,
     ),
@@ -129,18 +257,20 @@ export function presentSubstitutionRequest(
 
   return {
     ...presented,
-    warehouseId: value.warehouse,
-    shortages: value.shortages || [],
-    selections: value.selections || [],
-    user: value.user || null,
-    guestId: value.guestId || null,
+    warehouseId: presentReferenceId(value.warehouse),
+    shortages: Array.isArray(value.shortages)
+      ? value.shortages.map((shortage) =>
+          presentStaffShortage(shortage, lang),
+        )
+      : [],
     isActive: Boolean(value.isActive),
-    offeredBy: value.offeredBy,
+    offeredBy: presentReferenceId(value.offeredBy),
     originalInstapayVerifiedAt: value.originalInstapayVerifiedAt || null,
-    originalInstapayVerifiedBy: value.originalInstapayVerifiedBy || null,
-    reservation: value.reservation || null,
+    originalInstapayVerifiedBy:
+      presentReferenceId(value.originalInstapayVerifiedBy) || null,
+    reservation: presentReservation(value.reservation),
     settlementOperationId: value.settlementOperationId || null,
-    lifecycle: value.lifecycle || [],
+    lifecycle: presentLifecycle(value.lifecycle),
     additionalInstapayScreenshot: getPrivateImageDeliveryUrl(
       value.additionalInstapayScreenshot,
       deliveryOptions,
@@ -148,10 +278,43 @@ export function presentSubstitutionRequest(
   };
 }
 
-export function presentSubstitutionRequestPage(
-  pageResult,
-  options,
-) {
+export function presentSubstitutionPayment(value) {
+  if (!value) return null;
+  const attempt = value.attempt;
+  return {
+    attempt: attempt
+      ? {
+          id: attempt.id || attempt._id,
+          status: attempt.status,
+          amount: presentMoney(attempt.amountPiastres, "amountPiastres"),
+          currency: attempt.currency || SUBSTITUTION_CURRENCY,
+          expiresAt: attempt.expiresAt,
+          attemptNumber: attempt.attemptNumber,
+          errorCode: attempt.errorCode || null,
+        }
+      : null,
+    clientSecret: value.clientSecret || null,
+    publicKey: value.publicKey || null,
+    initializationInProgress: Boolean(value.initializationInProgress),
+    alreadyInitialized: Boolean(value.alreadyInitialized),
+    expired: Boolean(value.expired),
+    initializationFailed: Boolean(value.initializationFailed),
+    errorCode: value.errorCode || null,
+  };
+}
+
+export function presentSubstitutionRefund(value) {
+  if (!value) return null;
+  return {
+    id: value.id || value._id,
+    method: value.method,
+    status: value.status || null,
+    amount: presentMoney(value.amountPiastres, "amountPiastres"),
+    currency: value.currency || SUBSTITUTION_CURRENCY,
+  };
+}
+
+export function presentSubstitutionRequestPage(pageResult, options) {
   if (!pageResult || !Array.isArray(pageResult.data)) return pageResult;
   return {
     ...pageResult,

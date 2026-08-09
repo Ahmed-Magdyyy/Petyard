@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  presentSubstitutionPayment,
   presentSubstitutionQuote,
+  presentSubstitutionRefund,
   presentSubstitutionRequest,
 } from "../../../src/domains/substitution/substitution.presenter.js";
 
@@ -12,6 +14,8 @@ function requestFixture() {
     order: "order-1",
     orderNumber: "PY-1",
     warehouse: "warehouse-1",
+    user: "user-1",
+    guestId: "must-not-leak",
     status: "offered",
     revision: 0,
     offerPresetMinutes: 30,
@@ -65,7 +69,7 @@ function requestFixture() {
   };
 }
 
-test("customer substitution presentation excludes warehouse, inventory, and staff correction metadata", () => {
+test("customer substitution presentation localizes names, converts EGP prices, and excludes operational metadata", () => {
   const fixture = requestFixture();
   fixture.order = { _id: "order-1", instapayScreenshot: "private-proof" };
   fixture.activePaymentAttempt = {
@@ -73,7 +77,7 @@ test("customer substitution presentation excludes warehouse, inventory, and staf
     merchantOrderId: "must-not-leak",
     paymobOrderId: "must-not-leak",
   };
-  const presented = presentSubstitutionRequest(fixture);
+  const presented = presentSubstitutionRequest(fixture, { lang: "en" });
   const [shortage] = presented.shortages;
   const [alternative] = shortage.alternatives;
 
@@ -83,10 +87,9 @@ test("customer substitution presentation excludes warehouse, inventory, and staf
   assert.deepEqual(Object.keys(shortage).sort(), [
     "alternatives",
     "deliverableOriginalQuantity",
-    "originalUnitPricePiastres",
+    "originalUnitPrice",
     "productImageUrl",
-    "productName_ar",
-    "productName_en",
+    "productName",
     "quantityBefore",
     "shortageId",
     "unavailableQuantity",
@@ -96,27 +99,47 @@ test("customer substitution presentation excludes warehouse, inventory, and staf
     "candidateId",
     "maxQuantity",
     "productImageUrl",
-    "productName_ar",
-    "productName_en",
-    "unitPricePiastres",
+    "productName",
+    "unitPrice",
     "variantOptions",
   ]);
   assert.equal(JSON.stringify(presented).match(
-    /stockQuantitySnapshot|stockRevisionSnapshot|expectedUnallocatedQuantity|expectedStockRevision|correctionNote|warehouse-1|merchantOrderId|paymobOrderId|private-proof/,
+    /Piastres|productName_en|productName_ar|guestId|must-not-leak|stockQuantitySnapshot|stockRevisionSnapshot|expectedUnallocatedQuantity|expectedStockRevision|correctionNote|warehouse-1|merchantOrderId|paymobOrderId|private-proof/,
   ), null);
+  assert.equal(presented.currency, "EGP");
+  assert.equal(shortage.productName, "Original");
+  assert.equal(shortage.originalUnitPrice, 25);
+  assert.equal(alternative.productName, "Substitute");
+  assert.equal(alternative.unitPrice, 30);
 });
 
-test("staff substitution presentation retains the operational snapshot", () => {
-  const presented = presentSubstitutionRequest(requestFixture(), { staff: true });
+test("staff substitution presentation retains safe operations data with Arabic names and EGP prices", () => {
+  const presented = presentSubstitutionRequest(requestFixture(), {
+    staff: true,
+    lang: "ar",
+  });
   const [shortage] = presented.shortages;
+  const [alternative] = shortage.alternatives;
 
   assert.equal(presented.warehouseId, "warehouse-1");
   assert.equal(shortage.lineId, "order-line-1");
+  assert.equal(shortage.productName, "Original ar");
+  assert.equal(shortage.originalUnitPrice, 25);
   assert.equal(shortage.expectedStockRevision, 7);
-  assert.equal(shortage.alternatives[0].stockQuantitySnapshot, 15);
+  assert.equal(alternative.productName, "Substitute ar");
+  assert.equal(alternative.unitPrice, 30);
+  assert.equal(alternative.stockQuantitySnapshot, 15);
+  assert.equal("guestId" in presented, false);
+  assert.equal("user" in presented, false);
+  assert.equal(
+    JSON.stringify(presented).match(
+      /Piastres|productName_en|productName_ar|must-not-leak/,
+    ),
+    null,
+  );
 });
 
-test("customer quote presentation excludes internal inventory demand snapshots", () => {
+test("customer quote presentation converts signed and unsigned money to EGP and excludes inventory demands", () => {
   const presented = presentSubstitutionQuote({
     selections: [{
       shortageId: "shortage-1",
@@ -135,10 +158,10 @@ test("customer quote presentation excludes internal inventory demand snapshots",
       preservedCouponDiscountPiastres: 500,
       lockedNetShippingPiastres: 1000,
       newOrderValuePiastres: 6500,
-      deltaPiastres: 1500,
-      walletToUsePiastres: 1000,
-      additionalPaymentPiastres: 500,
-      refundOrCreditPiastres: 0,
+      deltaPiastres: -1500,
+      walletToUsePiastres: 0,
+      additionalPaymentPiastres: 0,
+      refundOrCreditPiastres: 1500,
       deliveryDuePiastres: 0,
       requiresAdditionalInstapayScreenshot: false,
     },
@@ -147,12 +170,54 @@ test("customer quote presentation excludes internal inventory demand snapshots",
   });
 
   assert.deepEqual(Object.keys(presented).sort(), [
+    "currency",
     "quote",
     "quoteRevision",
     "selections",
-    "walletBalancePiastres",
+    "walletBalance",
   ]);
+  assert.deepEqual(presented.quote, {
+    previousOrderValue: 50,
+    finalMerchandiseGross: 60,
+    preservedCouponDiscount: 5,
+    lockedNetShipping: 10,
+    newOrderValue: 65,
+    delta: -15,
+    walletToUse: 0,
+    additionalPayment: 0,
+    refundOrCredit: 15,
+    deliveryDue: 0,
+    requiresAdditionalInstapayScreenshot: false,
+  });
+  assert.equal(presented.currency, "EGP");
+  assert.equal(presented.walletBalance, 10);
   assert.equal(JSON.stringify(presented).match(
-    /inventoryDemands|stockQuantitySnapshot|stockRevisionSnapshot|skuKey|productId/,
+    /Piastres|inventoryDemands|stockQuantitySnapshot|stockRevisionSnapshot|skuKey|productId/,
   ), null);
+});
+
+test("payment and refund presentation expose normal EGP amounts without internal piastre fields", () => {
+  const payment = presentSubstitutionPayment({
+    attempt: {
+      id: "attempt-1",
+      status: "awaiting_payment",
+      amountPiastres: 2050,
+      currency: "EGP",
+      attemptNumber: 1,
+    },
+    clientSecret: "client-secret",
+    publicKey: "public-key",
+  });
+  const refund = presentSubstitutionRefund({
+    id: "refund-1",
+    method: "card",
+    status: "pending",
+    amountPiastres: 1550,
+  });
+
+  assert.equal(payment.attempt.amount, 20.5);
+  assert.equal(payment.attempt.currency, "EGP");
+  assert.equal(refund.amount, 15.5);
+  assert.equal(refund.currency, "EGP");
+  assert.equal(JSON.stringify({ payment, refund }).includes("Piastres"), false);
 });
