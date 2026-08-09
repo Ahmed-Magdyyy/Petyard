@@ -16,6 +16,11 @@ import {
   returnStatusEnum,
   cartStatusEnum,
 } from "../../shared/constants/enums.js";
+import {
+  buildFinalFulfilledLineTotalExpression,
+  buildFinalFulfilledLineMatchExpression,
+  buildFinalFulfillmentQuantityExpression,
+} from "../order/order.fulfillment.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -163,11 +168,16 @@ export async function getTopProductsService({
       },
     },
     { $unwind: "$items" },
+    { $match: buildFinalFulfilledLineMatchExpression() },
     {
       $group: {
         _id: "$items.product",
-        totalIncome: { $sum: "$items.lineTotal" },
-        totalQuantitySold: { $sum: "$items.quantity" },
+        totalIncome: {
+          $sum: buildFinalFulfilledLineTotalExpression(),
+        },
+        totalQuantitySold: {
+          $sum: buildFinalFulfillmentQuantityExpression(),
+        },
       },
     },
     { $sort: { totalIncome: -1, totalQuantitySold: -1 } },

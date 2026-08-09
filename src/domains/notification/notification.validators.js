@@ -51,6 +51,16 @@ export const registerGuestDeviceValidator = [
   validatorMiddleware,
 ];
 
+export const guestNotificationHeaderValidator = [
+  header("x-guest-id")
+    .notEmpty()
+    .withMessage("x-guest-id header is required")
+    .isString()
+    .withMessage("x-guest-id header must be a string"),
+
+  validatorMiddleware,
+];
+
 // =====================
 // User Notification Validators
 // =====================

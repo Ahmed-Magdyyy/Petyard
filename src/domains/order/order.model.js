@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import {
   orderStatusEnum,
+  orderLineKindEnum,
+  orderSubstitutionStateEnum,
   paymentMethodEnum,
   paymentStatusEnum
 } from "../../shared/constants/enums.js";
@@ -30,6 +32,32 @@ const orderItemSchema = new Schema(
       },
     ],
     quantity: { type: Number, required: true, min: 1 },
+    lineId: {
+      type: String,
+      trim: true,
+    },
+    lineKind: {
+      type: String,
+      enum: Object.values(orderLineKindEnum),
+      default: orderLineKindEnum.ORIGINAL,
+    },
+    sourceLineId: {
+      type: String,
+      trim: true,
+    },
+    sourceSubstitutionRequest: {
+      type: Schema.Types.ObjectId,
+      ref: "SubstitutionRequest",
+    },
+    fulfillmentQuantity: {
+      type: Number,
+      min: 0,
+    },
+    finalizedUnavailableQuantity: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     baseEffectivePrice: { type: Number, min: 0 },
     promotion: {
       collectionId: { type: Schema.Types.ObjectId, ref: "Collection" },
@@ -39,8 +67,57 @@ const orderItemSchema = new Schema(
     promotionDiscountedPrice: { type: Number, min: 0 },
     itemPrice: { type: Number, required: true, min: 0 },
     lineTotal: { type: Number, required: true, min: 0 },
+    itemPricePiastres: {
+      type: Number,
+      min: 0,
+    },
+    lineTotalPiastres: {
+      type: Number,
+      min: 0,
+    },
   },
   { _id: false }
+);
+
+const settlementSummarySchema = new Schema(
+  {
+    schemaVersion: {
+      type: Number,
+      min: 1,
+      default: 1,
+    },
+    revision: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    currency: {
+      type: String,
+      default: "EGP",
+      uppercase: true,
+      trim: true,
+    },
+    currentMerchandiseGrossPiastres: { type: Number, min: 0, default: 0 },
+    originalCouponDiscountPiastres: { type: Number, min: 0, default: 0 },
+    preservedCouponDiscountPiastres: { type: Number, min: 0, default: 0 },
+    lockedNetShippingPiastres: { type: Number, min: 0, default: 0 },
+    currentOrderValuePiastres: { type: Number, min: 0, default: 0 },
+    walletDebitedPiastres: { type: Number, min: 0, default: 0 },
+    walletCreditedPiastres: { type: Number, min: 0, default: 0 },
+    cardCapturedPiastres: { type: Number, min: 0, default: 0 },
+    cardRefundedPiastres: { type: Number, min: 0, default: 0 },
+    cardDuePiastres: { type: Number, min: 0, default: 0 },
+    instapaySubmittedPiastres: { type: Number, min: 0, default: 0 },
+    instapayConfirmedPiastres: { type: Number, min: 0, default: 0 },
+    deliveryDuePiastres: { type: Number, min: 0, default: 0 },
+    pendingRefundLiabilityPiastres: { type: Number, min: 0, default: 0 },
+    migrationState: {
+      type: String,
+      enum: ["native", "backfilled", "manual_review"],
+      default: "native",
+    },
+  },
+  { _id: false },
 );
 
 const historyEntrySchema = new Schema(
@@ -186,6 +263,12 @@ const orderSchema = new Schema(
     },
     paymobOrderId: { type: String },
     paymobTransactionId: { type: String },
+    paymobRefundTransactionId: { type: String },
+    multiCaptureRefundReconciliationOperation: {
+      type: Schema.Types.ObjectId,
+      ref: "RefundOperation",
+      default: null,
+    },
     sideEffectsCommitted: {
       type: Boolean,
       default: true,
@@ -199,6 +282,28 @@ const orderSchema = new Schema(
       index: true,
       select: false,
     },
+    activeSubstitutionRequest: {
+      type: Schema.Types.ObjectId,
+      ref: "SubstitutionRequest",
+      default: null,
+    },
+    substitutionState: {
+      type: String,
+      enum: Object.values(orderSubstitutionStateEnum),
+      default: orderSubstitutionStateEnum.NONE,
+    },
+    requiresCustomerAction: {
+      type: Boolean,
+      default: false,
+    },
+    substitutionRevision: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    settlement: {
+      type: settlementSummarySchema,
+    },
     notes: { type: String },
   },
   { timestamps: true }
@@ -209,5 +314,15 @@ orderSchema.index({ guestId: 1, createdAt: -1 });
 orderSchema.index({ warehouse: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ paymentMethod: 1, paymentStatus: 1, status: 1, createdAt: 1 });
+orderSchema.index({ requiresCustomerAction: 1, updatedAt: -1 });
+orderSchema.index({ substitutionState: 1, updatedAt: -1 });
+orderSchema.index(
+  { activeSubstitutionRequest: 1 },
+  {
+    partialFilterExpression: {
+      activeSubstitutionRequest: { $type: "objectId" },
+    },
+  },
+);
 
 export const OrderModel = model("Order", orderSchema);

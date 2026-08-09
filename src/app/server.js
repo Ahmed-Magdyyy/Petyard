@@ -59,6 +59,7 @@ app.use(
       "Authorization",
       "Accept-Language",
       "x-guest-id",
+      "Idempotency-Key",
     ],
     credentials: true,
   }),

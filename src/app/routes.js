@@ -15,6 +15,7 @@ import cartRoutes from "../domains/cart/cart.routes.js";
 import couponRoutes from "../domains/coupon/coupon.routes.js";
 import checkoutRoutes from "../domains/checkout/checkout.routes.js";
 import orderRoutes from "../domains/order/order.routes.js";
+import substitutionRoutes from "../domains/substitution/substitution.routes.js";
 import returnRoutes from "../domains/return/return.routes.js";
 import notificationRoutes from "../domains/notification/notification.routes.js";
 import bannerRoutes from "../domains/banner/banner.routes.js";
@@ -64,6 +65,7 @@ export function mountRoutes(app) {
   app.use("/api/v1/cart", cartRoutes);
   app.use("/api/v1/coupons", couponRoutes);
   app.use("/api/v1/checkout", checkoutRoutes);
+  app.use("/api/v1/orders", substitutionRoutes);
   app.use("/api/v1/orders", orderRoutes);
   app.use("/api/v1/returns", returnRoutes);
   app.use("/api/v1/notifications", notificationRoutes);

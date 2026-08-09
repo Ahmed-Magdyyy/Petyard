@@ -14,6 +14,11 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   deleteNotification,
+  getGuestNotifications,
+  getGuestUnreadCount,
+  markGuestNotificationAsRead,
+  markAllGuestNotificationsAsRead,
+  deleteGuestNotification,
 } from "./notification.controller.js";
 import {
   registerDeviceValidator,
@@ -21,7 +26,9 @@ import {
   adminSendNotificationValidator,
   notificationIdParamValidator,
   listNotificationsQueryValidator,
+  guestNotificationHeaderValidator,
 } from "./notification.validators.js";
+import { guestLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
 
 const router = Router();
 
@@ -77,6 +84,48 @@ router.delete(
   protect,
   notificationIdParamValidator,
   deleteNotification
+);
+
+// =====================
+// Guest In-App Notifications
+// =====================
+
+router.get(
+  "/guest",
+  guestLimiter,
+  guestNotificationHeaderValidator,
+  listNotificationsQueryValidator,
+  getGuestNotifications,
+);
+
+router.get(
+  "/guest/unread-count",
+  guestLimiter,
+  guestNotificationHeaderValidator,
+  getGuestUnreadCount,
+);
+
+router.patch(
+  "/guest/:id/read",
+  guestLimiter,
+  guestNotificationHeaderValidator,
+  notificationIdParamValidator,
+  markGuestNotificationAsRead,
+);
+
+router.patch(
+  "/guest/read-all",
+  guestLimiter,
+  guestNotificationHeaderValidator,
+  markAllGuestNotificationsAsRead,
+);
+
+router.delete(
+  "/guest/:id",
+  guestLimiter,
+  guestNotificationHeaderValidator,
+  notificationIdParamValidator,
+  deleteGuestNotification,
 );
 
 // =====================

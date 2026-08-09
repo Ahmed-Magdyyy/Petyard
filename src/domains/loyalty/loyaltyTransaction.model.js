@@ -14,6 +14,22 @@ const loyaltyTransactionSchema = new Schema(
       type: Number,
       required: true,
     },
+    // Loyalty remains point-based, but settlement callers use the same
+    // deterministic operation boundary as wallet and payment operations.
+    amountPiastres: {
+      type: Number,
+      min: 0,
+    },
+    currency: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: 'EGP',
+    },
+    operationId: {
+      type: String,
+      trim: true,
+    },
     type: {
       type: String,
       enum: ["EARNED", "REDEEMED", "DEDUCTED", "ADMIN_ADJUST"],
@@ -48,5 +64,12 @@ const loyaltyTransactionSchema = new Schema(
 
 loyaltyTransactionSchema.index({ user: 1, createdAt: -1 });
 loyaltyTransactionSchema.index({ type: 1, createdAt: -1 });
+loyaltyTransactionSchema.index(
+  { operationId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { operationId: { $type: 'string' } },
+  },
+);
 
 export const LoyaltyTransactionModel = model("LoyaltyTransaction", loyaltyTransactionSchema);

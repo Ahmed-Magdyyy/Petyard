@@ -2,6 +2,7 @@ import { InAppNotificationModel } from "./inAppNotification.model.js";
 import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
 import { parseBoundedInt } from "../../shared/utils/env.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -14,11 +15,22 @@ const BULK_INSERT_CHUNK_SIZE = parseBoundedInt(
   5000,
 );
 
-/**
- * Create a new in-app notification for a user
- */
-export async function createInAppNotificationService({
+function getActorFilter({ userId, guestId }) {
+  const hasUser = Boolean(userId);
+  const normalizedGuestId =
+    typeof guestId === "string" ? guestId.trim() : "";
+  const hasGuest = Boolean(normalizedGuestId);
+
+  if (hasUser === hasGuest) {
+    throw new ApiError("Exactly one notification recipient is required", 400);
+  }
+
+  return hasUser ? { user: userId } : { guestId: normalizedGuestId };
+}
+
+function buildNotificationDocument({
   userId,
+  guestId,
   title_en,
   title_ar,
   body_en,
@@ -27,13 +39,10 @@ export async function createInAppNotificationService({
   action,
   source,
   expiresAt,
+  dedupeKey,
 }) {
-  if (!userId) {
-    return null;
-  }
-
-  const notification = await InAppNotificationModel.create({
-    user: userId,
+  return {
+    ...getActorFilter({ userId, guestId }),
     title_en,
     title_ar: title_ar || title_en,
     body_en,
@@ -42,9 +51,49 @@ export async function createInAppNotificationService({
     action: action || {},
     source: source || {},
     expiresAt,
+    ...(typeof dedupeKey === "string" && dedupeKey.trim()
+      ? { dedupeKey: dedupeKey.trim() }
+      : {}),
+  };
+}
+
+/**
+ * Create a new in-app notification for either a user or a guest. A dedupe key
+ * makes the insert idempotent, and a supplied session keeps it transactional.
+ */
+export async function createInAppNotificationService({
+  userId,
+  guestId,
+  session,
+  ...notificationFields
+}) {
+  // Preserve the existing user-only no-op behaviour used by the dispatcher.
+  if (!userId && !guestId) return null;
+
+  const doc = buildNotificationDocument({
+    userId,
+    guestId,
+    ...notificationFields,
   });
 
-  return notification;
+  if (doc.dedupeKey) {
+    return InAppNotificationModel.findOneAndUpdate(
+      { dedupeKey: doc.dedupeKey },
+      { $setOnInsert: doc },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+        ...(session ? { session } : {}),
+      },
+    );
+  }
+
+  const created = await InAppNotificationModel.create(
+    [doc],
+    session ? { session } : undefined,
+  );
+  return created[0];
 }
 
 /**
@@ -60,6 +109,7 @@ export async function createBulkInAppNotificationsService({
   action,
   source,
   expiresAt,
+  session,
 }) {
   if (!Array.isArray(userIds) || userIds.length === 0) {
     return { insertedCount: 0 };
@@ -68,22 +118,23 @@ export async function createBulkInAppNotificationsService({
   let insertedCount = 0;
 
   for (let start = 0; start < userIds.length; start += BULK_INSERT_CHUNK_SIZE) {
-    const docs = userIds
-      .slice(start, start + BULK_INSERT_CHUNK_SIZE)
-      .map((userId) => ({
-        user: userId,
+    const docs = userIds.slice(start, start + BULK_INSERT_CHUNK_SIZE).map((userId) =>
+      buildNotificationDocument({
+        userId,
         title_en,
-        title_ar: title_ar || title_en,
+        title_ar,
         body_en,
-        body_ar: body_ar || body_en,
+        body_ar,
         icon,
-        action: action || {},
-        source: source || {},
+        action,
+        source,
         expiresAt,
-      }));
+      }),
+    );
 
     const result = await InAppNotificationModel.insertMany(docs, {
       ordered: false,
+      ...(session ? { session } : {}),
     });
 
     insertedCount += result.length;
@@ -114,14 +165,15 @@ function mapNotificationToResponse(notification, lang) {
  * Get paginated notifications for a user
  * Returns format: { totalPages, page, results, data }
  */
-export async function getMyNotificationsService({
+export async function getNotificationsForActorService({
   userId,
+  guestId,
   lang = "en",
   page = 1,
   limit = 20,
   isRead,
 }) {
-  const filter = { user: userId };
+  const filter = getActorFilter({ userId, guestId });
 
   // Optional filter by read status
   if (isRead === true || isRead === "true") {
@@ -152,9 +204,9 @@ export async function getMyNotificationsService({
 /**
  * Get unread count for a user
  */
-export async function getUnreadCountService(userId) {
+export async function getUnreadCountForActorService({ userId, guestId }) {
   const count = await InAppNotificationModel.countDocuments({
-    user: userId,
+    ...getActorFilter({ userId, guestId }),
     isRead: false,
   });
 
@@ -164,9 +216,13 @@ export async function getUnreadCountService(userId) {
 /**
  * Mark a single notification as read
  */
-export async function markNotificationAsReadService({ userId, notificationId }) {
+export async function markNotificationAsReadForActorService({
+  userId,
+  guestId,
+  notificationId,
+}) {
   const notification = await InAppNotificationModel.findOneAndUpdate(
-    { _id: notificationId, user: userId },
+    { _id: notificationId, ...getActorFilter({ userId, guestId }) },
     { isRead: true, readAt: new Date() },
     { new: true }
   );
@@ -177,9 +233,9 @@ export async function markNotificationAsReadService({ userId, notificationId }) 
 /**
  * Mark all notifications as read for a user
  */
-export async function markAllNotificationsAsReadService(userId) {
+export async function markAllNotificationsAsReadForActorService({ userId, guestId }) {
   const result = await InAppNotificationModel.updateMany(
-    { user: userId, isRead: false },
+    { ...getActorFilter({ userId, guestId }), isRead: false },
     { isRead: true, readAt: new Date() }
   );
 
@@ -189,14 +245,42 @@ export async function markAllNotificationsAsReadService(userId) {
 /**
  * Delete a single notification
  */
-export async function deleteNotificationService({ userId, notificationId }) {
+export async function deleteNotificationForActorService({
+  userId,
+  guestId,
+  notificationId,
+}) {
   const result = await InAppNotificationModel.deleteOne({
     _id: notificationId,
-    user: userId,
+    ...getActorFilter({ userId, guestId }),
   });
 
   return { deleted: result.deletedCount > 0 };
 }
+
+// Legacy registered-user exports.
+export const getMyNotificationsService = ({ userId, ...rest }) =>
+  getNotificationsForActorService({ userId, ...rest });
+export const getUnreadCountService = (userId) =>
+  getUnreadCountForActorService({ userId });
+export const markNotificationAsReadService = ({ userId, notificationId }) =>
+  markNotificationAsReadForActorService({ userId, notificationId });
+export const markAllNotificationsAsReadService = (userId) =>
+  markAllNotificationsAsReadForActorService({ userId });
+export const deleteNotificationService = ({ userId, notificationId }) =>
+  deleteNotificationForActorService({ userId, notificationId });
+
+// Guest-specific exports keep every query and mutation owner scoped.
+export const getGuestNotificationsService = ({ guestId, ...rest }) =>
+  getNotificationsForActorService({ guestId, ...rest });
+export const getGuestUnreadCountService = (guestId) =>
+  getUnreadCountForActorService({ guestId });
+export const markGuestNotificationAsReadService = ({ guestId, notificationId }) =>
+  markNotificationAsReadForActorService({ guestId, notificationId });
+export const markAllGuestNotificationsAsReadService = (guestId) =>
+  markAllNotificationsAsReadForActorService({ guestId });
+export const deleteGuestNotificationService = ({ guestId, notificationId }) =>
+  deleteNotificationForActorService({ guestId, notificationId });
 
 /**
  * Delete expired notifications (for cron job)

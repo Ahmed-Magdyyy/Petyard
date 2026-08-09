@@ -278,6 +278,7 @@ function computeExpiresAt(source, providedExpiresAt) {
  */
 export async function dispatchNotification({
   userId,
+  guestId,
   notification,
   icon = "system",
   action,
@@ -285,8 +286,14 @@ export async function dispatchNotification({
   channels = { push: true, inApp: true },
   expiresAt,
   pushOptions,
+  dedupeKey,
 }) {
-  if (!userId) {
+  const normalizedGuestId =
+    typeof guestId === "string" ? guestId.trim() : "";
+  const hasUser = Boolean(userId);
+  const hasGuest = Boolean(normalizedGuestId);
+
+  if (hasUser === hasGuest) {
     return { push: null, inApp: null };
   }
 
@@ -297,6 +304,7 @@ export async function dispatchNotification({
     try {
       const inAppResult = await createInAppNotificationService({
         userId,
+        guestId: normalizedGuestId || undefined,
         title_en: notification?.title_en || notification?.title || "",
         title_ar: notification?.title_ar,
         body_en: notification?.body_en || notification?.body || "",
@@ -305,6 +313,7 @@ export async function dispatchNotification({
         action,
         source,
         expiresAt: computeExpiresAt(source, expiresAt),
+        dedupeKey,
       });
       results.inApp = { success: !!inAppResult };
     } catch (err) {
@@ -316,7 +325,9 @@ export async function dispatchNotification({
   // 2. Send Push Notification
   if (channels.push) {
     try {
-      const tokens = await getDistinctDeviceTokens({ user: userId });
+      const tokens = await getDistinctDeviceTokens(
+        hasUser ? { user: userId } : { guestId: normalizedGuestId },
+      );
 
       // Use English as default for push (could be enhanced to use user's preferred lang)
       const pushResult = await sendPushToTokens({

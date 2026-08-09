@@ -11,6 +11,7 @@ import {
   paymentStatusEnum,
   paymentMethodEnum,
   refundMethodEnum,
+  inventoryAuditReasonEnum,
 } from "../../shared/constants/enums.js";
 import { restoreStockForOrder } from "../order/order.service.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
@@ -407,7 +408,12 @@ export async function processReturnRequestService({
         // Card refund is handled AFTER the transaction (external API call)
 
         // ── Restore stock ──
-        await restoreStockForOrder({ session, order });
+        await restoreStockForOrder({
+          session,
+          order,
+          actorUserId: adminUserId,
+          reason: inventoryAuditReasonEnum.RETURN_RESTORE,
+        });
         restoredStockContext = {
           productIds: (order.items || []).map((item) => item.product),
           warehouseId: order.warehouse,

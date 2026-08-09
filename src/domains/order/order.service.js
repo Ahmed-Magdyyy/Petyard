@@ -9,12 +9,18 @@ import { CouponModel } from "../coupon/coupon.model.js";
 import { UserModel } from "../user/user.model.js";
 import { WalletTransactionModel } from "../wallet/walletTransaction.model.js";
 import {
+  orderLineKindEnum,
   orderStatusEnum,
+  orderSubstitutionStateEnum,
+  inventoryAuditReasonEnum,
+  orderPaymentAttemptStatusEnum,
   paymentMethodEnum,
   paymentStatusEnum,
   FREE_SHIPPING_THRESHOLD,
   roles,
 } from "../../shared/constants/enums.js";
+import { fromPiastres, toPiastres } from "../../shared/utils/money.js";
+import { assertSettlementInvariant } from "../settlement/settlement.service.js";
 import { escapeRegex } from "../../shared/utils/escapeRegex.js";
 import { invalidateProductCaches } from "../product/productCache.service.js";
 import { processRestockSubscriptionsForProduct } from "../restockSubscription/restockSubscription.service.js";
@@ -54,6 +60,15 @@ import {
 } from "../../shared/utils/imageUpload.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+import { restoreFinalOrderInventory } from "../inventory/inventory.service.js";
+import { selectFinalFulfilledOrderItems } from "./order.fulfillment.js";
+import { shouldDeferCardLoyaltyUntilAcceptance } from "../substitution/substitution.loyalty.js";
+import {
+  cancelActiveSubstitutionForOrder,
+  finalizeSubstitutionInstapayOnOrderAcceptance,
+} from "../substitution/substitution.service.js";
+import { OrderPaymentAttemptModel } from "../payment/orderPaymentAttempt.model.js";
+import { createOrFindRefundOperation } from "../payment/substitutionPayment.service.js";
 
 function processRestockedOrderProductsBestEffort(productIds, warehouseId) {
   const uniqueProductIds = [
@@ -164,6 +179,8 @@ function mapCartItemToOrderItem(item) {
     : [];
 
   return {
+    lineId: randomUUID(),
+    lineKind: orderLineKindEnum.ORIGINAL,
     product: item.product,
     productType: item.productType,
     productName: item.productName || "",
@@ -171,6 +188,8 @@ function mapCartItemToOrderItem(item) {
     variantId: item.variantId || undefined,
     variantOptions,
     quantity,
+    fulfillmentQuantity: quantity,
+    finalizedUnavailableQuantity: 0,
     baseEffectivePrice:
       typeof item.baseEffectivePrice === "number"
         ? item.baseEffectivePrice
@@ -182,7 +201,141 @@ function mapCartItemToOrderItem(item) {
         : null,
     itemPrice,
     lineTotal: quantity * itemPrice,
+    itemPricePiastres: toPiastres(itemPrice),
+    lineTotalPiastres: toPiastres(quantity * itemPrice),
   };
+}
+
+function nonNegativePiastres(value) {
+  return Number.isSafeInteger(value) && value > 0 ? value : 0;
+}
+
+// A substitution credit is already value returned to the customer. On a later
+// cancellation it must offset the original payment sources exactly once: first
+// the wallet that was debited, then the card. Pending guest-card liabilities
+// stay excluded because their durable refund operation will settle them.
+export function deriveCancellationSettlementRefunds(
+  settlement,
+  { fallbackWalletUsed = 0 } = {},
+) {
+  if (!settlement) {
+    return {
+      walletRefundPiastres: nonNegativePiastres(toPiastres(fallbackWalletUsed)),
+      cardRefundPiastres: null,
+    };
+  }
+
+  const walletDebitedPiastres = nonNegativePiastres(
+    settlement.walletDebitedPiastres,
+  );
+  let priorWalletCreditPiastres = nonNegativePiastres(
+    settlement.walletCreditedPiastres,
+  );
+  const walletRefundPiastres = Math.max(
+    0,
+    walletDebitedPiastres - priorWalletCreditPiastres,
+  );
+  priorWalletCreditPiastres = Math.max(
+    0,
+    priorWalletCreditPiastres - walletDebitedPiastres,
+  );
+
+  return {
+    walletRefundPiastres,
+    cardRefundPiastres: Math.max(
+      0,
+      nonNegativePiastres(settlement.cardCapturedPiastres) -
+        nonNegativePiastres(settlement.cardRefundedPiastres) -
+        nonNegativePiastres(settlement.pendingRefundLiabilityPiastres) -
+        priorWalletCreditPiastres,
+    ),
+  };
+}
+
+export function requiresManualGuestMultiCaptureRefund({
+  order,
+  paymentAttempts,
+}) {
+  return Boolean(
+    !order?.user &&
+      order?.guestId &&
+      order?.paymentMethod === paymentMethodEnum.CARD &&
+      order?.paymobTransactionId &&
+      (paymentAttempts || []).some(
+        (attempt) =>
+          attempt?.successAccepted === true &&
+          attempt?.status === orderPaymentAttemptStatusEnum.SUCCEEDED &&
+          attempt?.paymobTransactionId,
+      ),
+  );
+}
+
+export function deriveGuestCardDirectRefundAmountPiastres(order) {
+  const capturedOutstandingPiastres = order?.settlement
+    ? deriveCancellationSettlementRefunds(order.settlement, {
+        fallbackWalletUsed: order.walletUsed || 0,
+      }).cardRefundPiastres
+    : toPiastres(order?.total || 0);
+
+  return order?.status === orderStatusEnum.RETURNED
+    ? Math.min(
+        capturedOutstandingPiastres,
+        toPiastres(
+          Math.max(
+            0,
+            (order.subtotal || 0) - (order.discountAmount || 0),
+          ),
+        ),
+      )
+    : capturedOutstandingPiastres;
+}
+
+export async function queueManualGuestMultiCaptureRefund({
+  order,
+  paymentAttempts,
+  refundAmountPiastres,
+  session = null,
+  createRefundOperation = createOrFindRefundOperation,
+}) {
+  if (order?.multiCaptureRefundReconciliationOperation) return true;
+  const anchor = (paymentAttempts || []).find(
+    (attempt) => attempt?.substitutionRequest,
+  );
+  if (
+    !anchor ||
+    !Number.isSafeInteger(refundAmountPiastres) ||
+    refundAmountPiastres <= 0
+  ) {
+    return false;
+  }
+
+  const result = await createRefundOperation({
+    operationId:
+      "guest-multi-capture-refund:" +
+      order._id +
+      ":" +
+      order.status +
+      ":" +
+      refundAmountPiastres,
+    orderId: order._id,
+    substitutionRequestId: anchor.substitutionRequest,
+    guestId: order.guestId,
+    method: "manual",
+    amountPiastres: refundAmountPiastres,
+    currency: order.currency || "EGP",
+    session,
+  });
+
+  const history = {
+    at: new Date(),
+    description:
+      "Manual refund reconciliation required: original card payment and substitution top-up were captured separately; no aggregate provider refund was sent.",
+    visibleToUser: false,
+  };
+  order.multiCaptureRefundReconciliationOperation = result.operation._id;
+  order.paymentStatus = paymentStatusEnum.PAID;
+  order.history = [...(order.history || []), history];
+  return true;
 }
 
 async function buildOrderItemsWithPromotions({ session, cart, lang = "en" }) {
@@ -539,6 +692,10 @@ async function ensureSufficientStockAndDecrement({
         );
       }
       stock.quantity -= quantity;
+      stock.revision =
+        Number.isInteger(stock.revision) && stock.revision >= 0
+          ? stock.revision + 1
+          : 1;
     } else {
       const variants = Array.isArray(product.variants) ? product.variants : [];
       const variant = variants.find(
@@ -577,6 +734,10 @@ async function ensureSufficientStockAndDecrement({
         );
       }
       vStock.quantity -= quantity;
+      vStock.revision =
+        Number.isInteger(vStock.revision) && vStock.revision >= 0
+          ? vStock.revision + 1
+          : 1;
     }
   }
 
@@ -630,93 +791,21 @@ async function rebindOrdersLocalization(ordersOrOrder, lang = "en") {
   return ordersOrOrder;
 }
 
-export async function restoreStockForOrder({ session, order }) {
-  const items = Array.isArray(order.items) ? order.items : [];
-  if (!items.length) {
-    return;
-  }
-
-  const productIds = [
-    ...new Set(
-      items
-        .map((item) => (item.product ? String(item.product) : null))
-        .filter(Boolean),
-    ),
-  ];
-
-  if (!productIds.length) {
-    return;
-  }
-
-  const products = await ProductModel.find({
-    _id: { $in: productIds },
-  }).session(session);
-  const productById = new Map(products.map((p) => [String(p._id), p]));
-
-  for (const item of items) {
-    const product = productById.get(String(item.product));
-    if (!product) {
-      continue;
-    }
-
-    const quantity =
-      typeof item.quantity === "number" && item.quantity > 0
-        ? item.quantity
-        : 0;
-    if (quantity <= 0) {
-      continue;
-    }
-
-    if (product.type === "SIMPLE") {
-      let stocks = product.warehouseStocks;
-      if (!Array.isArray(stocks)) {
-        stocks = [];
-        product.warehouseStocks = stocks;
-      }
-
-      let stock = stocks.find(
-        (ws) => String(ws.warehouse) === String(order.warehouse),
-      );
-      if (!stock) {
-        stocks.push({
-          warehouse: order.warehouse,
-          quantity,
-        });
-      } else {
-        stock.quantity += quantity;
-      }
-    } else {
-      const variants = Array.isArray(product.variants) ? product.variants : [];
-      const variant = variants.find(
-        (v) => String(v._id) === String(item.variantId),
-      );
-      if (!variant) {
-        continue;
-      }
-
-      let vStocks = variant.warehouseStocks;
-      if (!Array.isArray(vStocks)) {
-        vStocks = [];
-        variant.warehouseStocks = vStocks;
-      }
-
-      let vStock = vStocks.find(
-        (ws) => String(ws.warehouse) === String(order.warehouse),
-      );
-      if (!vStock) {
-        vStocks.push({
-          warehouse: order.warehouse,
-          quantity,
-        });
-      } else {
-        vStock.quantity += quantity;
-      }
-    }
-  }
-
-  for (const product of products) {
-    await product.save({ session, validateBeforeSave: false });
-  }
+export async function restoreStockForOrder({
+  session,
+  order,
+  actorUserId,
+  reason = inventoryAuditReasonEnum.CANCEL_RESTORE,
+}) {
+  return restoreFinalOrderInventory({
+    order,
+    warehouseId: order.warehouse,
+    operationId: `order-final-inventory-restore:${order._id}:${reason}`,
+    actorUserId,
+    reason,
+    metadata: { source: "order_status_transition" },
+    session,
+  });
 }
 
 async function applyCouponIfAny({
@@ -946,6 +1035,8 @@ async function processOrderCreationWithCart({
   const orderNumber = generateOrderNumber();
   const pm = normalizePaymentMethod(paymentMethod);
   const isCard = pm === paymentMethodEnum.CARD;
+  const currentOrderValuePiastres = toPiastres(netSubtotal + netShipping);
+  const amountAfterWalletPiastres = toPiastres(finalTotal);
 
   // ── Stock: read-only check for card, decrement deferred to webhook ──
   if (isCard) {
@@ -980,6 +1071,35 @@ async function processOrderCreationWithCart({
     instapayScreenshot: instapayScreenshotUrl || undefined,
     paymentStatus: paymentStatusEnum.PENDING,
     sideEffectsCommitted: !isCard,
+    settlement: {
+      schemaVersion: 1,
+      revision: 0,
+      currency: cart.currency || "EGP",
+      currentMerchandiseGrossPiastres: toPiastres(subtotal),
+      originalCouponDiscountPiastres: toPiastres(
+        couponResult.discountAmount,
+      ),
+      preservedCouponDiscountPiastres: toPiastres(
+        couponResult.discountAmount,
+      ),
+      lockedNetShippingPiastres: toPiastres(netShipping),
+      currentOrderValuePiastres,
+      walletDebitedPiastres: toPiastres(walletResult.walletUsed),
+      walletCreditedPiastres: 0,
+      cardCapturedPiastres: 0,
+      cardRefundedPiastres: 0,
+      cardDuePiastres: isCard ? amountAfterWalletPiastres : 0,
+      instapaySubmittedPiastres:
+        pm === paymentMethodEnum.INSTAPAY ? amountAfterWalletPiastres : 0,
+      instapayConfirmedPiastres: 0,
+      deliveryDuePiastres:
+        pm === paymentMethodEnum.COD ||
+        pm === paymentMethodEnum.POS_ON_DELIVERY
+          ? amountAfterWalletPiastres
+          : 0,
+      pendingRefundLiabilityPiastres: 0,
+      migrationState: "native",
+    },
     history: [historyEntry],
     notes: notes || undefined,
     ...(isCard && cart.checkoutKey ? { checkoutKey: cart.checkoutKey } : {}),
@@ -1490,7 +1610,7 @@ export async function reorderService({ userId, guestId, orderId, lang = "en" }) 
   }
 
   // 3. Fetch all products from the order items
-  const orderItems = Array.isArray(order.items) ? order.items : [];
+  const orderItems = selectFinalFulfilledOrderItems(order.items);
   if (!orderItems.length) {
     throw new ApiError(
       lang === "en"
@@ -2079,6 +2199,22 @@ export async function updateOrderStatusService({
         );
       }
 
+      const blocksStatusProgression = [
+        orderSubstitutionStateEnum.AWAITING_CUSTOMER,
+        orderSubstitutionStateEnum.AWAITING_CARD_PAYMENT,
+      ].includes(
+        order.substitutionState || orderSubstitutionStateEnum.NONE,
+      );
+      if (blocksStatusProgression && newStatus !== orderStatusEnum.CANCELLED) {
+        throw new ApiError(
+          lang === "en"
+            ? "This order is waiting for the customer to resolve a substitution"
+            : "هذا الطلب في انتظار رد العميل على البدائل",
+          409,
+          [{ code: "SUBSTITUTION_ACTION_REQUIRED" }],
+        );
+      }
+
       const isCancelling =
         newStatus === orderStatusEnum.CANCELLED &&
         oldStatus !== orderStatusEnum.CANCELLED;
@@ -2092,22 +2228,45 @@ export async function updateOrderStatusService({
         (isCancelling || isReturning) && order.sideEffectsCommitted !== false;
 
       if (shouldRestoreStock) {
-        await restoreStockForOrder({ session, order });
+        await restoreStockForOrder({
+          session,
+          order,
+          actorUserId,
+          reason: isReturning
+            ? inventoryAuditReasonEnum.RETURN_RESTORE
+            : inventoryAuditReasonEnum.CANCEL_RESTORE,
+        });
         stockWasRestored = true;
       }
+      if (isCancelling) {
+        await cancelActiveSubstitutionForOrder({
+          order,
+          actorUserId,
+          session,
+        });
+      }
 
-      // Cancellation: refund wallet amount that was used to pay
+      const cancellationSettlementRefunds = isCancelling
+        ? deriveCancellationSettlementRefunds(order.settlement, {
+            fallbackWalletUsed: order.walletUsed || 0,
+          })
+        : null;
+
+      // Cancellation: refund only the wallet amount still retained by the
+      // order after any earlier substitution credit.
       const shouldRefundWalletUsed =
         isCancelling &&
         order.sideEffectsCommitted !== false &&
         order.user &&
-        typeof order.walletUsed === "number" &&
-        order.walletUsed > 0;
+        cancellationSettlementRefunds.walletRefundPiastres > 0;
 
       if (shouldRefundWalletUsed) {
+        const walletRefund = fromPiastres(
+          cancellationSettlementRefunds.walletRefundPiastres,
+        );
         await UserModel.updateOne(
           { _id: order.user },
-          { $inc: { walletBalance: order.walletUsed } },
+          { $inc: { walletBalance: walletRefund } },
           { session },
         );
 
@@ -2119,7 +2278,7 @@ export async function updateOrderStatusService({
           [
             {
               user: order.user,
-              amount: order.walletUsed,
+              amount: walletRefund,
               type: "ORDER_REFUND",
               referenceType: "ORDER",
               referenceId: order._id,
@@ -2157,6 +2316,17 @@ export async function updateOrderStatusService({
         order.paymentStatus !== paymentStatusEnum.PAID
       ) {
         order.paymentStatus = paymentStatusEnum.PAID;
+      }
+      if (
+        postPendingStatuses.includes(newStatus) &&
+        order.substitutionState ===
+          orderSubstitutionStateEnum.INSTAPAY_SUBMITTED
+      ) {
+        await finalizeSubstitutionInstapayOnOrderAcceptance({
+          order,
+          actorUserId,
+          session,
+        });
       }
 
       // Award loyalty points when payment becomes PAID (unified for COD + Card)
@@ -2252,18 +2422,23 @@ export async function updateOrderStatusService({
 
       if (shouldRefundCardPayment) {
         const isGuest = !order.user;
-        const paymentPortion = Math.max(
-          0,
-          (typeof order.total === "number" ? order.total : 0) -
-            (typeof order.walletUsed === "number" ? order.walletUsed : 0),
-        );
+        // A prior registered substitution credit first offsets wallet money,
+        // then any captured card money. Guest pending refund liabilities are
+        // excluded because their queued operation settles them separately.
+        const paymentPortion = order.settlement
+          ? fromPiastres(
+              cancellationSettlementRefunds.cardRefundPiastres,
+            )
+          : Math.max(
+              0,
+              typeof order.total === "number" ? order.total : 0,
+            );
 
         if (!isGuest && paymentPortion > 0) {
           // Registered user: credit the card portion to wallet
-          const netRefund = Math.max(
-            0,
-            paymentPortion - walletDeductedForPoints,
-          );
+          // The loyalty deficit was already deducted explicitly above for a
+          // cancellation, so it must not be removed from the card refund too.
+          const netRefund = paymentPortion;
 
           if (netRefund > 0) {
             await UserModel.updateOne(
@@ -2281,14 +2456,11 @@ export async function updateOrderStatusService({
                 {
                   user: order.user,
                   amount: netRefund,
-                  type: "ORDER_REFUND",
+                  type: "ORDER_CARD_REFUND",
                   referenceType: "ORDER",
                   referenceId: order._id,
                   balanceAfter: userAfterPaymentRefund?.walletBalance ?? 0,
-                  note:
-                    walletDeductedForPoints > 0
-                      ? `Refund of card payment for cancelled order ${order.orderNumber} (${paymentPortion} EGP - ${walletDeductedForPoints} EGP loyalty points recovery)`
-                      : `Refund of card payment for cancelled order ${order.orderNumber}`,
+                  note: `Refund of card payment for cancelled order ${order.orderNumber}`,
                 },
               ],
               { session },
@@ -2355,6 +2527,42 @@ export async function updateOrderStatusService({
         order.paymentStatus = paymentStatusEnum.REFUNDED;
       }
 
+      // A guest card order can have the original capture plus one successful
+      // substitution top-up capture. Materialize the manual reconciliation in
+      // this same transaction before committing the terminal order status.
+      // This intentionally never sends their aggregate against the original
+      // Paymob transaction.
+      if (
+        (isCancelling || isReturning) &&
+        !order.user &&
+        order.paymentMethod === paymentMethodEnum.CARD &&
+        order.paymobTransactionId
+      ) {
+        const successfulSubstitutionCaptures =
+          await OrderPaymentAttemptModel.find({
+            order: order._id,
+            successAccepted: true,
+            status: orderPaymentAttemptStatusEnum.SUCCEEDED,
+            paymobTransactionId: { $exists: true, $ne: "" },
+          })
+            .session(session)
+            .select("substitutionRequest paymobTransactionId amountPiastres");
+        if (
+          requiresManualGuestMultiCaptureRefund({
+            order,
+            paymentAttempts: successfulSubstitutionCaptures,
+          })
+        ) {
+          await queueManualGuestMultiCaptureRefund({
+            order,
+            paymentAttempts: successfulSubstitutionCaptures,
+            refundAmountPiastres:
+              deriveGuestCardDirectRefundAmountPiastres(order),
+            session,
+          });
+        }
+      }
+
       order.history = Array.isArray(order.history) ? order.history : [];
       order.history.push({
         at: new Date(),
@@ -2383,10 +2591,18 @@ export async function updateOrderStatusService({
     }
   }
 
-  // Guest + card: refund via Paymob (external API, outside txn)
-  // Applies to both cancelled and returned orders
+  const directRefundAmountPiastres =
+    deriveGuestCardDirectRefundAmountPiastres(updated);
+  const queuedManualMultiCaptureRefund = Boolean(
+    updated?.multiCaptureRefundReconciliationOperation,
+  );
+
+  // Guest + card: refund one original capture via Paymob (external API, outside
+  // the transaction). Feature orders with multiple captures take the durable
+  // manual branch above instead.
   if (
     updated &&
+    !queuedManualMultiCaptureRefund &&
     (updated.status === orderStatusEnum.CANCELLED ||
       updated.status === orderStatusEnum.RETURNED) &&
     !updated.user &&
@@ -2395,37 +2611,33 @@ export async function updateOrderStatusService({
     updated.paymobTransactionId
   ) {
     // Cancelled = refund full total; Returned = refund items only (no shipping)
-    const refundAmount =
-      updated.status === orderStatusEnum.RETURNED
-        ? Math.max(
-            0,
-            (updated.subtotal || 0) - (updated.discountAmount || 0),
-          )
-        : updated.total || 0;
+    const refundAmount = fromPiastres(directRefundAmountPiastres);
 
-    const refundAmountCents = Math.round(refundAmount * 100);
-    try {
-      const result = await refundTransaction({
-        transactionId: updated.paymobTransactionId,
-        amountCents: refundAmountCents,
-      });
+    if (refundAmount > 0) {
+      const refundAmountCents = Math.round(refundAmount * 100);
+      try {
+        const result = await refundTransaction({
+          transactionId: updated.paymobTransactionId,
+          amountCents: refundAmountCents,
+        });
 
-      if (result.refundTransactionId) {
-        await OrderModel.updateOne(
-          { _id: updated._id },
-          { paymobRefundTransactionId: result.refundTransactionId },
+        if (result.refundTransactionId) {
+          await OrderModel.updateOne(
+            { _id: updated._id },
+            { paymobRefundTransactionId: result.refundTransactionId },
+          );
+        }
+
+        console.log(
+          `[Order] Card refund successful for ${updated.status} order ${updated.orderNumber} (${refundAmount} EGP) — refund txn ${result.refundTransactionId}`,
         );
+      } catch (err) {
+        console.error(
+          `[Order] Card refund FAILED for ${updated.status} order ${updated.orderNumber}:`,
+          err.message,
+        );
+        // The status change is already committed. Admin must manually resolve.
       }
-
-      console.log(
-        `[Order] Card refund successful for ${updated.status} order ${updated.orderNumber} (${refundAmount} EGP) — refund txn ${result.refundTransactionId}`,
-      );
-    } catch (err) {
-      console.error(
-        `[Order] Card refund FAILED for ${updated.status} order ${updated.orderNumber}:`,
-        err.message,
-      );
-      // The status change is already committed. Admin must manually resolve.
     }
   }
 
@@ -2603,6 +2815,16 @@ async function commitOrderSideEffects(
       freshOrder.paymentStatus = paymentStatusEnum.PAID;
       freshOrder.paymobTransactionId = paymobTransactionId || undefined;
       if (paymobOrderId) freshOrder.paymobOrderId = paymobOrderId;
+      if (freshOrder.settlement) {
+        const capturedPiastres = freshOrder.settlement.cardDuePiastres || 0;
+        freshOrder.settlement.cardDuePiastres = 0;
+        freshOrder.settlement.cardCapturedPiastres =
+          (freshOrder.settlement.cardCapturedPiastres || 0) +
+          capturedPiastres;
+        freshOrder.settlement.revision =
+          (freshOrder.settlement.revision || 0) + 1;
+        assertSettlementInvariant(freshOrder.settlement);
+      }
 
       freshOrder.history = Array.isArray(freshOrder.history)
         ? freshOrder.history
@@ -2613,8 +2835,11 @@ async function commitOrderSideEffects(
         visibleToUser: true,
       });
 
-      // 6. Award loyalty points (card payment confirmed = paid)
-      await awardLoyaltyPointsForOrder(freshOrder, session);
+      // Feature-enabled card orders can still change while pending. Defer the
+      // award until staff acceptance, after any substitution is final.
+      if (!shouldDeferCardLoyaltyUntilAcceptance(freshOrder)) {
+        await awardLoyaltyPointsForOrder(freshOrder, session);
+      }
 
       await freshOrder.save({ session });
     });

@@ -86,3 +86,110 @@ export function findProductsByIdsWithOptions(
 
   return query;
 }
+
+export function findSubstitutionCandidateProducts({
+  warehouseId,
+  searchRegex,
+  skip = 0,
+  limit = 20,
+}) {
+  const stockFilter = {
+    $or: [
+      {
+        type: "SIMPLE",
+        warehouseStocks: {
+          $elemMatch: {
+            warehouse: warehouseId,
+            quantity: { $gt: 0 },
+          },
+        },
+      },
+      {
+        type: "VARIANT",
+        variants: {
+          $elemMatch: {
+            warehouseStocks: {
+              $elemMatch: {
+                warehouse: warehouseId,
+                quantity: { $gt: 0 },
+              },
+            },
+          },
+        },
+      },
+    ],
+  };
+
+  const filter = searchRegex
+    ? {
+        isActive: true,
+        $and: [
+          stockFilter,
+          {
+            $or: [
+              { name_en: searchRegex },
+              { name_ar: searchRegex },
+              { slug: searchRegex },
+              { sku: searchRegex },
+              { "variants.sku": searchRegex },
+            ],
+          },
+        ],
+      }
+    : { isActive: true, ...stockFilter };
+
+  return ProductModel.find(filter)
+    .select(
+      "_id slug type name_en name_ar subcategory brand price discountedPrice " +
+        "images warehouseStocks variants._id variants.sku variants.price " +
+        "variants.discountedPrice variants.options variants.images " +
+        "variants.warehouseStocks",
+    )
+    .sort({ name_en: 1, _id: 1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+}
+
+export function countSubstitutionCandidateProducts({ warehouseId, searchRegex }) {
+  const stockFilter = {
+    $or: [
+      {
+        type: "SIMPLE",
+        warehouseStocks: {
+          $elemMatch: { warehouse: warehouseId, quantity: { $gt: 0 } },
+        },
+      },
+      {
+        type: "VARIANT",
+        variants: {
+          $elemMatch: {
+            warehouseStocks: {
+              $elemMatch: { warehouse: warehouseId, quantity: { $gt: 0 } },
+            },
+          },
+        },
+      },
+    ],
+  };
+
+  const filter = searchRegex
+    ? {
+        isActive: true,
+        $and: [
+          stockFilter,
+          {
+            $or: [
+              { name_en: searchRegex },
+              { name_ar: searchRegex },
+              { slug: searchRegex },
+              { sku: searchRegex },
+              { "variants.sku": searchRegex },
+            ],
+          },
+        ],
+      }
+    : { isActive: true, ...stockFilter };
+
+  return ProductModel.countDocuments(filter);
+}

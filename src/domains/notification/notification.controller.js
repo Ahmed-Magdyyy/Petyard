@@ -10,6 +10,11 @@ import {
   markNotificationAsReadService,
   markAllNotificationsAsReadService,
   deleteNotificationService,
+  getGuestNotificationsService,
+  getGuestUnreadCountService,
+  markGuestNotificationAsReadService,
+  markAllGuestNotificationsAsReadService,
+  deleteGuestNotificationService,
 } from "./inAppNotification.service.js";
 import {
   dispatchNotificationToUsers,
@@ -53,8 +58,7 @@ export const registerGuestDevice = asyncHandler(async (req, res) => {
   const guestId = getGuestId(req);
   if (!guestId) {
     throw new ApiError("x-guest-id header is required", 400);
-  }  
-
+  }
   const { token, platform, lang } = req.body || {};
 
   const device = await registerDeviceForGuestService({
@@ -155,6 +159,66 @@ export const deleteNotification = asyncHandler(async (req, res) => {
     throw new ApiError("Notification not found", 404);
   }
 
+  res.status(200).json({ data: { message: "Deleted" } });
+});
+
+// =====================
+// Guest In-App Notifications
+// =====================
+
+function requireGuestId(req) {
+  const guestId = getGuestId(req);
+  if (!guestId) {
+    throw new ApiError("x-guest-id header is required", 400);
+  }
+  return guestId;
+}
+
+export const getGuestNotifications = asyncHandler(async (req, res) => {
+  const { page = 1, limit = 20, isRead } = req.query;
+  const result = await getGuestNotificationsService({
+    guestId: requireGuestId(req),
+    lang: req.lang,
+    page: parseInt(page, 10) || 1,
+    limit: Math.min(parseInt(limit, 10) || 20, 50),
+    isRead,
+  });
+  res.status(200).json(result);
+});
+
+export const getGuestUnreadCount = asyncHandler(async (req, res) => {
+  const result = await getGuestUnreadCountService(requireGuestId(req));
+  res.status(200).json({ data: result });
+});
+
+export const markGuestNotificationAsRead = asyncHandler(async (req, res) => {
+  const result = await markGuestNotificationAsReadService({
+    guestId: requireGuestId(req),
+    notificationId: req.params.id,
+  });
+  if (!result.success) {
+    // Keep other guests' notification ids opaque.
+    throw new ApiError("Notification not found", 404);
+  }
+  res.status(200).json({ data: { message: "Marked as read" } });
+});
+
+export const markAllGuestNotificationsAsRead = asyncHandler(async (req, res) => {
+  const result = await markAllGuestNotificationsAsReadService(
+    requireGuestId(req),
+  );
+  res.status(200).json({ data: result });
+});
+
+export const deleteGuestNotification = asyncHandler(async (req, res) => {
+  const result = await deleteGuestNotificationService({
+    guestId: requireGuestId(req),
+    notificationId: req.params.id,
+  });
+  if (!result.deleted) {
+    // Keep other guests' notification ids opaque.
+    throw new ApiError("Notification not found", 404);
+  }
   res.status(200).json({ data: { message: "Deleted" } });
 });
 

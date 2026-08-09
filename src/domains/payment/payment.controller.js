@@ -22,6 +22,15 @@ import {
   paymentStatusEnum,
 } from "../../shared/constants/enums.js";
 import { dispatchNotification } from "../notification/notificationDispatcher.js";
+import {
+  claimAttemptSuccessAtomically,
+  createOrFindRefundOperation,
+  ensureLateSuccessRefundOperation,
+  findSubstitutionPaymentAttemptByProviderRefs,
+  markSubstitutionPaymentAttemptFailure,
+} from "./substitutionPayment.service.js";
+import { SubstitutionRequestModel } from "../substitution/substitutionRequest.model.js";
+import { confirmSubstitutionCardPaymentService } from "../substitution/substitution.service.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -37,6 +46,102 @@ async function findOrderByIds(merchantOrderId, paymobOrderId) {
     order = await OrderModel.findOne({ paymobOrderId: String(paymobOrderId) });
   }
   return order;
+}
+
+async function handleSubstitutionTransaction(attempt, txData) {
+  if (!txData.success) {
+    await markSubstitutionPaymentAttemptFailure({
+      attemptId: attempt._id,
+      errorCode: "PAYMOB_PAYMENT_FAILED",
+    });
+    return { status: 200, message: "Substitution payment failure processed" };
+  }
+
+  const request = await SubstitutionRequestModel.findById(
+    attempt.substitutionRequest,
+  )
+    .select("status isActive paymentExpiresAt")
+    .lean();
+  const claim = await claimAttemptSuccessAtomically({
+    attemptId: attempt._id,
+    paymobOrderId: txData.paymobOrderId,
+    paymobTransactionId: txData.transactionId,
+    amountPiastres: Number(txData.amountCents),
+    currency: txData.currency,
+    requestIsTerminal: !request?.isActive,
+    requestPaymentExpiresAt: request?.paymentExpiresAt || null,
+  });
+
+  if (claim.classification === "amount_or_currency_mismatch") {
+    console.error(
+      `[Paymob Webhook] SECURITY: substitution payment amount/currency mismatch for attempt ${attempt._id}`,
+    );
+    return { status: 200, message: "Substitution payment mismatch flagged" };
+  }
+
+  if (
+    claim.classification === "accepted" ||
+    claim.classification === "already_succeeded"
+  ) {
+    const confirmation = await confirmSubstitutionCardPaymentService({
+      attempt: claim.attempt,
+    });
+    if (confirmation?.lateSuccessRefundRequired) {
+      await ensureLateSuccessRefundOperation({
+        attempt: confirmation.attempt || claim.attempt,
+        originalTransactionId: txData.transactionId,
+      });
+      return {
+        status: 200,
+        message: "Late substitution payment queued for refund",
+      };
+    }
+    if (claim.attempt?.user && txData.cardToken) {
+      saveCardFromTransaction(claim.attempt.user, txData).catch((error) =>
+        console.error(
+          "[Paymob Webhook] Failed to save substitution payment card:",
+          error.message,
+        ),
+      );
+    }
+    return { status: 200, message: "Substitution payment processed" };
+  }
+
+  if (
+    claim.classification === "duplicate_success_refund_required"
+  ) {
+    await createOrFindRefundOperation({
+      orderId: claim.attempt.order,
+      substitutionRequestId: claim.attempt.substitutionRequest,
+      paymentAttemptId: null,
+      userId: claim.attempt.user || null,
+      guestId: claim.attempt.guestId || null,
+      method: "manual",
+      amountPiastres: claim.attempt.amountPiastres,
+      currency: claim.attempt.currency,
+      originalTransactionId: txData.transactionId,
+    });
+    return {
+      status: 200,
+      message: "Duplicate substitution payment flagged for manual refund",
+    };
+  }
+
+  if (
+    claim.classification === "late_success_refund_required" ||
+    claim.classification === "another_attempt_success_refund_required"
+  ) {
+    await ensureLateSuccessRefundOperation({
+      attempt: claim.attempt,
+      originalTransactionId: txData.transactionId,
+    });
+    return {
+      status: 200,
+      message: "Late substitution payment queued for refund",
+    };
+  }
+
+  return { status: 200, message: "Substitution payment already processed" };
 }
 
 // ─── TRANSACTION webhook logic ──────────────────────────────────────────────
@@ -63,6 +168,15 @@ async function handleTransaction(transactionObj, receivedHmac, fullBody) {
 
   if (txData.pending) {
     return { status: 200, message: "Pending transaction acknowledged" };
+  }
+
+  const substitutionAttempt =
+    await findSubstitutionPaymentAttemptByProviderRefs({
+      merchantOrderId: txData.merchantOrderId,
+      paymobOrderId: txData.paymobOrderId,
+    });
+  if (substitutionAttempt) {
+    return handleSubstitutionTransaction(substitutionAttempt, txData);
   }
 
   const order = await findOrderByIds(
@@ -135,8 +249,7 @@ async function handleTransaction(transactionObj, receivedHmac, fullBody) {
 async function handleTokenWebhook(body) {
   const tokenObj = body.obj || {};
 
-  // Debug: log full TOKEN payload to identify available fields
-  console.log("[Paymob Webhook] TOKEN payload:", JSON.stringify(tokenObj));
+  console.log("[Paymob Webhook] TOKEN payload received");
 
   const token = tokenObj.token;
   const maskedPan = tokenObj.masked_pan || "";
@@ -150,9 +263,14 @@ async function handleTokenWebhook(body) {
     return;
   }
 
-  const order = await findOrderByIds(null, orderId);
+  const substitutionAttempt =
+    await findSubstitutionPaymentAttemptByProviderRefs({
+      paymobOrderId: String(orderId),
+    });
+  const order = substitutionAttempt ? null : await findOrderByIds(null, orderId);
+  const ownerUserId = substitutionAttempt?.user || order?.user;
 
-  if (!order?.user) {
+  if (!ownerUserId) {
     console.log(
       `[Paymob Webhook] TOKEN — no order/user found for order_id=${orderId}`,
     );
@@ -161,7 +279,7 @@ async function handleTokenWebhook(body) {
 
   const lastFour = maskedPan.slice(-4) || "";
 
-  saveCardFromTransaction(order.user, {
+  saveCardFromTransaction(ownerUserId, {
     cardToken: token,
     sourceData: { pan: lastFour, subType: cardSubtype },
     expiryMonth,

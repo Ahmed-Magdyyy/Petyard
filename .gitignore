@@ -40,6 +40,9 @@ scripts/*
 !scripts/bunnyMediaCanary.js
 !scripts/setWarehouseStockZero.js
 !scripts/normalizeProductWarehouseStocks.js
+!scripts/backfillSubstitutionReadiness.js
+!scripts/auditSubstitutionReadiness.js
 scripts/bunny-migration-reports/
+scripts/substitution-migration-reports/
 BUNNY_MEDIA_MIGRATION_IMPLEMENTATION_PLAN.md
 CLOUDINARY_DELIVERY_OPTIMIZATION_IMPLEMENTATION_PLAN.md

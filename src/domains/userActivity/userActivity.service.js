@@ -18,6 +18,11 @@ import {
   cartStatusEnum,
   returnStatusEnum,
 } from "../../shared/constants/enums.js";
+import {
+  buildFinalFulfilledLineTotalExpression,
+  buildFinalFulfilledLineMatchExpression,
+  buildFinalFulfillmentQuantityExpression,
+} from "../order/order.fulfillment.js";
 
 const { ObjectId } = mongoose.Types;
 
@@ -410,14 +415,19 @@ function aggregateProductsPurchased(userId) {
       },
     },
     { $unwind: "$items" },
+    { $match: buildFinalFulfilledLineMatchExpression() },
     {
       $group: {
         _id: "$items.product",
         productName: { $last: "$items.productName" },
         productImageUrl: { $last: "$items.productImageUrl" },
-        totalQuantity: { $sum: "$items.quantity" },
+        totalQuantity: {
+          $sum: buildFinalFulfillmentQuantityExpression(),
+        },
         orderCount: { $sum: 1 },
-        totalSpent: { $sum: "$items.lineTotal" },
+        totalSpent: {
+          $sum: buildFinalFulfilledLineTotalExpression(),
+        },
       },
     },
     { $sort: { orderCount: -1, totalSpent: -1 } },
@@ -549,13 +559,22 @@ export async function getProductOrderHistoryService(productId) {
         },
       },
       { $unwind: "$items" },
-      { $match: { "items.product": productObjId } },
+      {
+        $match: {
+          "items.product": productObjId,
+          ...buildFinalFulfilledLineMatchExpression(),
+        },
+      },
       {
         $group: {
           _id: null,
-          totalSales: { $sum: "$items.lineTotal" },
+          totalSales: {
+            $sum: buildFinalFulfilledLineTotalExpression(),
+          },
           orderCount: { $sum: 1 },
-          totalQuantitySold: { $sum: "$items.quantity" },
+          totalQuantitySold: {
+            $sum: buildFinalFulfillmentQuantityExpression(),
+          },
         },
       },
     ]),
@@ -570,13 +589,22 @@ export async function getProductOrderHistoryService(productId) {
         },
       },
       { $unwind: "$items" },
-      { $match: { "items.product": productObjId } },
+      {
+        $match: {
+          "items.product": productObjId,
+          ...buildFinalFulfilledLineMatchExpression(),
+        },
+      },
       {
         $group: {
           _id: "$user",
           orderCount: { $sum: 1 },
-          totalQuantity: { $sum: "$items.quantity" },
-          totalSpent: { $sum: "$items.lineTotal" },
+          totalQuantity: {
+            $sum: buildFinalFulfillmentQuantityExpression(),
+          },
+          totalSpent: {
+            $sum: buildFinalFulfilledLineTotalExpression(),
+          },
         },
       },
       { $sort: { orderCount: -1, totalSpent: -1 } },

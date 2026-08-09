@@ -97,6 +97,85 @@ export const warehouseFulfillmentStatusEnum = Object.freeze({
   CLOSED: 'CLOSED',
 });
 
+export const substitutionRequestStatusEnum = Object.freeze({
+  OFFERED: 'offered',
+  AWAITING_CARD_PAYMENT: 'awaiting_card_payment',
+  INSTAPAY_SUBMITTED: 'instapay_submitted',
+  COMPLETED: 'completed',
+  REJECTED: 'rejected',
+  EXPIRED: 'expired',
+  CANCELLED: 'cancelled',
+});
+
+export const orderSubstitutionStateEnum = Object.freeze({
+  NONE: 'none',
+  AWAITING_CUSTOMER: 'awaiting_customer',
+  AWAITING_CARD_PAYMENT: 'awaiting_card_payment',
+  INSTAPAY_SUBMITTED: 'instapay_submitted',
+});
+
+export const orderLineKindEnum = Object.freeze({
+  ORIGINAL: 'original',
+  SUBSTITUTE: 'substitute',
+});
+
+export const orderPaymentAttemptStatusEnum = Object.freeze({
+  INITIALIZING: 'initializing',
+  AWAITING_PAYMENT: 'awaiting_payment',
+  SUCCEEDED: 'succeeded',
+  FAILED: 'failed',
+  SUPERSEDED: 'superseded',
+  EXPIRED: 'expired',
+  LATE_SUCCESS_REFUND_REQUIRED: 'late_success_refund_required',
+  REFUNDED: 'refunded',
+});
+
+export const refundOperationStatusEnum = Object.freeze({
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  SUCCEEDED: 'succeeded',
+  RETRYABLE: 'retryable',
+  MANUAL_REQUIRED: 'manual_required',
+});
+
+export const settlementOperationKindEnum = Object.freeze({
+  WALLET_DEBIT: 'wallet_debit',
+  WALLET_CREDIT: 'wallet_credit',
+  CARD_CAPTURE: 'card_capture',
+  CARD_REFUND: 'card_refund',
+  CARD_DUE: 'card_due',
+  INSTAPAY_SUBMITTED: 'instapay_submitted',
+  INSTAPAY_CONFIRMED: 'instapay_confirmed',
+  DELIVERY_DUE: 'delivery_due',
+  REFUND_LIABILITY: 'refund_liability',
+  LOYALTY_EARN: 'loyalty_earn',
+  LOYALTY_REVERSAL: 'loyalty_reversal',
+});
+
+export const settlementOperationStatusEnum = Object.freeze({
+  PENDING: 'pending',
+  APPLIED: 'applied',
+  REVERSED: 'reversed',
+  FAILED: 'failed',
+});
+
+export const inventoryAuditReasonEnum = Object.freeze({
+  CHECKOUT_RESERVE: 'checkout_reserve',
+  SUBSTITUTION_ORIGINAL_CORRECTION: 'substitution_original_correction',
+  SUBSTITUTION_RESERVE: 'substitution_reserve',
+  SUBSTITUTION_RELEASE: 'substitution_release',
+  CANCEL_RESTORE: 'cancel_restore',
+  RETURN_RESTORE: 'return_restore',
+});
+
+export const notificationOutboxStatusEnum = Object.freeze({
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  SENT: 'sent',
+  RETRYABLE: 'retryable',
+  DEAD_LETTER: 'dead_letter',
+});
+
 export const serviceTypeEnum = Object.freeze({
   GROOMING: "GROOMING",
   SHOWERING: "SHOWERING",

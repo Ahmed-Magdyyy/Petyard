@@ -7,7 +7,12 @@
     "test": "node --test",
     "start:dev": "nodemon src/app/server.js",
     "start:prod": "NODE_ENV=production node src/app/server.js",
-    "start:notification-worker": "NODE_ENV=production node src/workers/notificationBroadcast.worker.js"
+    "start:notification-worker": "NODE_ENV=production node src/workers/notificationBroadcast.worker.js",
+    "start:notification-outbox-worker": "NODE_ENV=production node src/workers/notificationOutbox.worker.js",
+    "start:substitution-refund-worker": "NODE_ENV=production node src/workers/substitutionRefund.worker.js",
+    "start:substitution-expiration-worker": "NODE_ENV=production node src/workers/substitutionExpiration.worker.js",
+    "substitution:backfill": "node scripts/backfillSubstitutionReadiness.js",
+    "substitution:audit": "node scripts/auditSubstitutionReadiness.js"
   },
   "author": "",
   "license": "ISC",

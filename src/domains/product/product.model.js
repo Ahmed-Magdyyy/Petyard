@@ -24,6 +24,16 @@ const warehouseStockSchema = new Schema(
       required: true,
       min: 0,
     },
+    revision: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "warehouse stock revision must be an integer",
+      },
+    },
   },
   { _id: false }
 );
@@ -173,6 +183,50 @@ const productSchema = new Schema(
   },
   { timestamps: true }
 );
+
+function invalidateDuplicateWarehouseRows(document, path, rows) {
+  if (!Array.isArray(rows)) return;
+
+  const warehouseIds = rows
+    .map((row) => (row?.warehouse ? String(row.warehouse) : null))
+    .filter(Boolean);
+
+  if (new Set(warehouseIds).size !== warehouseIds.length) {
+    document.invalidate(path, "warehouseStocks cannot contain duplicate warehouses");
+  }
+}
+
+// Legacy duplicate rows remain readable until their stock collection is
+// explicitly replaced. New and replaced collections require one row per
+// warehouse, for both simple products and individual variants.
+function hasModifiedWarehouseStockPath(document, rootPath) {
+  const directPaths = document.directModifiedPaths?.() || [];
+  return directPaths.some(
+    (path) => path === rootPath || path.startsWith(`${rootPath}.`),
+  );
+}
+
+productSchema.pre("validate", function validateWarehouseStockUniqueness() {
+  if (hasModifiedWarehouseStockPath(this, "warehouseStocks")) {
+    invalidateDuplicateWarehouseRows(this, "warehouseStocks", this.warehouseStocks);
+  }
+
+  if (hasModifiedWarehouseStockPath(this, "variants")) {
+    const variants = Array.isArray(this.variants) ? this.variants : [];
+    const variantsWereReplaced = (this.directModifiedPaths?.() || []).includes("variants");
+    variants.forEach((variant, index) => {
+      if (!hasModifiedWarehouseStockPath(this, `variants.${index}.warehouseStocks`) &&
+          !variantsWereReplaced) {
+        return;
+      }
+      invalidateDuplicateWarehouseRows(
+        this,
+        `variants.${index}.warehouseStocks`,
+        variant?.warehouseStocks,
+      );
+    });
+  }
+});
 
 productSchema.index({ subcategory: 1 });
 productSchema.index({ category: 1 });

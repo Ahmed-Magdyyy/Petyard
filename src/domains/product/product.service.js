@@ -1449,13 +1449,37 @@ async function ensureWarehousesExist(warehouseIds) {
   }
 }
 
-function mapWarehouseStocks(rawStocks) {
+function mapWarehouseStocks(rawStocks, existingStocks = []) {
   if (!Array.isArray(rawStocks)) return [];
-  return rawStocks.map((ws) => ({
-    warehouse: ws.warehouse,
-    quantity:
-      typeof ws.quantity === "number" ? ws.quantity : Number(ws.quantity) || 0,
-  }));
+  const existingByWarehouse = new Map(
+    (Array.isArray(existingStocks) ? existingStocks : [])
+      .filter((stock) => stock?.warehouse)
+      .map((stock) => [String(stock.warehouse), stock]),
+  );
+
+  return rawStocks.map((ws) => {
+    const warehouse = ws.warehouse;
+    const quantity =
+      typeof ws.quantity === "number" ? ws.quantity : Number(ws.quantity) || 0;
+    const existing = existingByWarehouse.get(String(warehouse));
+    const previousQuantity =
+      typeof existing?.quantity === "number" ? existing.quantity : null;
+    const previousRevision =
+      Number.isInteger(existing?.revision) && existing.revision >= 0
+        ? existing.revision
+        : 0;
+
+    return {
+      warehouse,
+      quantity,
+      revision:
+        previousQuantity === null
+          ? 0
+          : previousQuantity === quantity
+            ? previousRevision
+            : previousRevision + 1,
+    };
+  });
 }
 
 async function getAllWarehouseIds() {
@@ -1507,9 +1531,12 @@ function mapVariantPayloads(
             }))
             .filter((o) => o.name && o.value)
         : [],
-      warehouseStocks: warehouseIds
-        ? completeWarehouseStocks(v.warehouseStocks, warehouseIds)
-        : mapWarehouseStocks(v.warehouseStocks),
+      warehouseStocks: mapWarehouseStocks(
+        warehouseIds
+          ? completeWarehouseStocks(v.warehouseStocks, warehouseIds)
+          : v.warehouseStocks,
+        existingVariantsById?.get(String(v._id))?.warehouseStocks,
+      ),
       isDefault,
     };
 
@@ -2012,9 +2039,9 @@ async function updateProductService(id, payload, files = []) {
 
     if (warehouseStocks !== undefined) {
       const warehouseIds = await getAllWarehouseIds();
-      product.warehouseStocks = completeWarehouseStocks(
-        warehouseStocks,
-        warehouseIds,
+      product.warehouseStocks = mapWarehouseStocks(
+        completeWarehouseStocks(warehouseStocks, warehouseIds),
+        product.warehouseStocks,
       );
     }
   }
@@ -2209,9 +2236,19 @@ async function updateProductStockService(id, payload, warehouseScope) {
       );
 
       if (idx >= 0) {
-        product.warehouseStocks[idx].quantity = quantity;
+        if (product.warehouseStocks[idx].quantity !== quantity) {
+          product.warehouseStocks[idx].quantity = quantity;
+          product.warehouseStocks[idx].revision =
+            (Number.isInteger(product.warehouseStocks[idx].revision)
+              ? product.warehouseStocks[idx].revision
+              : 0) + 1;
+        }
       } else {
-        product.warehouseStocks.push({ warehouse: entry.warehouse, quantity });
+        product.warehouseStocks.push({
+          warehouse: entry.warehouse,
+          quantity,
+          revision: 0,
+        });
       }
     }
   } else if (product.type === productTypeEnum.VARIANT) {
@@ -2255,11 +2292,18 @@ async function updateProductStockService(id, payload, warehouseScope) {
         );
 
         if (idx >= 0) {
-          variant.warehouseStocks[idx].quantity = quantity;
+          if (variant.warehouseStocks[idx].quantity !== quantity) {
+            variant.warehouseStocks[idx].quantity = quantity;
+            variant.warehouseStocks[idx].revision =
+              (Number.isInteger(variant.warehouseStocks[idx].revision)
+                ? variant.warehouseStocks[idx].revision
+                : 0) + 1;
+          }
         } else {
           variant.warehouseStocks.push({
             warehouse: entry.warehouse,
             quantity,
+            revision: 0,
           });
         }
       }

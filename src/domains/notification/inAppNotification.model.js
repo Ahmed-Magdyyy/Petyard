@@ -10,11 +10,16 @@ const { Schema, model } = mongoose;
  */
 const inAppNotificationSchema = new Schema(
   {
-    // Recipient (required for in-app)
+    // Exactly one recipient is required. Guest notifications are intentionally
+    // owned by the client-provided guest id; they are never shared with users.
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      index: true,
+    },
+    guestId: {
+      type: String,
+      trim: true,
       index: true,
     },
 
@@ -98,13 +103,41 @@ const inAppNotificationSchema = new Schema(
       type: Date,
       index: true,
     },
+
+    // A stable, recipient-specific key used by the durable notification outbox
+    // to make in-app delivery idempotent.
+    dedupeKey: {
+      type: String,
+      trim: true,
+    },
   },
   { timestamps: true },
 );
 
+inAppNotificationSchema.pre("validate", function validateRecipient() {
+  const hasUser = Boolean(this.user);
+  const hasGuestId = typeof this.guestId === "string" && this.guestId.trim();
+
+  if (hasUser === Boolean(hasGuestId)) {
+    this.invalidate(
+      "user",
+      "Exactly one notification recipient (user or guestId) is required",
+    );
+  }
+});
+
 // Compound indexes for efficient user notification queries
 inAppNotificationSchema.index({ user: 1, createdAt: -1 });
 inAppNotificationSchema.index({ user: 1, isRead: 1, createdAt: -1 });
+inAppNotificationSchema.index({ guestId: 1, createdAt: -1 });
+inAppNotificationSchema.index({ guestId: 1, isRead: 1, createdAt: -1 });
+inAppNotificationSchema.index(
+  { dedupeKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { dedupeKey: { $type: "string" } },
+  },
+);
 
 export const InAppNotificationModel = model(
   "InAppNotification",
