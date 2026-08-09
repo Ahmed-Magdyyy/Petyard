@@ -87,11 +87,11 @@ export function findProductsByIdsWithOptions(
   return query;
 }
 
-export function findSubstitutionCandidateProducts({
+export function buildSubstitutionCandidateProductFilter({
   warehouseId,
   searchRegex,
-  skip = 0,
-  limit = 20,
+  excludeProductId,
+  excludeVariantId,
 }) {
   const stockFilter = {
     $or: [
@@ -138,7 +138,45 @@ export function findSubstitutionCandidateProducts({
       }
     : { isActive: true, ...stockFilter };
 
-  return ProductModel.find(filter)
+  const sourceExclusion = excludeProductId
+    ? excludeVariantId
+      ? {
+          $or: [
+            { _id: { $ne: excludeProductId } },
+            {
+              _id: excludeProductId,
+              type: "VARIANT",
+              variants: {
+                $elemMatch: {
+                  _id: { $ne: excludeVariantId },
+                  warehouseStocks: {
+                    $elemMatch: {
+                      warehouse: warehouseId,
+                      quantity: { $gt: 0 },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : { _id: { $ne: excludeProductId } }
+    : null;
+  const scopedFilter = sourceExclusion
+    ? { $and: [filter, sourceExclusion] }
+    : filter;
+
+  return scopedFilter;
+}
+
+export function findSubstitutionCandidateProducts({
+  skip = 0,
+  limit = 20,
+  ...filterOptions
+}) {
+  return ProductModel.find(
+    buildSubstitutionCandidateProductFilter(filterOptions),
+  )
     .select(
       "_id slug type name_en name_ar subcategory brand price discountedPrice " +
         "images warehouseStocks variants._id variants.sku variants.price " +
@@ -151,45 +189,8 @@ export function findSubstitutionCandidateProducts({
     .lean();
 }
 
-export function countSubstitutionCandidateProducts({ warehouseId, searchRegex }) {
-  const stockFilter = {
-    $or: [
-      {
-        type: "SIMPLE",
-        warehouseStocks: {
-          $elemMatch: { warehouse: warehouseId, quantity: { $gt: 0 } },
-        },
-      },
-      {
-        type: "VARIANT",
-        variants: {
-          $elemMatch: {
-            warehouseStocks: {
-              $elemMatch: { warehouse: warehouseId, quantity: { $gt: 0 } },
-            },
-          },
-        },
-      },
-    ],
-  };
-
-  const filter = searchRegex
-    ? {
-        isActive: true,
-        $and: [
-          stockFilter,
-          {
-            $or: [
-              { name_en: searchRegex },
-              { name_ar: searchRegex },
-              { slug: searchRegex },
-              { sku: searchRegex },
-              { "variants.sku": searchRegex },
-            ],
-          },
-        ],
-      }
-    : { isActive: true, ...stockFilter };
-
-  return ProductModel.countDocuments(filter);
+export function countSubstitutionCandidateProducts(filterOptions) {
+  return ProductModel.countDocuments(
+    buildSubstitutionCandidateProductFilter(filterOptions),
+  );
 }

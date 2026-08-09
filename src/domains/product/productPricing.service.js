@@ -86,6 +86,8 @@ export function buildWarehouseSkuSnapshot({
           value: option.value,
         }))
       : [],
+    basePrice: pricing.basePrice,
+    discountedPrice: pricing.final,
     unitPricePiastres: toPiastres(pricing.finalEffective || 0),
     stockQuantity: stock.quantity,
     stockRevision:

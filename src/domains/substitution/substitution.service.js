@@ -25,7 +25,9 @@ import {
   buildWarehouseSkuSnapshot,
   resolveActiveProductPromotion,
 } from "../product/productPricing.service.js";
+import { findActivePromotionsForProducts } from "../collection/collection.promotion.js";
 import { UserModel } from "../user/user.model.js";
+import { presentSubstitutionCandidateProduct } from "./substitutionCandidate.presenter.js";
 import {
   correctUnallocatedInventoryCAS,
   reserveInventoryAtomically,
@@ -277,6 +279,7 @@ export async function listSubstitutionCandidatesService({
   orderId,
   lineId,
   warehouseScope,
+  lang,
   q,
   page = 1,
   limit = 20,
@@ -297,30 +300,34 @@ export async function listSubstitutionCandidatesService({
     ? new RegExp(escapeRegex(normalizedSearch), "i")
     : undefined;
 
+  const candidateQuery = {
+    warehouseId: order.warehouse,
+    searchRegex,
+    excludeProductId: sourceLine.product,
+    excludeVariantId: sourceLine.variantId || undefined,
+  };
   const [products, totalProducts] = await Promise.all([
     findSubstitutionCandidateProducts({
-      warehouseId: order.warehouse,
-      searchRegex,
+      ...candidateQuery,
       skip,
       limit: Math.min(limitNum, 50),
     }),
-    countSubstitutionCandidateProducts({
-      warehouseId: order.warehouse,
-      searchRegex,
-    }),
+    countSubstitutionCandidateProducts(candidateQuery),
   ]);
 
+  const promotionsByProductId =
+    await findActivePromotionsForProducts(products);
   const data = [];
   for (const product of products) {
-    const promotion = await resolveActiveProductPromotion(product);
-    for (const snapshot of mapCandidateProduct(
+    const promotion =
+      promotionsByProductId.get(String(product._id)) || null;
+    const snapshots = mapCandidateProduct(
       product,
       order.warehouse,
       promotion,
-    )) {
-      if (sameSku(sourceLine, snapshot)) continue;
-      data.push(snapshot);
-    }
+    ).filter((snapshot) => !sameSku(sourceLine, snapshot));
+    const candidate = presentSubstitutionCandidateProduct(snapshots, lang);
+    if (candidate) data.push(candidate);
   }
 
   return {

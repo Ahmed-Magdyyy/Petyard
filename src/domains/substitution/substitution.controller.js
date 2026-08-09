@@ -38,6 +38,7 @@ export const listSubstitutionCandidates = asyncHandler(async (req, res) => {
     orderId: req.params.id,
     lineId: req.query.lineId,
     warehouseScope: req.orderWarehouseScope,
+    lang: req.lang,
     q: req.query.q,
     page: req.query.page,
     limit: req.query.limit,
