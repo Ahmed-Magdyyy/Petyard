@@ -53,11 +53,13 @@ import {
   getUserSavedCardTokensService,
 } from "../payment/savedCard.service.js";
 import {
+  deleteImage,
   validateImageFile,
   uploadImage,
   IMAGE_UPLOAD_PROFILES,
   IMAGE_VISIBILITY,
 } from "../../shared/utils/imageUpload.js";
+import { MAX_INSTAPAY_SCREENSHOTS } from "./order.instapay.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
 import { restoreFinalOrderInventory } from "../inventory/inventory.service.js";
@@ -118,6 +120,54 @@ function normalizePaymentMethod(method) {
   if (v === paymentMethodEnum.POS_ON_DELIVERY) return paymentMethodEnum.POS_ON_DELIVERY;
   if (v === paymentMethodEnum.INSTAPAY) return paymentMethodEnum.INSTAPAY;
   return paymentMethodEnum.COD;
+}
+
+async function cleanupUploadedInstapayScreenshots(uploadedImages) {
+  await Promise.all(
+    (Array.isArray(uploadedImages) ? uploadedImages : []).map((image) =>
+      deleteImage(image),
+    ),
+  );
+}
+
+async function uploadInstapayScreenshotFiles(files, lang) {
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+
+  if (normalizedFiles.length === 0) {
+    throw new ApiError(
+      lang === "en" ? "instapayScreenshot is required" : "صورة التحويل مطلوبة",
+      400,
+    );
+  }
+  if (normalizedFiles.length > MAX_INSTAPAY_SCREENSHOTS) {
+    throw new ApiError(
+      `A maximum of ${MAX_INSTAPAY_SCREENSHOTS} InstaPay screenshots is allowed`,
+      400,
+    );
+  }
+
+  // Validate every file before uploading any of them, avoiding partial writes
+  // when one file is invalid.
+  normalizedFiles.forEach((file) => validateImageFile(file));
+
+  const uploadedImages = [];
+  try {
+    for (const file of normalizedFiles) {
+      const uploadedImage = await uploadImage(file, {
+        folder: "instapay_screenshots",
+        visibility: IMAGE_VISIBILITY.PRIVATE,
+        profile: IMAGE_UPLOAD_PROFILES.PROOF,
+      });
+      if (!uploadedImage?.url) {
+        throw new ApiError("Failed to upload InstaPay screenshot", 502);
+      }
+      uploadedImages.push(uploadedImage);
+    }
+    return uploadedImages;
+  } catch (error) {
+    await cleanupUploadedInstapayScreenshots(uploadedImages);
+    throw error;
+  }
 }
 
 function generateOrderNumber() {
@@ -867,7 +917,7 @@ async function processOrderCreationWithCart({
   lang,
   addressUser,
   historyByUserId,
-  instapayScreenshotUrl,
+  instapayScreenshotUrls = [],
 }) {
   await resolveOrderCartWarehouse(cart);
 
@@ -1068,7 +1118,9 @@ async function processOrderCreationWithCart({
     couponCode: couponResult.couponCode,
     status: isCard ? orderStatusEnum.AWAITING_PAYMENT : orderStatusEnum.PENDING,
     paymentMethod: pm,
-    instapayScreenshot: instapayScreenshotUrl || undefined,
+    instapayScreenshot: instapayScreenshotUrls[0] || undefined,
+    instapayScreenshots:
+      instapayScreenshotUrls.length > 0 ? instapayScreenshotUrls : undefined,
     paymentStatus: paymentStatusEnum.PENDING,
     sideEffectsCommitted: !isCard,
     settlement: {
@@ -1230,7 +1282,7 @@ export async function createOrderForUserService({
   paymentMethod,
   notes,
   savedCardId,
-  instapayScreenshotFile,
+  instapayScreenshotFiles = [],
   lang = "en",
 }) {
   if (!userId) {
@@ -1242,23 +1294,12 @@ export async function createOrderForUserService({
 
   const pm = normalizePaymentMethod(paymentMethod);
 
-  let instapayScreenshotUrl = null;
+  let uploadedInstapayScreenshots = [];
   if (pm === paymentMethodEnum.INSTAPAY) {
-    if (!instapayScreenshotFile) {
-      throw new ApiError(
-        lang === "en" ? "instapayScreenshot is required" : "صورة التحويل مطلوبة",
-        400,
-      );
-    }
-    validateImageFile(instapayScreenshotFile);
-    const uploadResult = await uploadImage(instapayScreenshotFile, {
-      folder: "instapay_screenshots",
-      visibility: IMAGE_VISIBILITY.PRIVATE,
-      profile: IMAGE_UPLOAD_PROFILES.PROOF,
-    });
-    if (uploadResult) {
-      instapayScreenshotUrl = uploadResult.url;
-    }
+    uploadedInstapayScreenshots = await uploadInstapayScreenshotFiles(
+      instapayScreenshotFiles,
+      lang,
+    );
   }
 
   // ── Card: idempotency check via checkoutKey ──
@@ -1308,10 +1349,11 @@ export async function createOrderForUserService({
     }
   }
 
-  const session = await mongoose.startSession();
+  let session;
   let createdOrder = null;
 
   try {
+    session = await mongoose.startSession();
     await session.withTransaction(async () => {
       const cart = await CartModel.findOne({ user: userId })
         .session(session)
@@ -1335,14 +1377,22 @@ export async function createOrderForUserService({
         lang,
         addressUser: cart.user,
         historyByUserId: userId,
-        instapayScreenshotUrl,
+        instapayScreenshotUrls: uploadedInstapayScreenshots.map(
+          (image) => image.url,
+        ),
       });
     });
+  } catch (error) {
+    await cleanupUploadedInstapayScreenshots(uploadedInstapayScreenshots);
+    throw error;
   } finally {
-    session.endSession();
+    session?.endSession();
   }
 
-  if (!createdOrder) return { order: null };
+  if (!createdOrder) {
+    await cleanupUploadedInstapayScreenshots(uploadedInstapayScreenshots);
+    return { order: null };
+  }
 
   // ── Card payment: initialize Paymob intention ──
   if (createdOrder.paymentMethod === paymentMethodEnum.CARD) {
@@ -1400,7 +1450,7 @@ export async function createOrderForGuestService({
   couponCode,
   paymentMethod,
   notes,
-  instapayScreenshotFile,
+  instapayScreenshotFiles = [],
   lang = "en",
 }) {
   if (!guestId) {
@@ -1412,23 +1462,12 @@ export async function createOrderForGuestService({
 
   const pm = normalizePaymentMethod(paymentMethod);
 
-  let instapayScreenshotUrl = null;
+  let uploadedInstapayScreenshots = [];
   if (pm === paymentMethodEnum.INSTAPAY) {
-    if (!instapayScreenshotFile) {
-      throw new ApiError(
-        lang === "en" ? "instapayScreenshot is required" : "صورة التحويل مطلوبة",
-        400,
-      );
-    }
-    validateImageFile(instapayScreenshotFile);
-    const uploadResult = await uploadImage(instapayScreenshotFile, {
-      folder: "instapay_screenshots",
-      visibility: IMAGE_VISIBILITY.PRIVATE,
-      profile: IMAGE_UPLOAD_PROFILES.PROOF,
-    });
-    if (uploadResult) {
-      instapayScreenshotUrl = uploadResult.url;
-    }
+    uploadedInstapayScreenshots = await uploadInstapayScreenshotFiles(
+      instapayScreenshotFiles,
+      lang,
+    );
   }
 
   // ── Card: idempotency check via checkoutKey ──
@@ -1478,10 +1517,11 @@ export async function createOrderForGuestService({
     }
   }
 
-  const session = await mongoose.startSession();
+  let session;
   let createdOrder = null;
 
   try {
+    session = await mongoose.startSession();
     await session.withTransaction(async () => {
       const cart = await CartModel.findOne({ guestId })
         .session(session)
@@ -1506,14 +1546,22 @@ export async function createOrderForGuestService({
         lang,
         addressUser: null,
         historyByUserId: undefined,
-        instapayScreenshotUrl,
+        instapayScreenshotUrls: uploadedInstapayScreenshots.map(
+          (image) => image.url,
+        ),
       });
     });
+  } catch (error) {
+    await cleanupUploadedInstapayScreenshots(uploadedInstapayScreenshots);
+    throw error;
   } finally {
-    session.endSession();
+    session?.endSession();
   }
 
-  if (!createdOrder) return { order: null };
+  if (!createdOrder) {
+    await cleanupUploadedInstapayScreenshots(uploadedInstapayScreenshots);
+    return { order: null };
+  }
 
   // ── Card payment: initialize Paymob intention (no saved cards for guests) ──
   if (createdOrder.paymentMethod === paymentMethodEnum.CARD) {

@@ -4,6 +4,7 @@ import {
   orderStatusEnum,
   paymentMethodEnum,
 } from "../../shared/constants/enums.js";
+import { getInstapayScreenshotFiles } from "./order.instapay.js";
 
 export const createOrderForUserValidator = [
   body("couponCode")
@@ -16,7 +17,10 @@ export const createOrderForUserValidator = [
     .isIn(Object.values(paymentMethodEnum))
     .withMessage("Invalid paymentMethod")
     .custom((val, { req }) => {
-      if (val === paymentMethodEnum.INSTAPAY && !req.file) {
+      if (
+        val === paymentMethodEnum.INSTAPAY &&
+        getInstapayScreenshotFiles(req).length === 0
+      ) {
         throw new Error("instapay screenshot is required for instapay payment method");
       }
       return true;
@@ -46,7 +50,10 @@ export const createOrderForGuestValidator = [
     .isIn(Object.values(paymentMethodEnum))
     .withMessage("Invalid paymentMethod")
     .custom((val, { req }) => {
-      if (val === paymentMethodEnum.INSTAPAY && !req.file) {
+      if (
+        val === paymentMethodEnum.INSTAPAY &&
+        getInstapayScreenshotFiles(req).length === 0
+      ) {
         throw new Error("instapay screenshot is required for instapay payment method");
       }
       return true;

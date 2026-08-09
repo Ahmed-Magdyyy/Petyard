@@ -235,8 +235,7 @@ export async function getCollectionWithProductsService(
     lang,
     {
       onlyActive: true,
-      includeZeroStockInWarehouse: true,
-      prioritizeInStock: true,
+      hideOutOfStock: true,
     },
   );
   return { collection, products };

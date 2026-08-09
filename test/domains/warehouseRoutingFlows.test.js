@@ -188,7 +188,7 @@ test('public products use fallback warehouse stock', async (t) => {
   assert.doesNotMatch(serializedFilter, new RegExp(String(source._id)));
 });
 
-test('public product listings return out-of-stock items after available items', async (t) => {
+test('public product listings omit out-of-stock items', async (t) => {
   const { source, fallback } = makeWarehousePair();
   const inStock = new mongoose.Types.ObjectId();
   const outOfStock = new mongoose.Types.ObjectId();
@@ -235,20 +235,20 @@ test('public product listings return out-of-stock items after available items', 
     'en',
     {
       onlyActive: true,
-      includeZeroStockInWarehouse: true,
-      prioritizeInStock: true,
+      hideOutOfStock: true,
     },
   );
 
   assert.deepEqual(
     result.data.map((product) => String(product.id)),
-    [String(inStock), String(outOfStock)],
+    [String(inStock)],
   );
   assert.deepEqual(
     result.data.map((product) => product.inStock),
-    [true, false],
+    [true],
   );
   assert.match(JSON.stringify(findFilters), new RegExp(String(fallback._id)));
+  assert.doesNotMatch(JSON.stringify(findFilters), /"\$nor"/);
 });
 
 test('admin product listings are not forced to active products', async (t) => {

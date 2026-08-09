@@ -7,3 +7,6 @@ export const uploadSingleImage = (fieldName) =>
 
 export const uploadMultipleImages = (fieldName, maxCount = 10) =>
   multer({ storage }).array(fieldName, maxCount);
+
+export const uploadImageFields = (fields, maxFiles = 10) =>
+  multer({ storage, limits: { files: maxFiles } }).fields(fields);

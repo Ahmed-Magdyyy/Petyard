@@ -979,6 +979,7 @@ async function getProductsService(
     includeZeroStockInWarehouse = false,
     prioritizeInStock = false,
     onlyActive = false,
+    hideOutOfStock = false,
   } = options || {};
 
   const effectiveWarehouseId =
@@ -1120,12 +1121,22 @@ async function getProductsService(
     }
   }
 
+  // Temporary public-catalog behavior: omit unavailable products completely.
+  // With a selected warehouse, stock is checked in that warehouse; without
+  // one, a product is included only when it has stock in at least one warehouse.
+  const inStockFilter = hideOutOfStock
+    ? buildInStockFilter(selectedWarehouseId, filter.type)
+    : null;
+
   const andConditions = [filter];
   if (priceRangeFilter) {
     andConditions.push(priceRangeFilter);
   }
   if (warehouseFilter) {
     andConditions.push(warehouseFilter);
+  }
+  if (inStockFilter) {
+    andConditions.push(inStockFilter);
   }
   if (orConditions.length) {
     andConditions.push({ $or: orConditions });

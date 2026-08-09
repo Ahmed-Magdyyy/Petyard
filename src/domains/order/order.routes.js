@@ -33,12 +33,28 @@ import {
   guestLimiter,
   paymentLimiter,
 } from "../../shared/middlewares/rateLimitMiddleware.js";
-import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
+import { uploadImageFields } from "../../shared/middlewares/uploadMiddleware.js";
+import { MAX_INSTAPAY_SCREENSHOTS } from "./order.instapay.js";
 
 const router = Router();
 
+const uploadInstapayScreenshots = uploadImageFields(
+  [
+    { name: "instapayScreenshot", maxCount: 1 },
+    { name: "instapayScreenshots", maxCount: MAX_INSTAPAY_SCREENSHOTS },
+  ],
+  MAX_INSTAPAY_SCREENSHOTS,
+);
+
 // Guest checkout order (rate-limited)
-router.post("/guest", guestLimiter, paymentLimiter, uploadSingleImage("instapayScreenshot"), createOrderForGuestValidator, createOrderForGuest);
+router.post(
+  "/guest",
+  guestLimiter,
+  paymentLimiter,
+  uploadInstapayScreenshots,
+  createOrderForGuestValidator,
+  createOrderForGuest,
+);
 router.get("/guest", guestLimiter, getGuestOrders);
 router.get("/guest/:id", guestLimiter, orderIdParamValidator, getGuestOrder);
 router.post("/guest/:id/reorder", guestLimiter, orderIdParamValidator, reorderForGuest);
@@ -50,7 +66,7 @@ router.post(
   "/me",
   paymentLimiter,
   requireSystemPhoneVerifiedForSensitiveActions,
-  uploadSingleImage("instapayScreenshot"),
+  uploadInstapayScreenshots,
   createOrderForUserValidator,
   createOrderForUser,
 );

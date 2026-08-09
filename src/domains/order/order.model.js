@@ -256,6 +256,14 @@ const orderSchema = new Schema(
       default: paymentMethodEnum.COD,
     },
     instapayScreenshot: { type: String },
+    instapayScreenshots: {
+      type: [String],
+      default: undefined,
+      validate: {
+        validator: (value) => !value || value.length <= 5,
+        message: "An order can have at most 5 InstaPay screenshots",
+      },
+    },
     paymentStatus: {
       type: String,
       enum: Object.values(paymentStatusEnum),

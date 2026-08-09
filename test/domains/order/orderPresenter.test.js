@@ -27,7 +27,7 @@ function withPrivateDeliveryEnvironment(run) {
   }
 }
 
-test("presentOrder clones a plain order and changes only its private proof URL", () => {
+test("presentOrder preserves the legacy proof field and adds the proof array", () => {
   const order = {
     _id: "order-1",
     status: "pending",
@@ -37,11 +37,30 @@ test("presentOrder clones a plain order and changes only its private proof URL",
   const result = withPrivateDeliveryEnvironment(() => presentOrder(order));
 
   assert.notEqual(result, order);
-  assert.deepEqual({ ...result, instapayScreenshot: order.instapayScreenshot }, order);
   assert.notEqual(result.instapayScreenshot, order.instapayScreenshot);
+  assert.equal(result.instapayScreenshots.length, 1);
+  assert.equal(result.instapayScreenshots[0], result.instapayScreenshot);
   assert.equal(order.instapayScreenshot, "https://proofs.petyardstores.com/instapay_screenshots/proof.webp");
   assert.match(result.instapayScreenshot, /[?&]token=HS256-/);
   assert.match(result.instapayScreenshot, /[?&]expires=/);
+});
+
+test("presentOrder signs every InstaPay proof and keeps the first as the legacy value", () => {
+  const order = {
+    _id: "order-multiple",
+    instapayScreenshot: "https://proofs.petyardstores.com/instapay_screenshots/one.webp",
+    instapayScreenshots: [
+      "https://proofs.petyardstores.com/instapay_screenshots/one.webp",
+      "https://proofs.petyardstores.com/instapay_screenshots/two.webp",
+    ],
+  };
+
+  const result = withPrivateDeliveryEnvironment(() => presentOrder(order));
+
+  assert.equal(result.instapayScreenshots.length, 2);
+  assert.equal(result.instapayScreenshot, result.instapayScreenshots[0]);
+  assert.match(result.instapayScreenshots[0], /[?&]token=HS256-/);
+  assert.match(result.instapayScreenshots[1], /[?&]token=HS256-/);
 });
 
 test("presentOrder uses toJSON exactly once without mutating a Mongoose-like object", () => {
@@ -55,7 +74,12 @@ test("presentOrder uses toJSON exactly once without mutating a Mongoose-like obj
   };
   const result = presentOrder(document);
   assert.equal(serializations, 1);
-  assert.deepEqual(result, { _id: "order-2", status: "pending", instapayScreenshot: document.instapayScreenshot });
+  assert.deepEqual(result, {
+    _id: "order-2",
+    status: "pending",
+    instapayScreenshot: document.instapayScreenshot,
+    instapayScreenshots: [document.instapayScreenshot],
+  });
   assert.equal(document.instapayScreenshot, "https://res.cloudinary.com/dxemmiorv/image/upload/v1/instapay_screenshots/proof.png");
 });
 
@@ -81,5 +105,11 @@ test("presentOrderPage preserves pagination metadata and only presents data entr
   assert.equal(result.page, 2);
   assert.equal(result.totalPages, 4);
   assert.equal(result.statusCounts, page.statusCounts);
-  assert.deepEqual(result.data, page.data);
+  assert.deepEqual(result.data, [
+    page.data[0],
+    {
+      ...page.data[1],
+      instapayScreenshots: [page.data[1].instapayScreenshot],
+    },
+  ]);
 });

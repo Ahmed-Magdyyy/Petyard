@@ -13,6 +13,7 @@ import {
   reorderService,
 } from "./order.service.js";
 import { presentOrder, presentOrderPage } from "./order.presenter.js";
+import { getInstapayScreenshotFiles } from "./order.instapay.js";
 
 function getGuestId(req) {
   const headerValue = req.headers["x-guest-id"];
@@ -35,7 +36,7 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
     couponCode,
     paymentMethod,
     notes,
-    instapayScreenshotFile: req.file,
+    instapayScreenshotFiles: getInstapayScreenshotFiles(req),
     lang: req.lang,
   });
 
@@ -60,7 +61,7 @@ export const createOrderForUser = asyncHandler(async (req, res) => {
     paymentMethod,
     notes,
     savedCardId,
-    instapayScreenshotFile: req.file,
+    instapayScreenshotFiles: getInstapayScreenshotFiles(req),
     lang: req.lang,
   });
 

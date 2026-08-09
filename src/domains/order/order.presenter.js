@@ -7,16 +7,34 @@ export function presentOrder(order, deliveryOptions) {
 
   const value =
     typeof order.toJSON === "function" ? order.toJSON() : { ...order };
-  if (!Object.prototype.hasOwnProperty.call(value, "instapayScreenshot")) {
+  const screenshotUrls = Array.isArray(value.instapayScreenshots)
+    ? value.instapayScreenshots.filter(
+        (url) => typeof url === "string" && url,
+      )
+    : [];
+  const legacyScreenshot =
+    typeof value.instapayScreenshot === "string" && value.instapayScreenshot
+      ? value.instapayScreenshot
+      : null;
+
+  if (!legacyScreenshot && screenshotUrls.length === 0) {
     return value;
   }
+
+  const allScreenshotUrls = screenshotUrls.length
+    ? screenshotUrls
+    : [legacyScreenshot];
+  const presentedScreenshots = allScreenshotUrls.map((url) =>
+    getPrivateImageDeliveryUrl(url, deliveryOptions),
+  );
 
   return {
     ...value,
     instapayScreenshot: getPrivateImageDeliveryUrl(
-      value.instapayScreenshot,
+      legacyScreenshot || allScreenshotUrls[0],
       deliveryOptions,
     ),
+    instapayScreenshots: presentedScreenshots,
   };
 }
 
