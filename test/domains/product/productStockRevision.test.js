@@ -154,6 +154,26 @@ test("matching expectedRevision adds an atomic save guard", () => {
   });
 });
 
+test("matching response revision alias adds the same atomic save guard", () => {
+  const warehouse = new mongoose.Types.ObjectId();
+  const product = simpleProduct({ warehouse, quantity: 8, revision: 6 });
+
+  const expectations = prepareProductStockRevisionGuard(product, {
+    warehouseStocks: [{ warehouse, quantity: 7, revision: 6 }],
+  });
+
+  assert.equal(expectations.length, 1);
+  assert.deepEqual(product.$where, {
+    $and: [
+      {
+        warehouseStocks: {
+          $elemMatch: { warehouse, revision: 6 },
+        },
+      },
+    ],
+  });
+});
+
 test("stale expectedRevision fails with the current stock snapshot", () => {
   const warehouse = new mongoose.Types.ObjectId();
   const product = simpleProduct({ warehouse, quantity: 8, revision: 6 });
@@ -173,6 +193,45 @@ test("stale expectedRevision fails with the current stock snapshot", () => {
       assert.equal(error.errors[0].currentQuantity, 8);
       return true;
     },
+  );
+});
+
+test("stale response revision alias fails with the current stock snapshot", () => {
+  const warehouse = new mongoose.Types.ObjectId();
+  const product = simpleProduct({ warehouse, quantity: 8, revision: 6 });
+
+  assert.throws(
+    () =>
+      prepareProductStockRevisionGuard(product, {
+        warehouseStocks: [{ warehouse, quantity: 9, revision: 5 }],
+      }),
+    (error) =>
+      error.statusCode === 409 &&
+      error.code === "STOCK_REVISION_CONFLICT" &&
+      error.errors[0].expectedRevision === 5 &&
+      error.errors[0].currentRevision === 6,
+  );
+});
+
+test("conflicting revision aliases fail closed", () => {
+  const warehouse = new mongoose.Types.ObjectId();
+  const product = simpleProduct({ warehouse, quantity: 8, revision: 6 });
+
+  assert.throws(
+    () =>
+      prepareProductStockRevisionGuard(product, {
+        warehouseStocks: [
+          {
+            warehouse,
+            quantity: 9,
+            revision: 6,
+            expectedRevision: 5,
+          },
+        ],
+      }),
+    (error) =>
+      error.statusCode === 400 &&
+      error.code === "STOCK_REVISION_INPUT_CONFLICT",
   );
 });
 
@@ -200,6 +259,19 @@ test("moderator stock sanitization preserves optional expectedRevision", () => {
   const merged = mergeWarehouseStocks(
     [{ warehouse, quantity: 8 }],
     [{ warehouse, quantity: 7, expectedRevision: 6 }],
+    new Set([String(warehouse)]),
+  );
+
+  assert.deepEqual(merged, [
+    { warehouse, quantity: 7, expectedRevision: 6 },
+  ]);
+});
+
+test("moderator stock sanitization maps response revision to the guard", () => {
+  const warehouse = new mongoose.Types.ObjectId();
+  const merged = mergeWarehouseStocks(
+    [{ warehouse, quantity: 8 }],
+    [{ warehouse, quantity: 7, revision: 6 }],
     new Set([String(warehouse)]),
   );
 
@@ -237,6 +309,30 @@ test("stock service accepts a matching optional revision and advances it", async
       warehouseStocks: [
         { warehouse, quantity: 7, expectedRevision: 6 },
       ],
+    },
+    null,
+  );
+
+  assert.equal(product.warehouseStocks[0].quantity, 7);
+  assert.equal(product.warehouseStocks[0].revision, 7);
+  assert.ok(product.$where);
+});
+
+test("stock service accepts the response revision alias and advances it", async (t) => {
+  const warehouse = new mongoose.Types.ObjectId();
+  const product = {
+    ...simpleProduct({ warehouse, quantity: 8, revision: 6 }),
+    async save() {
+      return this;
+    },
+  };
+  t.mock.method(ProductModel, "findById", () => product);
+  t.mock.method(WarehouseModel, "countDocuments", async () => 1);
+
+  await updateProductStockService(
+    product._id,
+    {
+      warehouseStocks: [{ warehouse, quantity: 7, revision: 6 }],
     },
     null,
   );

@@ -10,10 +10,29 @@ function storedRevision(stock) {
 }
 
 function submittedExpectedRevision(stock) {
-  return Number.isInteger(stock?.expectedRevision) &&
-    stock.expectedRevision >= 0
-    ? stock.expectedRevision
-    : undefined;
+  const expectedRevision =
+    Number.isInteger(stock?.expectedRevision) && stock.expectedRevision >= 0
+      ? stock.expectedRevision
+      : undefined;
+  const revision =
+    Number.isInteger(stock?.revision) && stock.revision >= 0
+      ? stock.revision
+      : undefined;
+
+  if (
+    expectedRevision !== undefined &&
+    revision !== undefined &&
+    expectedRevision !== revision
+  ) {
+    const error = new ApiError(
+      "revision and expectedRevision must match when both are provided",
+      400,
+    );
+    error.code = "STOCK_REVISION_INPUT_CONFLICT";
+    throw error;
+  }
+
+  return expectedRevision ?? revision;
 }
 
 function revisionFilter(expectedRevision) {

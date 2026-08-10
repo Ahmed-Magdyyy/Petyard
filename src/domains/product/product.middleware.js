@@ -58,20 +58,24 @@ export function mergeWarehouseStocks(
       typeof entry.quantity === "number"
         ? entry.quantity
         : Number(entry.quantity) || 0;
+    const expectedRevision =
+      entry.expectedRevision !== undefined
+        ? entry.expectedRevision
+        : entry.revision;
 
     const idx = merged.findIndex((ws) => String(ws.warehouse) === warehouseId);
 
     if (idx >= 0) {
       merged[idx].quantity = quantity;
-      if (entry.expectedRevision !== undefined) {
-        merged[idx].expectedRevision = entry.expectedRevision;
+      if (expectedRevision !== undefined) {
+        merged[idx].expectedRevision = expectedRevision;
       }
     } else {
       merged.push({
         warehouse: entry.warehouse,
         quantity,
-        ...(entry.expectedRevision !== undefined
-          ? { expectedRevision: entry.expectedRevision }
+        ...(expectedRevision !== undefined
+          ? { expectedRevision }
           : {}),
       });
     }
