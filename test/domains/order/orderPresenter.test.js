@@ -89,6 +89,60 @@ test("presentOrder leaves missing, null, and Cloudinary proof values unchanged",
   assert.equal(presentOrder(null), null);
 });
 
+test("presentOrder exposes settlement money in EGP without leaking piastre fields", () => {
+  const order = {
+    _id: "settlement-order",
+    settlement: {
+      schemaVersion: 1,
+      revision: 1,
+      currency: "EGP",
+      currentMerchandiseGrossPiastres: 96_500,
+      originalCouponDiscountPiastres: 0,
+      preservedCouponDiscountPiastres: 0,
+      lockedNetShippingPiastres: 3_000,
+      currentOrderValuePiastres: 99_500,
+      walletDebitedPiastres: 0,
+      walletCreditedPiastres: 0,
+      cardCapturedPiastres: 0,
+      cardRefundedPiastres: 0,
+      cardDuePiastres: 0,
+      instapaySubmittedPiastres: 0,
+      instapayConfirmedPiastres: 0,
+      deliveryDuePiastres: 99_500,
+      pendingRefundLiabilityPiastres: 0,
+      migrationState: "native",
+    },
+  };
+
+  const result = presentOrder(order);
+
+  assert.deepEqual(result.settlement, {
+    schemaVersion: 1,
+    revision: 1,
+    currency: "EGP",
+    currentMerchandiseGross: 965,
+    originalCouponDiscount: 0,
+    preservedCouponDiscount: 0,
+    lockedNetShipping: 30,
+    currentOrderValue: 995,
+    walletDebited: 0,
+    walletCredited: 0,
+    cardCaptured: 0,
+    cardRefunded: 0,
+    cardDue: 0,
+    instapaySubmitted: 0,
+    instapayConfirmed: 0,
+    deliveryDue: 995,
+    pendingRefundLiability: 0,
+    migrationState: "native",
+  });
+  assert.equal(
+    Object.keys(result.settlement).some((key) => key.endsWith("Piastres")),
+    false,
+  );
+  assert.equal(order.settlement.currentOrderValuePiastres, 99_500);
+});
+
 test("presentOrderPage preserves pagination metadata and only presents data entries", () => {
   const page = {
     data: [

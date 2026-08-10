@@ -112,7 +112,13 @@ router.get(
   getPopularProductSearches,
 );
 
-router.get("/:id", optionalProtect, productIdParamValidator, getProduct);
+router.get(
+  "/:id",
+  optionalProtect,
+  scopeProductsToModeratorWarehouses,
+  productIdParamValidator,
+  getProduct,
+);
 
 router.use("/:id/reviews", reviewRoutes);
 

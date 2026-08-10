@@ -71,6 +71,10 @@ import {
   processRestockSubscriptionsForProduct,
 } from "../restockSubscription/restockSubscription.service.js";
 import { completeWarehouseStocks } from "./productWarehouseStocks.js";
+import {
+  prepareProductStockRevisionGuard,
+  translateStockRevisionSaveError,
+} from "./productStockRevision.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
 
@@ -116,6 +120,7 @@ export {
   updateProductStockService,
   deleteProductService,
   mapProductToCardDto,
+  mapProductToDetailDto,
 };
 
 function normalizeLang(lang) {
@@ -667,7 +672,43 @@ function mapProductToCardDto(p, { lang, promotion, warehouseId } = {}) {
   };
 }
 
-function computeDetailPricingForProduct(product, promoPercent, warehouseId) {
+function mapWarehouseStockToDetailDto(
+  warehouseStock,
+  {
+    includeStockRevisions = false,
+    stockRevisionWarehouseScope = null,
+  } = {},
+) {
+  const canIncludeRevision =
+    includeStockRevisions &&
+    (!Array.isArray(stockRevisionWarehouseScope) ||
+      stockRevisionWarehouseScope.some(
+        (warehouse) =>
+          String(warehouse) === String(warehouseStock?.warehouse),
+      ));
+
+  return {
+    warehouse: warehouseStock.warehouse,
+    quantity: warehouseStock.quantity,
+    ...(canIncludeRevision
+      ? {
+          revision:
+            Number.isInteger(warehouseStock.revision) &&
+            warehouseStock.revision >= 0
+              ? warehouseStock.revision
+              : 0,
+        }
+      : {}),
+  };
+}
+
+function computeDetailPricingForProduct(
+  product,
+  promoPercent,
+  warehouseId,
+  includeStockRevisions = false,
+  stockRevisionWarehouseScope = null,
+) {
   if (
     product?.type === productTypeEnum.VARIANT &&
     Array.isArray(product.variants) &&
@@ -745,10 +786,12 @@ function computeDetailPricingForProduct(product, promoPercent, warehouseId) {
               url: img.url,
             }))
           : [],
-        warehouseStocks: filteredStocks.map((ws) => ({
-          warehouse: ws.warehouse,
-          quantity: ws.quantity,
-        })),
+        warehouseStocks: filteredStocks.map((warehouseStock) =>
+          mapWarehouseStockToDetailDto(warehouseStock, {
+            includeStockRevisions,
+            stockRevisionWarehouseScope,
+          }),
+        ),
         stock: variantStock,
         inStock: variantStock > 0,
         isDefault: !!v.isDefault,
@@ -795,7 +838,14 @@ function computeDetailPricingForProduct(product, promoPercent, warehouseId) {
 
 function mapProductToDetailDto(
   product,
-  { lang, promotion, includeAllLanguages, warehouseId } = {},
+  {
+    lang,
+    promotion,
+    includeAllLanguages,
+    includeStockRevisions = false,
+    stockRevisionWarehouseScope = null,
+    warehouseId,
+  } = {},
 ) {
   const normalizedLang = normalizeLang(lang);
 
@@ -822,7 +872,13 @@ function mapProductToDetailDto(
     finalDiscountedPrice,
     appliedPromotionForProduct,
     variants,
-  } = computeDetailPricingForProduct(product, promoPercent, warehouseId);
+  } = computeDetailPricingForProduct(
+    product,
+    promoPercent,
+    warehouseId,
+    includeStockRevisions,
+    stockRevisionWarehouseScope,
+  );
 
   let warehouseStocks = [];
   if (
@@ -833,12 +889,19 @@ function mapProductToDetailDto(
       const wid = String(warehouseId);
       warehouseStocks = product.warehouseStocks
         .filter((ws) => String(ws?.warehouse) === wid)
-        .map((ws) => ({ warehouse: ws.warehouse, quantity: ws.quantity }));
+        .map((warehouseStock) =>
+          mapWarehouseStockToDetailDto(warehouseStock, {
+            includeStockRevisions,
+            stockRevisionWarehouseScope,
+          }),
+        );
     } else {
-      warehouseStocks = product.warehouseStocks.map((ws) => ({
-        warehouse: ws.warehouse,
-        quantity: ws.quantity,
-      }));
+      warehouseStocks = product.warehouseStocks.map((warehouseStock) =>
+        mapWarehouseStockToDetailDto(warehouseStock, {
+          includeStockRevisions,
+          stockRevisionWarehouseScope,
+        }),
+      );
     }
   }
 
@@ -1344,6 +1407,10 @@ async function getProductByIdService(
   user = null,
   warehouseId = null,
   guestId = null,
+  {
+    includeStockRevisions = false,
+    stockRevisionWarehouseScope = null,
+  } = {},
 ) {
   const normalizedLang = normalizeLang(lang);
   const includeAllLanguages =
@@ -1361,7 +1428,7 @@ async function getProductByIdService(
   const whPart = warehouseId ? `:wh:${warehouseId}` : "";
   const cacheKey = `product:${id}:${normalizedLang}:${includeAllLanguages ? "all" : "localized"}${whPart}`;
 
-  const result = await getOrSetCache(cacheKey, productCacheConfig.detailTtlSeconds, async () => {
+  const loadProductDetail = async () => {
     await autoHideExpiredCollections();
 
     const product = await findProductByIdWithRefs(id);
@@ -1383,9 +1450,18 @@ async function getProductByIdService(
       lang: normalizedLang,
       promotion,
       includeAllLanguages,
+      includeStockRevisions,
+      stockRevisionWarehouseScope,
       warehouseId,
     });
-  });
+  };
+  const result = includeStockRevisions
+    ? await loadProductDetail()
+    : await getOrSetCache(
+        cacheKey,
+        productCacheConfig.detailTtlSeconds,
+        loadProductDetail,
+      );
 
   // isFavorite is user-specific, so add it outside the cache.
   // Shallow-clone to avoid mutating the cached object.
@@ -1906,6 +1982,10 @@ async function updateProductService(id, payload, files = []) {
     isActive,
     isFeatured,
   } = payload;
+  const stockRevisionExpectations = prepareProductStockRevisionGuard(
+    product,
+    payload,
+  );
 
   // Infer SIMPLE -> VARIANT conversion from the actual FE payload. PATCH does
   // not accept `type`, so options + variants are the conversion signal.
@@ -2166,7 +2246,7 @@ async function updateProductService(id, payload, files = []) {
     for (const newUploadedImage of newUploadedImages) {
       await deleteImage(newUploadedImage);
     }
-    throw err;
+    translateStockRevisionSaveError(err, stockRevisionExpectations);
   }
 }
 
@@ -2194,6 +2274,11 @@ async function updateProductStockService(id, payload, warehouseScope) {
   if (!product) {
     throw new ApiError(`No product found for this id: ${id}`, 404);
   }
+
+  const stockRevisionExpectations = prepareProductStockRevisionGuard(
+    product,
+    payload,
+  );
 
   // Build allowed warehouse set (null = admin, no restriction)
   const scopeSet = warehouseScope
@@ -2321,7 +2406,12 @@ async function updateProductStockService(id, payload, warehouseScope) {
     }
   }
 
-  const updated = await product.save();
+  let updated;
+  try {
+    updated = await product.save();
+  } catch (error) {
+    translateStockRevisionSaveError(error, stockRevisionExpectations);
+  }
 
   await invalidateProductCaches(id);
 

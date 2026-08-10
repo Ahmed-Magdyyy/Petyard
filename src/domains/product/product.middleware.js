@@ -33,7 +33,11 @@ function ensureArray(value) {
  * @param {Set<string>} allowedSet - Set of warehouse IDs the moderator owns
  * @returns {Array} Complete merged warehouseStocks array
  */
-function mergeWarehouseStocks(existingStocks, incomingStocks, allowedSet) {
+export function mergeWarehouseStocks(
+  existingStocks,
+  incomingStocks,
+  allowedSet,
+) {
   // Start with a deep clone of existing stocks
   const merged = (existingStocks || []).map((ws) => ({
     warehouse: ws.warehouse,
@@ -59,8 +63,17 @@ function mergeWarehouseStocks(existingStocks, incomingStocks, allowedSet) {
 
     if (idx >= 0) {
       merged[idx].quantity = quantity;
+      if (entry.expectedRevision !== undefined) {
+        merged[idx].expectedRevision = entry.expectedRevision;
+      }
     } else {
-      merged.push({ warehouse: entry.warehouse, quantity });
+      merged.push({
+        warehouse: entry.warehouse,
+        quantity,
+        ...(entry.expectedRevision !== undefined
+          ? { expectedRevision: entry.expectedRevision }
+          : {}),
+      });
     }
   }
 

@@ -1,5 +1,9 @@
 import asyncHandler from "express-async-handler";
 import { ApiError } from "../../shared/utils/ApiError.js";
+import {
+  enabledControls,
+  roles,
+} from "../../shared/constants/enums.js";
 
 import {
   getProductsService,
@@ -81,14 +85,51 @@ export const getProductsForAdmin = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
+function getStaffStockRevisionAccess(req) {
+  const user = req.user;
+  if (!user) return { allowed: false, warehouseScope: null };
+
+  const hasProductControl =
+    user.role === roles.SUPER_ADMIN ||
+    ((user.role === roles.ADMIN || user.role === roles.MODERATOR) &&
+      user.enabledControls?.includes(enabledControls.PRODUCTS));
+  if (!hasProductControl) {
+    return { allowed: false, warehouseScope: null };
+  }
+
+  const warehouseScope =
+    user.role === roles.MODERATOR ? req.productWarehouseScope : null;
+  if (Array.isArray(warehouseScope) && warehouseScope.length === 0) {
+    throw new ApiError("You are not assigned to any warehouse", 403);
+  }
+
+  const requestedWarehouse = req.query.warehouse;
+  if (
+    requestedWarehouse &&
+    Array.isArray(warehouseScope) &&
+    !warehouseScope.some(
+      (warehouse) => String(warehouse) === String(requestedWarehouse),
+    )
+  ) {
+    throw new ApiError("You are not allowed to access this route", 403);
+  }
+
+  return { allowed: true, warehouseScope };
+}
+
 export const getProduct = asyncHandler(async (req, res) => {
   const guestId = req.user ? null : getGuestId(req);
+  const revisionAccess = getStaffStockRevisionAccess(req);
   const data = await getProductByIdService(
     req.params.id,
     req.lang,
     req.user || null,
     req.query.warehouse || null,
     guestId,
+    {
+      includeStockRevisions: revisionAccess.allowed,
+      stockRevisionWarehouseScope: revisionAccess.warehouseScope,
+    },
   );
 
   res.status(200).json({ data });

@@ -256,6 +256,14 @@ export const updateProductValidator = [
     .isNumeric()
     .withMessage("warehouseStocks.*.quantity must be a number"),
 
+  body("warehouseStocks.*.expectedRevision")
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage(
+      "warehouseStocks.*.expectedRevision must be a non-negative integer",
+    )
+    .toInt(),
+
   body("variants")
     .optional()
     .isArray()
@@ -291,6 +299,14 @@ export const updateProductValidator = [
     .isNumeric()
     .withMessage("variant warehouseStocks.*.quantity must be a number"),
 
+  body("variants.*.warehouseStocks.*.expectedRevision")
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage(
+      "variant warehouseStocks.*.expectedRevision must be a non-negative integer",
+    )
+    .toInt(),
+
   validatorMiddleware,
 ];
 
@@ -312,6 +328,14 @@ export const updateProductStockValidator = [
     .isNumeric()
     .withMessage("warehouseStocks.*.quantity must be a number"),
 
+  body("warehouseStocks.*.expectedRevision")
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage(
+      "warehouseStocks.*.expectedRevision must be a non-negative integer",
+    )
+    .toInt(),
+
   body("variants")
     .optional()
     .isArray()
@@ -331,6 +355,14 @@ export const updateProductStockValidator = [
     .optional()
     .isNumeric()
     .withMessage("variant warehouseStocks.*.quantity must be a number"),
+
+  body("variants.*.warehouseStocks.*.expectedRevision")
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage(
+      "variant warehouseStocks.*.expectedRevision must be a non-negative integer",
+    )
+    .toInt(),
 
   validatorMiddleware,
 ];
