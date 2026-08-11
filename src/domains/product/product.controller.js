@@ -155,6 +155,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
 });
 
 export const updateProductStock = asyncHandler(async (req, res) => {
+    console.log("updateStock req.body:", JSON.stringify(req.body, null, 2));
   const updated = await updateProductStockService(
     req.params.id,
     req.body,
