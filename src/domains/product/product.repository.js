@@ -89,6 +89,7 @@ export function findProductsByIdsWithOptions(
 
 export function buildSubstitutionCandidateProductFilter({
   warehouseId,
+  subcategoryId,
   searchRegex,
   excludeProductId,
   excludeVariantId,
@@ -123,6 +124,7 @@ export function buildSubstitutionCandidateProductFilter({
   const filter = searchRegex
     ? {
         isActive: true,
+        subcategory: subcategoryId,
         $and: [
           stockFilter,
           {
@@ -136,7 +138,7 @@ export function buildSubstitutionCandidateProductFilter({
           },
         ],
       }
-    : { isActive: true, ...stockFilter };
+    : { isActive: true, subcategory: subcategoryId, ...stockFilter };
 
   const sourceExclusion = excludeProductId
     ? excludeVariantId
@@ -170,11 +172,11 @@ export function buildSubstitutionCandidateProductFilter({
 }
 
 export function findSubstitutionCandidateProducts({
-  skip = 0,
-  limit = 20,
+  skip,
+  limit,
   ...filterOptions
 }) {
-  return ProductModel.find(
+  const query = ProductModel.find(
     buildSubstitutionCandidateProductFilter(filterOptions),
   )
     .select(
@@ -183,10 +185,12 @@ export function findSubstitutionCandidateProducts({
         "variants.discountedPrice variants.options variants.images " +
         "variants.warehouseStocks",
     )
-    .sort({ name_en: 1, _id: 1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+    .sort({ name_en: 1, _id: 1 });
+
+  if (Number.isInteger(skip) && skip > 0) query.skip(skip);
+  if (Number.isInteger(limit) && limit > 0) query.limit(limit);
+
+  return query.lean();
 }
 
 export function countSubstitutionCandidateProducts(filterOptions) {

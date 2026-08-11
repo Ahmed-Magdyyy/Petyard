@@ -294,7 +294,22 @@ export async function listSubstitutionCandidatesService({
     throw substitutionError("Order line not found", 404, "ORDER_LINE_NOT_FOUND");
   }
 
+  const [sourceProduct] = await findProductsByIdsWithOptions(
+    [sourceLine.product],
+    { select: "_id subcategory", lean: true },
+  );
+  const sourceSubcategoryId =
+    sourceProduct?.subcategory?._id || sourceProduct?.subcategory;
+  if (!sourceSubcategoryId) {
+    throw substitutionError(
+      "The source product subcategory is unavailable",
+      409,
+      "SUBSTITUTION_SOURCE_SUBCATEGORY_MISSING",
+    );
+  }
+
   const { pageNum, limitNum, skip } = buildPagination({ page, limit }, 20);
+  const pageSize = Math.min(limitNum, 50);
   const normalizedSearch = typeof q === "string" ? q.trim() : "";
   const searchRegex = normalizedSearch
     ? new RegExp(escapeRegex(normalizedSearch), "i")
@@ -302,36 +317,72 @@ export async function listSubstitutionCandidatesService({
 
   const candidateQuery = {
     warehouseId: order.warehouse,
+    subcategoryId: sourceSubcategoryId,
     searchRegex,
     excludeProductId: sourceLine.product,
     excludeVariantId: sourceLine.variantId || undefined,
   };
   const [products, totalProducts] = await Promise.all([
-    findSubstitutionCandidateProducts({
-      ...candidateQuery,
-      skip,
-      limit: Math.min(limitNum, 50),
-    }),
+    findSubstitutionCandidateProducts(candidateQuery),
     countSubstitutionCandidateProducts(candidateQuery),
   ]);
 
   const promotionsByProductId =
     await findActivePromotionsForProducts(products);
-  const data = [];
+  const sourceUnitPricePiastres = Number.isSafeInteger(
+    sourceLine.itemPricePiastres,
+  )
+    ? sourceLine.itemPricePiastres
+    : toPiastres(sourceLine.itemPrice, "sourceLine.itemPrice");
+  const rankedCandidates = [];
   for (const product of products) {
     const promotion =
       promotionsByProductId.get(String(product._id)) || null;
-    const snapshots = mapCandidateProduct(
-      product,
-      order.warehouse,
-      promotion,
-    ).filter((snapshot) => !sameSku(sourceLine, snapshot));
+    const snapshots = mapCandidateProduct(product, order.warehouse, promotion)
+      .filter((snapshot) => !sameSku(sourceLine, snapshot))
+      .sort((left, right) => {
+        const priceDifference =
+          Math.abs(left.unitPricePiastres - sourceUnitPricePiastres) -
+          Math.abs(right.unitPricePiastres - sourceUnitPricePiastres);
+        if (priceDifference !== 0) return priceDifference;
+        return String(left.variantId || "").localeCompare(
+          String(right.variantId || ""),
+        );
+      });
     const candidate = presentSubstitutionCandidateProduct(snapshots, lang);
-    if (candidate) data.push(candidate);
+    if (!candidate) continue;
+    rankedCandidates.push({
+      candidate,
+      sameProduct: String(product._id) === String(sourceLine.product),
+      priceDifference: Math.min(
+        ...snapshots.map((snapshot) =>
+          Math.abs(snapshot.unitPricePiastres - sourceUnitPricePiastres),
+        ),
+      ),
+    });
   }
 
+  rankedCandidates.sort((left, right) => {
+    if (left.sameProduct !== right.sameProduct) {
+      return left.sameProduct ? -1 : 1;
+    }
+    if (left.priceDifference !== right.priceDifference) {
+      return left.priceDifference - right.priceDifference;
+    }
+    const nameDifference = String(left.candidate.name || "").localeCompare(
+      String(right.candidate.name || ""),
+    );
+    if (nameDifference !== 0) return nameDifference;
+    return String(left.candidate.product).localeCompare(
+      String(right.candidate.product),
+    );
+  });
+  const data = rankedCandidates
+    .slice(skip, skip + pageSize)
+    .map(({ candidate }) => candidate);
+
   return {
-    totalPages: Math.ceil(totalProducts / Math.min(limitNum, 50)) || 1,
+    totalPages: Math.ceil(totalProducts / pageSize) || 1,
     page: pageNum,
     results: data.length,
     totalProducts,
