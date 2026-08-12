@@ -78,9 +78,24 @@ export const getProductsForAdmin = asyncHandler(async (req, res) => {
     }
   }
 
-  const result = await getProductsService(req.query, req.lang, {
-    includeZeroStockInWarehouse: true,
-  });
+  const revisionAccess = getStaffStockRevisionAccess(req);
+  const includeAllLanguages =
+    req.user.role === roles.SUPER_ADMIN ||
+    (req.user.role === roles.ADMIN &&
+      req.user.enabledControls?.includes(enabledControls.PRODUCTS));
+
+  const result = await getProductsService(
+    req.query,
+    req.lang,
+    {
+      includeZeroStockInWarehouse: true,
+      includeDetails: true,
+      includeAllLanguages,
+      includeStockRevisions: revisionAccess.allowed,
+      stockRevisionWarehouseScope: revisionAccess.warehouseScope,
+    },
+    req.user?._id || null,
+  );
 
   res.status(200).json(result);
 });

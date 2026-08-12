@@ -1043,6 +1043,10 @@ async function getProductsService(
     prioritizeInStock = false,
     onlyActive = false,
     hideOutOfStock = false,
+    includeDetails = false,
+    includeAllLanguages = false,
+    includeStockRevisions = false,
+    stockRevisionWarehouseScope = null,
   } = options || {};
 
   const effectiveWarehouseId =
@@ -1227,14 +1231,14 @@ async function getProductsService(
             mongoFilter: pageFilter,
             skip: pageSkip,
             limit: pageLimit,
-            select: PRODUCT_CARD_SELECT,
+            select: includeDetails ? undefined : PRODUCT_CARD_SELECT,
             fallbackSort: sort,
           })
         : findProducts(pageFilter, {
             skip: pageSkip,
             limit: pageLimit,
             sort,
-            select: PRODUCT_CARD_SELECT,
+            select: includeDetails ? undefined : PRODUCT_CARD_SELECT,
             lean: true,
           });
 
@@ -1286,11 +1290,20 @@ async function getProductsService(
 
     const data = products.map((p) => {
       const promotion = promotionsByProductId.get(String(p._id)) || null;
-      const dto = mapProductToCardDto(p, {
-        lang: normalizedLang,
-        promotion,
-        warehouseId: selectedWarehouseId,
-      });
+      const dto = includeDetails
+        ? mapProductToDetailDto(p, {
+            lang: normalizedLang,
+            promotion,
+            includeAllLanguages,
+            includeStockRevisions,
+            stockRevisionWarehouseScope,
+            warehouseId: selectedWarehouseId,
+          })
+        : mapProductToCardDto(p, {
+            lang: normalizedLang,
+            promotion,
+            warehouseId: selectedWarehouseId,
+          });
       dto.isFavorite = false;
       dto.isRestockNotificationRequested = false;
       return dto;
