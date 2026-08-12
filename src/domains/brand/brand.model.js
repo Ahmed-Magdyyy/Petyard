@@ -34,6 +34,15 @@ const brandSchema = new Schema(
       uppercase: true,
       match: /^#(?:[0-9A-F]{3}|[0-9A-F]{6})$/,
     },
+    position: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "position must be a non-negative integer",
+      },
+    },
     image: {
       public_id: { type: String },
       url: { type: String },
@@ -44,5 +53,6 @@ const brandSchema = new Schema(
 
 brandSchema.index({ name_en: 1 });
 brandSchema.index({ name_ar: 1 });
+brandSchema.index({ position: 1, slug: 1 });
 
 export const BrandModel = model("Brand", brandSchema);

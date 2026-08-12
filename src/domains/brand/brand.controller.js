@@ -5,6 +5,7 @@ import {
   createBrandService,
   updateBrandService,
   deleteBrandService,
+  updateBrandPositionsService,
 } from "./brand.service.js";
 
 // GET /brands
@@ -35,4 +36,10 @@ export const updateBrand = asyncHandler(async (req, res) => {
 export const deleteBrand = asyncHandler(async (req, res) => {
   await deleteBrandService(req.params.id);
   res.status(200).json({ message: "Brand deleted successfully" });
+});
+
+// PATCH /brands/positions
+export const updateBrandPositions = asyncHandler(async (req, res) => {
+  const result = await updateBrandPositionsService(req.body.positions);
+  res.status(200).json({ data: result });
 });

@@ -72,18 +72,10 @@ export function subscriptionExists({ userId, guestId, subcategoryId, warehouseId
   });
 }
 
-export function findSubscribedUserIds(subcategoryId) {
-  return SubcategorySubscriptionModel.distinct("user", {
-    subcategory: subcategoryId,
-    user: { $type: "objectId" },
-  });
-}
-
-export function findSubscribedGuestIds(subcategoryId) {
-  return SubcategorySubscriptionModel.distinct("guestId", {
-    subcategory: subcategoryId,
-    guestId: { $type: "string" },
-  });
+export function findNotificationSubscriptions(subcategoryId) {
+  return SubcategorySubscriptionModel.find({ subcategory: subcategoryId })
+    .select("user guestId warehouse")
+    .lean();
 }
 
 export function findGuestSubscriptions(guestId) {

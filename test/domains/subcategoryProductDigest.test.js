@@ -15,6 +15,7 @@ import {
   SUBCATEGORY_DIGEST_TIME_ZONE,
   buildSubcategoryDigestNotification,
   getNextSubcategoryDigestDeliveryAt,
+  groupSubcategoryDigestRecipients,
   processDueSubcategoryProductDigests,
   queueProductForSubcategoryDigest,
 } from "../../src/domains/subcategorySubscription/subcategoryProductDigest.service.js";
@@ -215,11 +216,13 @@ function installDigestDispatchMocks(t, { dispatchFails = false } = {}) {
   t.mock.method(ProductModel, "find", () =>
     queryResult(digest.productIds.map((_id) => ({ _id }))),
   );
-  t.mock.method(
-    SubcategorySubscriptionModel,
-    "distinct",
-    async (field) =>
-      field === "user" ? [userId, userId] : [guestId, guestId],
+  t.mock.method(SubcategorySubscriptionModel, "find", () =>
+    queryResult([
+      { user: userId },
+      { user: userId },
+      { guestId },
+      { guestId },
+    ]),
   );
   t.mock.method(
     subcategorySubscriptionNotificationDispatcher,
@@ -310,6 +313,69 @@ test("a failed digest is released once for a later cron retry", async (t) => {
   assert.equal(state.userDispatches.length, 1);
   assert.equal(state.digest.attempts, 1);
   assert.equal(state.digest.status, subcategoryProductDigestStatus.PENDING);
+});
+
+test("digest recipients require local stock for selected warehouses", () => {
+  const warehouseA = new mongoose.Types.ObjectId();
+  const warehouseB = new mongoose.Types.ObjectId();
+  const warehouseWithoutStock = new mongoose.Types.ObjectId();
+  const legacyUserId = new mongoose.Types.ObjectId();
+  const simpleUserId = new mongoose.Types.ObjectId();
+  const variantUserId = new mongoose.Types.ObjectId();
+  const unavailableUserId = new mongoose.Types.ObjectId();
+
+  const groups = groupSubcategoryDigestRecipients({
+    products: [
+      {
+        _id: new mongoose.Types.ObjectId(),
+        type: "SIMPLE",
+        warehouseStocks: [{ warehouse: warehouseA, quantity: 2 }],
+      },
+      {
+        _id: new mongoose.Types.ObjectId(),
+        type: "VARIANT",
+        variants: [
+          {
+            warehouseStocks: [{ warehouse: warehouseB, quantity: 1 }],
+          },
+        ],
+      },
+      {
+        _id: new mongoose.Types.ObjectId(),
+        type: "SIMPLE",
+        warehouseStocks: [{ warehouse: warehouseWithoutStock, quantity: 0 }],
+      },
+    ],
+    subscriptions: [
+      { user: legacyUserId },
+      { user: simpleUserId, warehouse: warehouseA },
+      { user: variantUserId, warehouse: warehouseB },
+      { user: unavailableUserId, warehouse: warehouseWithoutStock },
+      { guestId: "eligible-guest", warehouse: warehouseB },
+      { guestId: "unavailable-guest", warehouse: warehouseWithoutStock },
+    ],
+  });
+
+  assert.deepEqual(groups, [
+    {
+      warehouseId: null,
+      productCount: 3,
+      userIds: [String(legacyUserId)],
+      guestIds: [],
+    },
+    {
+      warehouseId: String(warehouseA),
+      productCount: 1,
+      userIds: [String(simpleUserId)],
+      guestIds: [],
+    },
+    {
+      warehouseId: String(warehouseB),
+      productCount: 1,
+      userIds: [String(variantUserId)],
+      guestIds: ["eligible-guest"],
+    },
+  ]);
 });
 
 test("digest model enforces one aggregate per subcategory delivery window", () => {

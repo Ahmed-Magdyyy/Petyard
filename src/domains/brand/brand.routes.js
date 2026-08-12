@@ -5,6 +5,7 @@ import {
   createBrand,
   updateBrand,
   deleteBrand,
+  updateBrandPositions,
 } from "./brand.controller.js";
 import {
   protect,
@@ -17,15 +18,17 @@ import {
   enabledControls as enabledControlsEnum,
 } from "../../shared/constants/enums.js";
 import {
+  brandListQueryValidator,
   createBrandValidator,
   updateBrandValidator,
   brandIdParamValidator,
+  updateBrandPositionsValidator,
 } from "./brand.validators.js";
 import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
 
 const router = Router();
 
-router.get("/", optionalProtect, getBrands);
+router.get("/", optionalProtect, brandListQueryValidator, getBrands);
 router.get("/:id", optionalProtect, brandIdParamValidator, getBrand);
 
 router.delete(
@@ -48,6 +51,12 @@ router.post(
   uploadSingleImage("image"),
   createBrandValidator,
   createBrand
+);
+
+router.patch(
+  "/positions",
+  updateBrandPositionsValidator,
+  updateBrandPositions
 );
 
 router.patch(

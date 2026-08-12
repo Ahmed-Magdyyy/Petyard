@@ -1,13 +1,11 @@
 import crypto from "node:crypto";
 import { DateTime } from "luxon";
 
+import { productTypeEnum } from "../../shared/constants/enums.js";
 import { parseBoundedInt } from "../../shared/utils/env.js";
 import { ProductModel } from "../product/product.model.js";
 import { SubcategoryModel } from "../subcategory/subcategory.model.js";
-import {
-  findSubscribedGuestIds,
-  findSubscribedUserIds,
-} from "./subcategorySubscription.repository.js";
+import { findNotificationSubscriptions } from "./subcategorySubscription.repository.js";
 import { subcategorySubscriptionNotificationDispatcher } from "./subcategorySubscription.notificationDispatcher.js";
 import {
   claimNextDueDigest,
@@ -40,6 +38,81 @@ const DIGEST_CLAIM_TTL_MINUTES = parseBoundedInt(
 
 function asId(value) {
   return value == null ? null : String(value);
+}
+
+function warehouseIdMatches(value, warehouseId) {
+  return value != null && String(value) === String(warehouseId);
+}
+
+function hasPositiveStockAtWarehouse(warehouseStocks, warehouseId) {
+  return (Array.isArray(warehouseStocks) ? warehouseStocks : []).some(
+    (entry) =>
+      warehouseIdMatches(entry?.warehouse, warehouseId) &&
+      Number(entry?.quantity) > 0,
+  );
+}
+
+function isProductAvailableAtWarehouse(product, warehouseId) {
+  if (product?.type === productTypeEnum.VARIANT) {
+    return (Array.isArray(product.variants) ? product.variants : []).some(
+      (variant) =>
+        hasPositiveStockAtWarehouse(variant?.warehouseStocks, warehouseId),
+    );
+  }
+
+  return hasPositiveStockAtWarehouse(product?.warehouseStocks, warehouseId);
+}
+
+/**
+ * A selected warehouse is eligible only when at least one newly-added product
+ * is in stock there. Subscriptions without a selected warehouse keep the
+ * existing category-wide delivery behavior.
+ */
+export function groupSubcategoryDigestRecipients({ subscriptions, products }) {
+  const groups = new Map();
+  const availableProducts = Array.isArray(products) ? products : [];
+
+  for (const subscription of subscriptions || []) {
+    const warehouseId = asId(subscription?.warehouse);
+    const eligibleProducts = warehouseId
+      ? availableProducts.filter((product) =>
+          isProductAvailableAtWarehouse(product, warehouseId),
+        )
+      : availableProducts;
+
+    if (!eligibleProducts.length) continue;
+
+    const groupKey = warehouseId || "legacy";
+    let group = groups.get(groupKey);
+    if (!group) {
+      group = {
+        warehouseId,
+        productCount: eligibleProducts.length,
+        userIds: new Set(),
+        guestIds: new Set(),
+      };
+      groups.set(groupKey, group);
+    }
+
+    const userId = asId(subscription?.user);
+    if (userId) {
+      group.userIds.add(userId);
+      continue;
+    }
+
+    const guestId =
+      typeof subscription?.guestId === "string"
+        ? subscription.guestId.trim()
+        : "";
+    if (guestId) group.guestIds.add(guestId);
+  }
+
+  return [...groups.values()].map((group) => ({
+    warehouseId: group.warehouseId,
+    productCount: group.productCount,
+    userIds: [...group.userIds],
+    guestIds: [...group.guestIds],
+  }));
 }
 
 export function getNextSubcategoryDigestDeliveryAt(now = new Date()) {
@@ -123,8 +196,7 @@ export function buildSubcategoryDigestNotification({
 
 async function dispatchClaimedDigest(digest) {
   const subcategoryId = asId(digest.subcategory);
-  const [subcategory, products, subscribedUsers, subscribedGuests] =
-    await Promise.all([
+  const [subcategory, products, subscriptions] = await Promise.all([
       SubcategoryModel.findById(subcategoryId)
         .select("_id name_en name_ar")
         .lean(),
@@ -133,60 +205,65 @@ async function dispatchClaimedDigest(digest) {
         subcategory: subcategoryId,
         isActive: { $ne: false },
       })
-        .select("_id")
+        .select(
+          "_id type warehouseStocks.warehouse warehouseStocks.quantity variants.warehouseStocks.warehouse variants.warehouseStocks.quantity",
+        )
         .lean(),
-      findSubscribedUserIds(subcategoryId),
-      findSubscribedGuestIds(subcategoryId),
+      findNotificationSubscriptions(subcategoryId),
     ]);
 
   if (!subcategory || products.length === 0) {
     return { skipped: true, productCount: 0, userCount: 0, guestCount: 0 };
   }
 
-  const userIds = [...new Set((subscribedUsers || []).map(asId).filter(Boolean))];
-  const guestIds = [
-    ...new Set(
-      (subscribedGuests || [])
-        .map((guestId) =>
-          typeof guestId === "string" ? guestId.trim() : "",
-        )
-        .filter(Boolean),
-    ),
-  ];
-  const payload = buildSubcategoryDigestNotification({
-    digestId: digest._id,
-    subcategoryId,
-    subcategoryNameEn: subcategory.name_en,
-    subcategoryNameAr: subcategory.name_ar,
-    productCount: products.length,
+  const recipientGroups = groupSubcategoryDigestRecipients({
+    subscriptions,
+    products,
   });
-
   const dispatches = [];
-  if (userIds.length) {
-    dispatches.push(
-      subcategorySubscriptionNotificationDispatcher.dispatchNotificationToUsers({
-        ...payload,
-        userIds,
-        channels: { push: true, inApp: true },
-      }),
-    );
-  }
-  if (guestIds.length) {
-    const { icon: _icon, ...guestPayload } = payload;
-    dispatches.push(
-      subcategorySubscriptionNotificationDispatcher.dispatchNotificationToGuests({
-        ...guestPayload,
-        guestIds,
-      }),
-    );
+  for (const recipientGroup of recipientGroups) {
+    const payload = buildSubcategoryDigestNotification({
+      digestId: digest._id,
+      subcategoryId,
+      subcategoryNameEn: subcategory.name_en,
+      subcategoryNameAr: subcategory.name_ar,
+      productCount: recipientGroup.productCount,
+    });
+
+    if (recipientGroup.userIds.length) {
+      dispatches.push(
+        subcategorySubscriptionNotificationDispatcher.dispatchNotificationToUsers({
+          ...payload,
+          userIds: recipientGroup.userIds,
+          channels: { push: true, inApp: true },
+        }),
+      );
+    }
+    if (recipientGroup.guestIds.length) {
+      const { icon: _icon, ...guestPayload } = payload;
+      dispatches.push(
+        subcategorySubscriptionNotificationDispatcher.dispatchNotificationToGuests({
+          ...guestPayload,
+          guestIds: recipientGroup.guestIds,
+        }),
+      );
+    }
   }
 
   await Promise.all(dispatches);
+  const userCount = recipientGroups.reduce(
+    (total, group) => total + group.userIds.length,
+    0,
+  );
+  const guestCount = recipientGroups.reduce(
+    (total, group) => total + group.guestIds.length,
+    0,
+  );
   return {
-    skipped: userIds.length === 0 && guestIds.length === 0,
+    skipped: userCount === 0 && guestCount === 0,
     productCount: products.length,
-    userCount: userIds.length,
-    guestCount: guestIds.length,
+    userCount,
+    guestCount,
   };
 }
 
