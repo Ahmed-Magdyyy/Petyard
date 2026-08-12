@@ -46,10 +46,7 @@ export const createBrandValidator = [
 export const updateBrandValidator = [
   param("id").isMongoId().withMessage("Invalid brand id"),
 
-  body("slug")
-    .not()
-    .exists()
-    .withMessage("slug cannot be updated"),
+  body("slug").not().exists().withMessage("slug cannot be updated"),
 
   body("name_en")
     .optional()
@@ -103,7 +100,9 @@ export const updateBrandPositionsValidator = [
 
   body("positions.*.position")
     .isInt({ min: 0 })
-    .withMessage("each positions item must have a non-negative integer position")
+    .withMessage(
+      "each positions item must have a non-negative integer position",
+    )
     .toInt(),
 
   validatorMiddleware,

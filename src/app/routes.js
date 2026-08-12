@@ -33,6 +33,7 @@ import bankAccountRoutes from "../domains/bankAccount/bankAccount.routes.js";
 import standaloneProfileBannerRoutes from "../domains/standaloneProfileBanner/standaloneProfileBanner.routes.js";
 import appRedirectRoutes from "../domains/appRedirect/appRedirect.routes.js";
 import appVersionRoutes from "../domains/appVersion/appVersion.routes.js";
+import searchSuggestionRoutes from "../domains/searchSuggestion/searchSuggestion.routes.js";
 
 export function mountRoutes(app) {
   // ── App Redirect (only for app.petyardstores.com) ──────────
@@ -62,6 +63,7 @@ export function mountRoutes(app) {
   app.use("/api/v1/brands", brandRoutes);
   app.use("/api/v1/collections", collectionRoutes);
   app.use("/api/v1/products", productRoutes);
+  app.use("/api/v1/search-suggestions", searchSuggestionRoutes);
   app.use("/api/v1/cart", cartRoutes);
   app.use("/api/v1/coupons", couponRoutes);
   app.use("/api/v1/checkout", checkoutRoutes);
