@@ -16,7 +16,7 @@ import {
   unsubscribeFromSubcategory,
 } from "../../src/domains/subcategorySubscription/subcategorySubscription.service.js";
 import subcategorySubscriptionRoutes from "../../src/domains/subcategorySubscription/subcategorySubscription.routes.js";
-import { subcategoryIdParamValidator } from "../../src/domains/subcategorySubscription/subcategorySubscription.validators.js";
+import { subcategoryIdParamValidator } from '../../src/domains/subcategorySubscription/subcategorySubscription.validators.js';
 
 function createMemorySubscriptionStorage(t, subcategories = new Map()) {
   const subscriptions = new Map();
@@ -28,13 +28,25 @@ function createMemorySubscriptionStorage(t, subcategories = new Map()) {
       return false;
     }
     if (filter.user) {
-      if (filter.user.$type) return Boolean(subscription.user);
-      return String(subscription.user) === String(filter.user);
+      if (filter.user.$type && !subscription.user) return false;
+      if (!filter.user.$type && String(subscription.user) !== String(filter.user)) return false;
     }
     if (filter.guestId) {
-      if (filter.guestId.$type) return Boolean(subscription.guestId);
-      return String(subscription.guestId) === String(filter.guestId).trim();
+      if (filter.guestId.$type && !subscription.guestId) return false;
+      if (
+        !filter.guestId.$type &&
+        String(subscription.guestId) !== String(filter.guestId).trim()
+      ) return false;
     }
+    if (Object.hasOwn(filter, 'warehouse')) {
+      if (filter.warehouse == null && subscription.warehouse != null) return false;
+      if (
+        filter.warehouse != null &&
+        String(subscription.warehouse) !== String(filter.warehouse)
+      ) return false;
+    }
+    if (filter._id && String(subscription._id) !== String(filter._id)) return false;
+    if (filter.updatedAt && subscription.updatedAt?.getTime() !== filter.updatedAt.getTime()) return false;
     return true;
   };
 
@@ -48,27 +60,33 @@ function createMemorySubscriptionStorage(t, subcategories = new Map()) {
     lean: async () => subcategories.get(String(id)) || null,
   }));
 
-  t.mock.method(SubcategorySubscriptionModel, "updateOne", async (filter, update) => {
+  t.mock.method(SubcategorySubscriptionModel, 'updateOne', async (filter, update) => {
     const owner = filter.user ? { user: filter.user } : { guestId: filter.guestId };
     const key = keyFor(owner, filter.subcategory);
     const alreadyExists = subscriptions.has(key);
     if (!alreadyExists) {
       subscriptions.set(key, {
         ...update.$setOnInsert,
+        ...update.$set,
+        _id: new mongoose.Types.ObjectId(),
         subcategory: filter.subcategory,
         createdAt: new Date(),
+        updatedAt: new Date(),
       });
+    } else if (matches(subscriptions.get(key), filter) && update.$set) {
+      Object.assign(subscriptions.get(key), update.$set, { updatedAt: new Date() });
     }
     return { acknowledged: true, upsertedCount: alreadyExists ? 0 : 1 };
   });
-  t.mock.method(SubcategorySubscriptionModel, "deleteOne", async (filter) => ({
-    acknowledged: true,
-    deletedCount: subscriptions.delete(
-      keyFor(filter.user ? { user: filter.user } : { guestId: filter.guestId }, filter.subcategory),
-    )
-      ? 1
-      : 0,
-  }));
+  t.mock.method(SubcategorySubscriptionModel, 'deleteOne', async (filter) => {
+    const entry = [...subscriptions.entries()].find(([, subscription]) =>
+      matches(subscription, filter),
+    );
+    return {
+      acknowledged: true,
+      deletedCount: entry && subscriptions.delete(entry[0]) ? 1 : 0,
+    };
+  });
   t.mock.method(SubcategorySubscriptionModel, "find", (filter) => ({
     select() {
       return this;

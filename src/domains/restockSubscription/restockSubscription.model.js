@@ -82,6 +82,7 @@ restockSubscriptionSchema.index(
   }
 );
 restockSubscriptionSchema.index({ product: 1, warehouse: 1, status: 1 });
+restockSubscriptionSchema.index({ warehouse: 1, status: 1, product: 1 });
 restockSubscriptionSchema.index({ status: 1, claimedAt: 1 });
 
 export const RestockSubscriptionModel = model(

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import mongoose from "mongoose";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { productTypeEnum } from "../../shared/constants/enums.js";
 import { ProductModel } from "../product/product.model.js";
@@ -6,6 +7,8 @@ import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { restockNotificationGateway } from "./restockSubscription.notificationGateway.js";
 import {
   activateSubscription,
+  aggregateRestockDemandSubscribers,
+  aggregateRestockDemandSummary,
   cancelSubscription,
   claimActiveSubscription,
   deleteSubscriptionsForProduct,
@@ -21,6 +24,80 @@ import {
 } from "./restockSubscription.repository.js";
 
 const PROCESSING_CLAIM_TTL_MS = 15 * 60 * 1000;
+
+function demandObjectId(value, field) {
+  if (!mongoose.Types.ObjectId.isValid(value)) {
+    throw new ApiError(`${field} must be a valid MongoDB ObjectId`, 400);
+  }
+  return new mongoose.Types.ObjectId(String(value));
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function demandPagination({ page = 1, limit = 20 } = {}) {
+  const normalizedPage = Number(page);
+  const normalizedLimit = Number(limit);
+  if (!Number.isInteger(normalizedPage) || normalizedPage < 1) {
+    throw new ApiError("page must be a positive integer", 400);
+  }
+  if (!Number.isInteger(normalizedLimit) || normalizedLimit < 1 || normalizedLimit > 100) {
+    throw new ApiError("limit must be an integer between 1 and 100", 400);
+  }
+  return { page: normalizedPage, limit: normalizedLimit };
+}
+
+function ensureWarehouseIsAllowed({ warehouseId, warehouseScope }) {
+  if (
+    warehouseId &&
+    Array.isArray(warehouseScope) &&
+    !warehouseScope.some((allowedWarehouseId) => String(allowedWarehouseId) === String(warehouseId))
+  ) {
+    throw new ApiError("You are not allowed to access this warehouse", 403);
+  }
+}
+
+function localizedDemandSummary(row, lang) {
+  const registeredUserCount = Number(row.registeredUserCount) || 0;
+  const anonymousGuestCount = Number(row.anonymousGuestCount) || 0;
+  const warehouseDemand = (row.warehouseDemand || []).map((entry) => {
+    const warehouseRegisteredUserCount = Number(entry.registeredUserCount) || 0;
+    const warehouseAnonymousGuestCount = Number(entry.anonymousGuestCount) || 0;
+
+    return {
+      warehouse: {
+        id: String(entry.warehouse.id),
+        name: entry.warehouse.name || null,
+        code: entry.warehouse.code || null,
+      },
+      totalSubscribers:
+        warehouseRegisteredUserCount + warehouseAnonymousGuestCount,
+      registeredUserCount: warehouseRegisteredUserCount,
+      anonymousGuestCount: warehouseAnonymousGuestCount,
+      oldestSubscribedAt: entry.oldestSubscribedAt,
+      latestSubscribedAt: entry.latestSubscribedAt,
+    };
+  });
+
+  return {
+    product: {
+      id: String(row.product.id),
+      slug: row.product.slug || null,
+      name:
+        lang === "ar"
+          ? row.product.name_ar || row.product.name_en
+          : row.product.name_en || row.product.name_ar,
+      image: row.product.image || null,
+    },
+    totalSubscribers: registeredUserCount + anonymousGuestCount,
+    registeredUserCount,
+    anonymousGuestCount,
+    oldestSubscribedAt: row.oldestSubscribedAt,
+    latestSubscribedAt: row.latestSubscribedAt,
+    warehouseDemand,
+  };
+}
 
 function warehouseIdMatches(value, warehouseId) {
   return value != null && String(value) === String(warehouseId);
@@ -193,6 +270,98 @@ export async function getMyRestockSubscriptionsService({
   const identity = getSubscriptionIdentity({ userId, guestId });
   const subscriptions = await findPendingSubscriptionsForIdentity(identity);
   return subscriptions.map(toSubscriptionResponse);
+}
+
+export async function getRestockDemandSummaryService({
+  warehouseId,
+  search,
+  page,
+  limit,
+  warehouseScope,
+  lang,
+} = {}) {
+  const pagination = demandPagination({ page, limit });
+  const normalizedWarehouseId = warehouseId
+    ? demandObjectId(warehouseId, "warehouse")
+    : undefined;
+  ensureWarehouseIsAllowed({
+    warehouseId: normalizedWarehouseId,
+    warehouseScope,
+  });
+
+  const normalizedSearch = typeof search === "string" ? search.trim() : "";
+  const [result = {}] = await aggregateRestockDemandSummary({
+    warehouseId: normalizedWarehouseId,
+    warehouseScope,
+    searchRegex: normalizedSearch ? new RegExp(escapeRegex(normalizedSearch), "i") : undefined,
+    ...pagination,
+  });
+  const totalDemandGroups = result.metadata?.[0]?.totalDemandGroups || 0;
+  const data = (result.data || []).map((row) => localizedDemandSummary(row, lang));
+
+  return {
+    totalPages: Math.ceil(totalDemandGroups / pagination.limit) || 1,
+    page: pagination.page,
+    results: data.length,
+    totalDemandGroups,
+    data,
+  };
+}
+
+export async function getRestockDemandSubscribersService({
+  productId,
+  warehouseId,
+  page,
+  limit,
+  warehouseScope,
+} = {}) {
+  const pagination = demandPagination({ page, limit });
+  const normalizedProductId = demandObjectId(productId, "productId");
+  const normalizedWarehouseId = warehouseId
+    ? demandObjectId(warehouseId, "warehouse")
+    : undefined;
+  ensureWarehouseIsAllowed({
+    warehouseId: normalizedWarehouseId,
+    warehouseScope,
+  });
+
+  const [result = {}] = await aggregateRestockDemandSubscribers({
+    productId: normalizedProductId,
+    warehouseId: normalizedWarehouseId,
+    warehouseScope,
+    ...pagination,
+  });
+  const counts = result.counts?.[0] || {};
+  const registeredUserCount = Number(counts.registeredUserCount) || 0;
+  const unavailableRegisteredUserCount =
+    Number(counts.unavailableRegisteredUserCount) || 0;
+  const anonymousGuestCount = Number(counts.anonymousGuestCount) || 0;
+  const data = (result.data || []).map((row) => ({
+    id: String(row.id),
+    name: row.name || null,
+    image: row.image || null,
+    warehouse: {
+      id: String(row.warehouse.id),
+      name: row.warehouse.name || null,
+      code: row.warehouse.code || null,
+    },
+    subscribedAt: row.subscribedAt,
+    status: row.status,
+  }));
+
+  return {
+    totalPages: Math.ceil(registeredUserCount / pagination.limit) || 1,
+    page: pagination.page,
+    results: data.length,
+    totalSubscribers:
+      registeredUserCount +
+      unavailableRegisteredUserCount +
+      anonymousGuestCount,
+    registeredUserCount,
+    unavailableRegisteredUserCount,
+    anonymousGuestCount,
+    data,
+  };
 }
 
 export async function getRestockSubscribedProductIdsForUser({

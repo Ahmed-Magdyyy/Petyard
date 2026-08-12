@@ -22,6 +22,13 @@ const subcategorySubscriptionSchema = new Schema(
       ref: "Subcategory",
       required: true,
     },
+    // This records the most recent demand location without changing the
+    // existing one-row-per-owner-and-subcategory uniqueness contract.
+    warehouse: {
+      type: Schema.Types.ObjectId,
+      ref: 'Warehouse',
+      default: null,
+    },
   },
   { timestamps: true },
 );
@@ -55,6 +62,8 @@ subcategorySubscriptionSchema.index(
 );
 subcategorySubscriptionSchema.index({ subcategory: 1, user: 1 });
 subcategorySubscriptionSchema.index({ subcategory: 1, guestId: 1 });
+subcategorySubscriptionSchema.index({ subcategory: 1, warehouse: 1 });
+subcategorySubscriptionSchema.index({ warehouse: 1, createdAt: -1 });
 
 export const SubcategorySubscriptionModel = model(
   "SubcategorySubscription",
