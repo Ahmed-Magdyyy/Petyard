@@ -94,8 +94,8 @@ export const brandIdParamValidator = [
 
 export const updateBrandPositionsValidator = [
   body("positions")
-    .isArray({ min: 1, max: 50 })
-    .withMessage("positions must be an array with 1-50 items"),
+    .isArray({ min: 1, max: 500 })
+    .withMessage("positions must be an array with 1-500 items"),
 
   body("positions.*.id")
     .isMongoId()
