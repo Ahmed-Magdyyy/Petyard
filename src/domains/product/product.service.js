@@ -962,6 +962,19 @@ function mapProductToDetailDto(
   };
 }
 
+function mapProductToBackwardCompatibleDetailDto(product, options = {}) {
+  const detailDto = mapProductToDetailDto(product, options);
+  const cardDto = mapProductToCardDto(product, options);
+
+  // Keep the product-card contract byte-for-byte compatible at the field
+  // level. Detail-only fields are additive; if both DTOs define a field, the
+  // value and type already consumed by released clients always wins.
+  return {
+    ...detailDto,
+    ...cardDto,
+  };
+}
+
 async function resolveCollectionFilter(collectionId) {
   if (!collectionId) return null;
 
@@ -1291,7 +1304,7 @@ async function getProductsService(
     const data = products.map((p) => {
       const promotion = promotionsByProductId.get(String(p._id)) || null;
       const dto = includeDetails
-        ? mapProductToDetailDto(p, {
+        ? mapProductToBackwardCompatibleDetailDto(p, {
             lang: normalizedLang,
             promotion,
             includeAllLanguages,

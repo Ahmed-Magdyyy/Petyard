@@ -6,7 +6,7 @@ import { CollectionModel } from "../../src/domains/collection/collection.model.j
 import { ProductModel } from "../../src/domains/product/product.model.js";
 import {
   getProductsService,
-  mapProductToDetailDto,
+  mapProductToCardDto,
 } from "../../src/domains/product/product.service.js";
 import { SubcategoryModel } from "../../src/domains/subcategory/subcategory.model.js";
 
@@ -23,7 +23,7 @@ function queryResult(value, { onSelect } = {}) {
   return query;
 }
 
-test("admin product lists use the same complete DTO as product detail", async (t) => {
+test("admin product lists add details without changing the legacy card contract", async (t) => {
   const productId = new mongoose.Types.ObjectId();
   const warehouseId = new mongoose.Types.ObjectId();
   const variantId = new mongoose.Types.ObjectId();
@@ -74,18 +74,20 @@ test("admin product lists use the same complete DTO as product detail", async (t
     includeStockRevisions: true,
   });
 
-  const expected = {
-    ...mapProductToDetailDto(product, {
-      lang: "en",
-      promotion: null,
-      includeAllLanguages: true,
-      includeStockRevisions: true,
-    }),
-    isFavorite: false,
-    isRestockNotificationRequested: false,
-  };
+  const legacyCard = mapProductToCardDto(product, {
+    lang: "en",
+    promotion: null,
+  });
+
+  // Every field known to the released app retains exactly the same value/type.
+  for (const [key, value] of Object.entries(legacyCard)) {
+    assert.deepEqual(result.data[0][key], value, `legacy field changed: ${key}`);
+  }
 
   assert.equal(selectCalls, 0);
-  assert.deepEqual(result.data, [expected]);
+  assert.equal(result.data[0].image, "https://example.test/main.jpg");
+  assert.equal(result.data[0].mainImage, "https://example.test/main.jpg");
+  assert.equal(result.data[0].desc_en, "English description");
+  assert.equal(result.data[0].sku, "PRODUCT-SKU");
   assert.equal(result.data[0].variants[0].warehouseStocks[0].revision, 3);
 });
