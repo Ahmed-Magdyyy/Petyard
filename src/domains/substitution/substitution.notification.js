@@ -5,10 +5,10 @@ import { WarehouseModel } from "../warehouse/warehouse.model.js";
 
 const CUSTOMER_MESSAGES = Object.freeze({
   offered: {
-    title_en: "Substitutes are available",
-    title_ar: "بدائل المنتجات متاحة",
-    body_en: "Some items in your order need your review. Choose substitutes or continue without them.",
-    body_ar: "بعض منتجات طلبك تحتاج إلى مراجعتك. اختر البدائل أو أكمل بدونها.",
+    title_en: "⚠️ Some items are unavailable. Substitutes are available.",
+    title_ar: "⚠️ بعض المنتجات غير متاحة. تتوفر بدائل.",
+    body_en: "Unfortunately, some items in your order are unavailable. You can choose substitutes or continue without them. Please review and make your selection.",
+    body_ar: "للأسف، بعض منتجات طلبك غير متاحة. يمكنك اختيار بدائل لها أو المتابعة بدونها. يُرجى مراجعة العرض وتحديد اختيارك.",
   },
   awaiting_card_payment: {
     title_en: "Additional payment needed",

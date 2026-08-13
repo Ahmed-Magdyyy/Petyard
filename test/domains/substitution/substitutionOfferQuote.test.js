@@ -156,6 +156,8 @@ test("substitution configuration is disabled by default and scopes an enabled ro
   const disabled = await loadFeatureConfig();
   assert.equal(disabled.isOrderSubstitutionEnabledForWarehouse("warehouse-a"), false);
   assert.equal(disabled.getSubstitutionExpiryMinutes(), 30);
+  assert.equal(disabled.getSubstitutionExpiryMinutes(5), 5);
+  assert.equal(disabled.getSubstitutionExpiryMinutes(10), 10);
   assert.equal(disabled.getSubstitutionExpiryMinutes(15), 15);
   assert.equal(disabled.getSubstitutionExpiryMinutes(16), 30);
 
@@ -197,7 +199,7 @@ test("an exact-order canary enables only that substitution flow while warehouse 
     enabled: false,
     warehouseAllowlist: [],
     canaryOrderAllowlist: [canaryOrderId],
-    expiryPresets: [15, 30, 60, 120],
+    expiryPresets: [5, 10, 15, 30, 60, 120],
     defaultExpiryMinutes: 30,
   });
 });

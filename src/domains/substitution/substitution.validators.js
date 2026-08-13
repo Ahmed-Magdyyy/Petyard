@@ -48,7 +48,7 @@ export const createSubstitutionValidator = [
     .optional()
     .isInt()
     .custom((value) => SUBSTITUTION_EXPIRY_PRESETS.includes(Number(value)))
-    .withMessage("expiresInMinutes must be 15, 30, 60, or 120")
+    .withMessage("expiresInMinutes must be 5, 10, 15, 30, 60, or 120")
     .toInt(),
   body("originalInstapayVerified").optional().isBoolean().toBoolean(),
   body("shortages").isArray({ min: 1 }).withMessage("shortages are required"),

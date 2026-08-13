@@ -1,6 +1,6 @@
 import { parseBoolean } from "../../shared/utils/env.js";
 
-export const SUBSTITUTION_EXPIRY_PRESETS = Object.freeze([15, 30, 60, 120]);
+export const SUBSTITUTION_EXPIRY_PRESETS = Object.freeze([5, 10, 15, 30, 60, 120]);
 export const DEFAULT_SUBSTITUTION_EXPIRY_MINUTES = 30;
 
 const substitutionsEnabled = parseBoolean(

@@ -43,6 +43,19 @@ test("customer substitution notifications use the exact registered or guest owne
   assert.equal(entries[0].recipientUser, "user-1");
   assert.equal(entries[0].recipientGuestId, undefined);
   assert.equal(entries[0].session, "transaction-session");
+  assert.equal(
+    entries[0].title_en,
+    "⚠️ Some items are unavailable. Substitutes are available.",
+  );
+  assert.equal(
+    entries[0].body_en,
+    "Unfortunately, some items in your order are unavailable. You can choose substitutes or continue without them. Please review and make your selection.",
+  );
+  assert.equal(entries[0].title_ar, "⚠️ بعض المنتجات غير متاحة. تتوفر بدائل.");
+  assert.equal(
+    entries[0].body_ar,
+    "للأسف، بعض منتجات طلبك غير متاحة. يمكنك اختيار بدائل لها أو المتابعة بدونها. يُرجى مراجعة العرض وتحديد اختيارك.",
+  );
   assert.equal(entries[0].action.screen, "OrderDetailScreen");
   assert.deepEqual(entries[0].action.params, {
     orderId: "order-1",

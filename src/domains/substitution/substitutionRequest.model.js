@@ -3,6 +3,7 @@ import {
   paymentMethodEnum,
   substitutionRequestStatusEnum,
 } from "../../shared/constants/enums.js";
+import { SUBSTITUTION_EXPIRY_PRESETS } from "./substitution.config.js";
 
 const { Schema, model } = mongoose;
 
@@ -172,7 +173,7 @@ const substitutionRequestSchema = new Schema(
     revision: { type: Number, min: 0, default: 0 },
     offerPresetMinutes: {
       type: Number,
-      enum: [15, 30, 60, 120],
+      enum: SUBSTITUTION_EXPIRY_PRESETS,
       default: 30,
     },
     offerExpiresAt: { type: Date, required: true },
