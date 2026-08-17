@@ -140,7 +140,6 @@ async function respondForOwner(req, res, owner) {
     selections: req.body.selections,
     quoteRevision: req.body.quoteRevision,
     quotedWalletBalancePiastres: req.body.quotedWalletBalancePiastres,
-    savedCardId: req.body.savedCardId,
     additionalInstapayScreenshotFiles: req.files,
     ...owner,
   });
@@ -159,7 +158,6 @@ async function retryPaymentForOwner(req, res, owner) {
     requestId: req.params.requestId,
     attemptId: req.params.attemptId,
     idempotencyKey: req.get("idempotency-key"),
-    savedCardId: req.body.savedCardId,
     ...owner,
   });
   res.status(200).json({

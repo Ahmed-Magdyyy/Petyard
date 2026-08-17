@@ -297,6 +297,10 @@ test("response proof cleanup, retry switching, and late-webhook paths are fenced
     substitutionSource.indexOf("export async function retrySubstitutionCardPaymentService"),
     substitutionSource.indexOf("export async function confirmSubstitutionCardPaymentService"),
   );
+  const cardConfirmationSource = substitutionSource.slice(
+    substitutionSource.indexOf("export async function confirmSubstitutionCardPaymentService"),
+    substitutionSource.indexOf("export async function finalizeSubstitutionInstapayOnOrderAcceptance"),
+  );
 
   assert.match(substitutionSource, /let uploadedProofs = \[\]/);
   assert.match(
@@ -315,7 +319,8 @@ test("response proof cleanup, retry switching, and late-webhook paths are fenced
   );
   assert.match(retrySource, /activePaymentAttempt: currentAttempt\._id/);
   assert.match(retrySource, /markSubstitutionPaymentAttemptSuperseded\([\s\S]*session/);
-  assert.match(retrySource, /SUBSTITUTION_SAVED_CARD_NOT_ALLOWED/);
+  assert.doesNotMatch(retrySource, /savedCardId/);
+  assert.doesNotMatch(cardConfirmationSource, /event: "card_payment_received"/);
 
   assert.match(
     substitutionSource,

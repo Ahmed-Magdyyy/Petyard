@@ -97,7 +97,6 @@ export const respondToSubstitutionValidator = [
   ...selectionValidators,
   body("quoteRevision").isString().trim().notEmpty(),
   body("quotedWalletBalancePiastres").optional().isInt({ min: 0 }).toInt(),
-  body("savedCardId").optional({ nullable: true }).isMongoId(),
   validatorMiddleware,
 ];
 
@@ -106,6 +105,5 @@ export const retrySubstitutionPaymentValidator = [
   param("requestId").isMongoId(),
   param("attemptId").isMongoId(),
   idempotencyHeader,
-  body("savedCardId").optional({ nullable: true }).isMongoId(),
   validatorMiddleware,
 ];

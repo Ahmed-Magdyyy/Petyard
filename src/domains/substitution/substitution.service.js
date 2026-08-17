@@ -926,7 +926,6 @@ async function ensureCardPaymentAttempt({
   userId,
   guestId,
   idempotencyKey,
-  savedCardId,
   attemptNumber,
 }) {
   const amountPiastres = request?.pricingSnapshot?.additionalPaymentPiastres;
@@ -970,7 +969,6 @@ async function ensureCardPaymentAttempt({
     const initialized = await initializeSubstitutionPaymentAttempt({
       attemptId: attempt._id,
       billingData: await buildPaymentBillingData(order, userId),
-      savedCardId: savedCardId || null,
       orderNumber: order.orderNumber,
     });
     return {
@@ -1075,7 +1073,6 @@ async function ensurePostResponseOperations({
   userId,
   guestId,
   idempotencyKey,
-  savedCardId,
 }) {
   if (!result?.order || !result?.request) return result;
   if (
@@ -1088,7 +1085,6 @@ async function ensurePostResponseOperations({
       userId,
       guestId,
       idempotencyKey: `response:${idempotencyKey}`,
-      savedCardId,
       attemptNumber: 1,
     });
   } else if (!result.request.isActive) {
@@ -1176,7 +1172,6 @@ export async function respondToSubstitutionService({
   selections,
   quoteRevision,
   quotedWalletBalancePiastres,
-  savedCardId,
   additionalInstapayScreenshotFiles,
 }) {
   const normalizedKey = String(idempotencyKey || "").trim();
@@ -1186,13 +1181,6 @@ export async function respondToSubstitutionService({
   });
   assertOrderOwner(preflightOrder, { userId, guestId });
   assertFeatureEnabled(preflightOrder);
-  if (savedCardId && !userId) {
-    throw substitutionError(
-      "Saved cards are only available to registered users",
-      400,
-      "SUBSTITUTION_SAVED_CARD_NOT_ALLOWED",
-    );
-  }
   const preflightRequest = await findSubstitutionRequest({
     orderId,
     requestId,
@@ -1218,7 +1206,6 @@ export async function respondToSubstitutionService({
       userId,
       guestId,
       idempotencyKey: normalizedKey,
-      savedCardId,
     });
   }
   assertActionableRequest(preflightRequest, requestRevision);
@@ -1475,14 +1462,6 @@ export async function respondToSubstitutionService({
           selectedQuantity > 0 ? "customer_accepted" : "customer_rejected",
         session,
       });
-      if (awaitingInstapay) {
-        await enqueueSubstitutionStaffNotification({
-          order,
-          request,
-          event: "instapay_submitted",
-          session,
-        });
-      }
 
       responseResult = {
         order,
@@ -1514,7 +1493,6 @@ export async function respondToSubstitutionService({
     userId,
     guestId,
     idempotencyKey: normalizedKey,
-    savedCardId,
   });
 }
 
@@ -1525,18 +1503,10 @@ export async function retrySubstitutionCardPaymentService({
   userId,
   guestId,
   idempotencyKey,
-  savedCardId,
 }) {
   const preflightOrder = await findOrderForSubstitution({ orderId, lean: true });
   assertOrderOwner(preflightOrder, { userId, guestId });
   assertFeatureEnabled(preflightOrder);
-  if (savedCardId && !userId) {
-    throw substitutionError(
-      "Saved cards are only available to registered users",
-      400,
-      "SUBSTITUTION_SAVED_CARD_NOT_ALLOWED",
-    );
-  }
   const preflightRequest = await findSubstitutionRequest({
     orderId,
     requestId,
@@ -1706,7 +1676,6 @@ export async function retrySubstitutionCardPaymentService({
   const initialized = await initializeSubstitutionPaymentAttempt({
     attemptId: retryResult.attempt._id,
     billingData: await buildPaymentBillingData(retryResult.order, userId),
-    savedCardId: savedCardId || null,
     orderNumber: retryResult.order.orderNumber,
   });
   return {
@@ -1881,12 +1850,6 @@ export async function confirmSubstitutionCardPaymentService({ attempt }) {
         order,
         request,
         event: "completed",
-        session,
-      });
-      await enqueueSubstitutionStaffNotification({
-        order,
-        request,
-        event: "card_payment_received",
         session,
       });
       finalized = { order, request, idempotent: false };

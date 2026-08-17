@@ -175,7 +175,7 @@ test("attempt idempotency is request-scoped and refuses changed economics", asyn
   );
 });
 
-test("initialization returns a client secret transiently and persists only safe provider ids", async () => {
+test("initialization loads every registered saved-card token and persists only safe provider ids", async () => {
   const model = memoryModel([
     {
       _id: "attempt-1",
@@ -194,11 +194,13 @@ test("initialization returns a client secret transiently and persists only safe 
   const result = await initializeSubstitutionPaymentAttempt({
     attemptId: "attempt-1",
     orderNumber: "PY-123",
-    savedCardId: "saved-card",
     billingData: { firstName: "Ada" },
     dependencies: fixedDeps({
       paymentAttemptModel: model,
-      getSavedCardTokenService: async () => "sensitive-card-token",
+      getUserSavedCardTokensService: async () => [
+        "sensitive-card-token-1",
+        "sensitive-card-token-2",
+      ],
       createPaymentIntention: async (input) => {
         observedCardTokens = input.cardTokens;
         return {
@@ -211,7 +213,7 @@ test("initialization returns a client secret transiently and persists only safe 
   });
 
   assert.equal(result.clientSecret, "sensitive-client-secret");
-  assert.deepEqual(observedCardTokens, ["sensitive-card-token"]);
+  assert.deepEqual(observedCardTokens, ["sensitive-card-token-1", "sensitive-card-token-2"]);
   assert.equal(model.docs[0].status, orderPaymentAttemptStatusEnum.AWAITING_PAYMENT);
   assert.equal(model.docs[0].paymobIntentionId, "intent-1");
   assert.equal(model.docs[0].paymobOrderId, "paymob-order-1");

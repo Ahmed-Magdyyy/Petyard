@@ -5,7 +5,7 @@ import {
 } from "../../shared/constants/enums.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { createPaymentIntention, getPublicKey } from "./paymob.service.js";
-import { getSavedCardTokenService } from "./savedCard.service.js";
+import { getUserSavedCardTokensService } from "./savedCard.service.js";
 import { OrderPaymentAttemptModel } from "./orderPaymentAttempt.model.js";
 import { RefundOperationModel } from "./refundOperation.model.js";
 
@@ -31,7 +31,7 @@ function resolveDependencies(overrides = {}) {
     refundOperationModel: RefundOperationModel,
     createPaymentIntention,
     getPublicKey,
-    getSavedCardTokenService,
+    getUserSavedCardTokensService,
     now: () => new Date(),
     randomUUID: crypto.randomUUID,
     ...overrides,
@@ -244,7 +244,6 @@ export async function createOrFindSubstitutionPaymentAttempt({
 export async function initializeSubstitutionPaymentAttempt({
   attemptId,
   billingData,
-  savedCardId = null,
   orderNumber,
   dependencies,
 }) {
@@ -298,12 +297,8 @@ export async function initializeSubstitutionPaymentAttempt({
 
   try {
     let cardTokens = [];
-    if (savedCardId) {
-      if (!claimed.user) {
-        throw new ApiError("Saved cards are only available to registered users", 400);
-      }
-      const token = await deps.getSavedCardTokenService(claimed.user, savedCardId);
-      cardTokens = token ? [token] : [];
+    if (claimed.user) {
+      cardTokens = await deps.getUserSavedCardTokensService(claimed.user);
     }
 
     const intention = await deps.createPaymentIntention({
