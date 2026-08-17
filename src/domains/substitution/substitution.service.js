@@ -27,6 +27,7 @@ import {
 } from "../product/productPricing.service.js";
 import { findActivePromotionsForProducts } from "../collection/collection.promotion.js";
 import { UserModel } from "../user/user.model.js";
+import { MAX_INSTAPAY_SCREENSHOTS } from "../order/order.instapay.js";
 import { presentSubstitutionCandidateProduct } from "./substitutionCandidate.presenter.js";
 import {
   correctUnallocatedInventoryCAS,
@@ -1123,20 +1124,46 @@ async function getWalletBalancePiastres(userId, session) {
   return toPiastres(user.walletBalance || 0);
 }
 
-async function uploadAdditionalInstapayProof(file) {
-  if (!file) {
+async function uploadAdditionalInstapayProofs(files) {
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (normalizedFiles.length === 0) {
     throw substitutionError(
-      "An additional InstaPay screenshot is required",
+      "At least one additional InstaPay screenshot is required",
       400,
       "ADDITIONAL_INSTAPAY_PROOF_REQUIRED",
     );
   }
-  validateImageFile(file);
-  return uploadImage(file, {
-    folder: "instapay_screenshots/substitutions",
-    visibility: IMAGE_VISIBILITY.PRIVATE,
-    profile: IMAGE_UPLOAD_PROFILES.PROOF,
-  });
+  if (normalizedFiles.length > MAX_INSTAPAY_SCREENSHOTS) {
+    throw substitutionError(
+      `A maximum of ${MAX_INSTAPAY_SCREENSHOTS} additional InstaPay screenshots is allowed`,
+      400,
+      "ADDITIONAL_INSTAPAY_PROOF_LIMIT_EXCEEDED",
+    );
+  }
+  normalizedFiles.forEach((file) => validateImageFile(file));
+
+  const uploadedProofs = [];
+  try {
+    for (const file of normalizedFiles) {
+      const uploadedProof = await uploadImage(file, {
+        folder: "instapay_screenshots/substitutions",
+        visibility: IMAGE_VISIBILITY.PRIVATE,
+        profile: IMAGE_UPLOAD_PROFILES.PROOF,
+      });
+      if (!uploadedProof?.url) {
+        throw substitutionError(
+          "Failed to upload an additional InstaPay screenshot",
+          502,
+          "ADDITIONAL_INSTAPAY_PROOF_UPLOAD_FAILED",
+        );
+      }
+      uploadedProofs.push(uploadedProof);
+    }
+    return uploadedProofs;
+  } catch (error) {
+    await Promise.all(uploadedProofs.map((proof) => deleteImage(proof)));
+    throw error;
+  }
 }
 
 export async function respondToSubstitutionService({
@@ -1150,7 +1177,7 @@ export async function respondToSubstitutionService({
   quoteRevision,
   quotedWalletBalancePiastres,
   savedCardId,
-  additionalInstapayScreenshotFile,
+  additionalInstapayScreenshotFiles,
 }) {
   const normalizedKey = String(idempotencyKey || "").trim();
   const preflightOrder = await findOrderForSubstitution({
@@ -1212,14 +1239,14 @@ export async function respondToSubstitutionService({
     );
   }
 
-  let uploadedProof = null;
-  if (preview.quote.requiresAdditionalInstapayScreenshot) {
-    uploadedProof = await uploadAdditionalInstapayProof(
-      additionalInstapayScreenshotFile,
+  let uploadedProofs = [];
+  if (preview.quote.requiresAdditionalInstapayScreenshots) {
+    uploadedProofs = await uploadAdditionalInstapayProofs(
+      additionalInstapayScreenshotFiles,
     );
-  } else if (additionalInstapayScreenshotFile) {
+  } else if (Array.isArray(additionalInstapayScreenshotFiles) && additionalInstapayScreenshotFiles.length > 0) {
     throw substitutionError(
-      "An additional InstaPay screenshot is not required for this response",
+      "Additional InstaPay screenshots are not required for this response",
       400,
       "ADDITIONAL_INSTAPAY_PROOF_NOT_ALLOWED",
     );
@@ -1361,7 +1388,7 @@ export async function respondToSubstitutionService({
         : null;
       request.responseIdempotencyKey = normalizedKey;
       request.responseSubmittedAt = new Date();
-      request.additionalInstapayScreenshot = uploadedProof?.url || undefined;
+      request.additionalInstapayScreenshots = uploadedProofs.map((proof) => proof.url);
       request.paymentExpiresAt = awaitingCard
         ? new Date(Date.now() + request.offerPresetMinutes * 60 * 1000)
         : undefined;
@@ -1468,15 +1495,16 @@ export async function respondToSubstitutionService({
       };
     });
     proofAdopted = Boolean(
-      uploadedProof &&
+      uploadedProofs.length > 0 &&
         !responseResult?.idempotent &&
-        responseResult?.request?.additionalInstapayScreenshot ===
-          uploadedProof.url,
+        uploadedProofs.every((proof) =>
+          responseResult?.request?.additionalInstapayScreenshots?.includes(proof.url),
+        ),
     );
   } finally {
     await session.endSession();
-    if (uploadedProof && !proofAdopted) {
-      await deleteImage(uploadedProof);
+    if (uploadedProofs.length > 0 && !proofAdopted) {
+      await Promise.all(uploadedProofs.map((proof) => deleteImage(proof)));
     }
   }
 

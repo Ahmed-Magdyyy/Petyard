@@ -277,7 +277,7 @@ test("quotes require each actionable shortage, support flexible rejection, aggre
     additionalPaymentPiastres: 599,
     refundOrCreditPiastres: 0,
     deliveryDuePiastres: 1200,
-    requiresAdditionalInstapayScreenshot: false,
+    requiresAdditionalInstapayScreenshots: false,
   });
   assert.match(quote.quoteRevision, /^[a-f0-9]{64}$/);
 

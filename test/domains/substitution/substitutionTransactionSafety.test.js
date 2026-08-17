@@ -298,14 +298,14 @@ test("response proof cleanup, retry switching, and late-webhook paths are fenced
     substitutionSource.indexOf("export async function confirmSubstitutionCardPaymentService"),
   );
 
-  assert.match(substitutionSource, /let proofAdopted = false/);
+  assert.match(substitutionSource, /let uploadedProofs = \[\]/);
   assert.match(
     substitutionSource,
-    /uploadedProof &&\s*!responseResult\?\.idempotent &&[\s\S]*additionalInstapayScreenshot ===\s*uploadedProof\.url/,
+    /request\.additionalInstapayScreenshots = uploadedProofs\.map/,
   );
   assert.match(
     substitutionSource,
-    /if \(uploadedProof && !proofAdopted\) \{\s*await deleteImage\(uploadedProof\)/,
+    /await Promise\.all\(uploadedProofs\.map\(\(proof\) => deleteImage\(proof\)\)\)/,
   );
 
   assert.match(retrySource, /session\.withTransaction/);

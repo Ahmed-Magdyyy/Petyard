@@ -141,7 +141,7 @@ async function respondForOwner(req, res, owner) {
     quoteRevision: req.body.quoteRevision,
     quotedWalletBalancePiastres: req.body.quotedWalletBalancePiastres,
     savedCardId: req.body.savedCardId,
-    additionalInstapayScreenshotFile: req.file,
+    additionalInstapayScreenshotFiles: req.files,
     ...owner,
   });
   res.status(200).json({

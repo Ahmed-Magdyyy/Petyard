@@ -205,7 +205,14 @@ const substitutionRequestSchema = new Schema(
       },
       items: { type: [reservedSkuSchema], default: [] },
     },
-    additionalInstapayScreenshot: { type: String },
+    additionalInstapayScreenshots: {
+      type: [String],
+      default: undefined,
+      validate: {
+        validator: (value) => !value || value.length <= 5,
+        message: "A maximum of 5 additional InstaPay screenshots is allowed",
+      },
+    },
     activePaymentAttempt: {
       type: Schema.Types.ObjectId,
       ref: "OrderPaymentAttempt",

@@ -6,6 +6,7 @@ import {
   requireSystemPhoneVerifiedForSensitiveActions,
 } from "../auth/auth.middleware.js";
 import { scopeOrdersToModeratorWarehouses } from "../order/order.middleware.js";
+import { MAX_INSTAPAY_SCREENSHOTS } from "../order/order.instapay.js";
 import {
   enabledControls,
   roles,
@@ -14,7 +15,7 @@ import {
   guestLimiter,
   paymentLimiter,
 } from "../../shared/middlewares/rateLimitMiddleware.js";
-import { uploadSingleImage } from "../../shared/middlewares/uploadMiddleware.js";
+import { uploadMultipleImages } from "../../shared/middlewares/uploadMiddleware.js";
 import {
   createSubstitutionOffer,
   getGuestSubstitutionRequest,
@@ -42,6 +43,10 @@ import {
   substitutionRequestParamsValidator,
 } from "./substitution.validators.js";
 
+const uploadAdditionalInstapayScreenshots = uploadMultipleImages(
+  "additionalInstapayScreenshots",
+  MAX_INSTAPAY_SCREENSHOTS,
+);
 const router = Router();
 
 router.get(
@@ -66,7 +71,7 @@ router.post(
   "/guest/:id/substitutions/:requestId/respond",
   guestLimiter,
   paymentLimiter,
-  uploadSingleImage("additionalInstapayScreenshot"),
+  uploadAdditionalInstapayScreenshots,
   parseSubstitutionJsonFields,
   respondToSubstitutionValidator,
   respondToGuestSubstitution,
@@ -103,7 +108,7 @@ router.post(
   protect,
   paymentLimiter,
   requireSystemPhoneVerifiedForSensitiveActions,
-  uploadSingleImage("additionalInstapayScreenshot"),
+  uploadAdditionalInstapayScreenshots,
   parseSubstitutionJsonFields,
   respondToSubstitutionValidator,
   respondToMySubstitution,

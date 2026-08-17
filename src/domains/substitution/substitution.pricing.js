@@ -251,7 +251,7 @@ export function calculateSubstitutionQuote({
     additionalPaymentPiastres,
     refundOrCreditPiastres,
     deliveryDuePiastres,
-    requiresAdditionalInstapayScreenshot:
+    requiresAdditionalInstapayScreenshots:
       order?.paymentMethod === paymentMethodEnum.INSTAPAY &&
       additionalPaymentPiastres > 0,
   };

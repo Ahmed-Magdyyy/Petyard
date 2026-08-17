@@ -205,8 +205,8 @@ export function presentSubstitutionQuote(quote) {
     selections: presentSelections(quote.selections),
     quote: {
       ...presentPricing(quote.quote),
-      requiresAdditionalInstapayScreenshot: Boolean(
-        quote.quote?.requiresAdditionalInstapayScreenshot,
+      requiresAdditionalInstapayScreenshots: Boolean(
+        quote.quote?.requiresAdditionalInstapayScreenshots,
       ),
     },
     quoteRevision: quote.quoteRevision,
@@ -243,9 +243,8 @@ export function presentSubstitutionRequest(
       : [],
     selections: presentSelections(value.selections),
     pricing: presentPricing(value.pricingSnapshot),
-    additionalInstapayScreenshotSubmitted: Boolean(
-      value.additionalInstapayScreenshot,
-    ),
+    additionalInstapayScreenshotsSubmitted: Array.isArray(value.additionalInstapayScreenshots)
+      && value.additionalInstapayScreenshots.length > 0,
     activePaymentAttempt: presentReferenceId(value.activePaymentAttempt),
     terminalReason: value.terminalReason || null,
     finalizedAt: value.finalizedAt || null,
@@ -268,10 +267,9 @@ export function presentSubstitutionRequest(
     reservation: presentReservation(value.reservation),
     settlementOperationId: value.settlementOperationId || null,
     lifecycle: presentLifecycle(value.lifecycle),
-    additionalInstapayScreenshot: getPrivateImageDeliveryUrl(
-      value.additionalInstapayScreenshot,
-      deliveryOptions,
-    ),
+    additionalInstapayScreenshots: Array.isArray(value.additionalInstapayScreenshots)
+      ? value.additionalInstapayScreenshots.map((url) => getPrivateImageDeliveryUrl(url, deliveryOptions))
+      : [],
   };
 }
 

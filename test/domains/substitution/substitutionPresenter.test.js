@@ -107,6 +107,7 @@ test("customer substitution presentation localizes names, converts EGP prices, a
     /Piastres|productName_en|productName_ar|guestId|must-not-leak|stockQuantitySnapshot|stockRevisionSnapshot|expectedUnallocatedQuantity|expectedStockRevision|correctionNote|warehouse-1|merchantOrderId|paymobOrderId|private-proof/,
   ), null);
   assert.equal(presented.currency, "EGP");
+  assert.equal(presented.additionalInstapayScreenshotsSubmitted, false);
   assert.equal(shortage.productName, "Original");
   assert.equal(shortage.originalUnitPrice, 25);
   assert.equal(alternative.productName, "Substitute");
@@ -165,7 +166,7 @@ test("customer quote presentation converts signed and unsigned money to EGP and 
       additionalPaymentPiastres: 0,
       refundOrCreditPiastres: 1500,
       deliveryDuePiastres: 0,
-      requiresAdditionalInstapayScreenshot: false,
+      requiresAdditionalInstapayScreenshots: false,
     },
     quoteRevision: "quote-revision",
     walletBalancePiastres: 1000,
@@ -189,7 +190,7 @@ test("customer quote presentation converts signed and unsigned money to EGP and 
     additionalPayment: 0,
     refundOrCredit: 15,
     deliveryDue: 0,
-    requiresAdditionalInstapayScreenshot: false,
+    requiresAdditionalInstapayScreenshots: false,
   });
   assert.equal(presented.currency, "EGP");
   assert.equal(presented.walletBalance, 10);
