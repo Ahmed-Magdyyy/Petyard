@@ -49,6 +49,11 @@ export const listSubstitutionCandidates = asyncHandler(async (req, res) => {
 });
 
 export const createSubstitutionOffer = asyncHandler(async (req, res) => {
+  console.log(
+    "POST /api/v1/orders/admin/:id/substitutions req.body:",
+    JSON.stringify(req.body, null, 2),
+  );
+
   const result = await createSubstitutionOfferService({
     orderId: req.params.id,
     actorUserId: req.user._id,
@@ -172,9 +177,14 @@ export const getMySubstitutionRequest = asyncHandler((req, res) =>
 export const quoteMySubstitution = asyncHandler((req, res) =>
   quoteForOwner(req, res, { userId: req.user._id }),
 );
-export const respondToMySubstitution = asyncHandler((req, res) =>
-  respondForOwner(req, res, { userId: req.user._id }),
-);
+export const respondToMySubstitution = asyncHandler((req, res) => {
+  console.log(
+    "POST /api/v1/orders/me/:id/substitutions/:requestId/respond req.body:",
+    JSON.stringify(req.body, null, 2),
+  );
+
+  return respondForOwner(req, res, { userId: req.user._id });
+});
 export const retryMySubstitutionPayment = asyncHandler((req, res) =>
   retryPaymentForOwner(req, res, { userId: req.user._id }),
 );

@@ -2,6 +2,7 @@ import "@dotenvx/dotenvx/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { randomUUID } from "crypto";
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy so rate limiters use real client IPs
 const PORT = process.env.PORT || 3000;
@@ -42,6 +43,14 @@ app.use(cookieParser());
 app.use(compression());
 app.use(i18nMiddleware);
 
+// Keep the request and any error raised while handling it tied together in
+// production logs, even when both events happen in the same second.
+app.use((req, res, next) => {
+  req.requestId = randomUUID();
+  res.setHeader("X-Request-Id", req.requestId);
+  next();
+});
+
 // Security middleware
 app.use(mongoSanitize());
 app.use(hpp());
@@ -65,7 +74,20 @@ app.use(
   }),
 );
 
-app.use(morgan("dev"));
+app.use(
+  morgan((tokens, req, res) => {
+    const status = Number(tokens.status(req, res));
+    const loggedAt = new Date().toISOString();
+    const statusColor =
+      status >= 500 ? 31 : status >= 400 ? 33 : status >= 300 ? 36 : 32;
+
+    return `\x1b[0m${tokens.method(req, res)} ${tokens.url(req, res)} ` +
+      `\x1b[${statusColor}m${status}\x1b[0m ` +
+      `${tokens["response-time"](req, res)} ms - ` +
+      `${tokens.res(req, res, "content-length") || "-"} ` +
+      `requestId=${req.requestId} loggedAt=${loggedAt}\x1b[0m`;
+  }),
+);
 
 //helmet
 app.use(helmet());
