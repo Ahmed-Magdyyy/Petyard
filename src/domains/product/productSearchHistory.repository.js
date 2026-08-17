@@ -55,7 +55,7 @@ export async function upsertSearchHistory(identity, entry) {
   const runUpdate = (upsert) => ProductSearchHistoryModel.findOneAndUpdate(
     owner,
     update,
-    { upsert, new: true, updatePipeline: true },
+    { upsert, returnDocument: "after", updatePipeline: true },
   ).lean();
 
   try {
@@ -82,7 +82,7 @@ export function removeSearchHistoryTerm(identity, normalized) {
   return ProductSearchHistoryModel.findOneAndUpdate(
     buildProductSearchHistoryIdentityFilter(identity),
     { $pull: { entries: { normalized } } },
-    { new: true },
+    { returnDocument: "after" },
   )
     .select("entries")
     .lean();

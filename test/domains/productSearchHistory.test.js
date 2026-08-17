@@ -86,7 +86,7 @@ test("search-history upserts explicitly enable Mongoose pipeline updates", async
 
   assert.equal(receivedOptions.updatePipeline, true);
   assert.equal(receivedOptions.upsert, true);
-  assert.equal(receivedOptions.new, true);
+  assert.equal(receivedOptions.returnDocument, "after");
 });
 
 test("committed history stays at ten unique terms and repeated terms move to the front", async (t) => {

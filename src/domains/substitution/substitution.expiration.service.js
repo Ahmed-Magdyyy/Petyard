@@ -250,7 +250,7 @@ export async function expireSubstitutionRequest({ requestId, expectedStatus, now
       const request = await d.requestModel.findOneAndUpdate(
         { _id: requestId, isActive: true, status: expectedStatus, ...expiryFilter(expectedStatus, at) },
         { $set: { status: requestStatus.EXPIRED }, $inc: { revision: 1 } },
-        { new: true, session },
+        { returnDocument: "after", session },
       );
       if (!request) return;
       const order = await withSession(d.orderModel.findById(request.order), session);

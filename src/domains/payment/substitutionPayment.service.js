@@ -283,7 +283,7 @@ export async function initializeSubstitutionPaymentAttempt({
     {
       $set: { initializationLeaseToken: leaseToken, initializationLeaseExpiresAt: leaseExpiresAt },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   if (!claimed) {
@@ -336,7 +336,7 @@ export async function initializeSubstitutionPaymentAttempt({
         },
         $unset: { initializationLeaseToken: 1, initializationLeaseExpiresAt: 1 },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!initialized) {
@@ -398,7 +398,7 @@ export async function markSubstitutionPaymentAttemptFailure({
       },
       $unset: { initializationLeaseToken: 1, initializationLeaseExpiresAt: 1 },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 }
 
@@ -417,7 +417,9 @@ export async function markSubstitutionPaymentAttemptSuperseded({
       },
       $unset: { initializationLeaseToken: 1, initializationLeaseExpiresAt: 1 },
     },
-    session ? { new: true, session } : { new: true },
+    session
+      ? { returnDocument: "after", session }
+      : { returnDocument: "after" },
   );
 }
 
@@ -429,7 +431,7 @@ export async function markSubstitutionPaymentAttemptExpired({ attemptId, depende
       $set: { status: orderPaymentAttemptStatusEnum.EXPIRED, expiredAt: deps.now() },
       $unset: { initializationLeaseToken: 1, initializationLeaseExpiresAt: 1 },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 }
 
@@ -511,7 +513,7 @@ export async function claimAttemptSuccessAtomically({
           lateSuccessAt: now,
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
     return {
       classification: late ? "late_success_refund_required" : "already_processed",
@@ -536,7 +538,7 @@ export async function claimAttemptSuccessAtomically({
         },
         $unset: { initializationLeaseToken: 1, initializationLeaseExpiresAt: 1 },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (accepted) return { classification: "accepted", attempt: accepted };
   } catch (error) {
@@ -566,7 +568,7 @@ export async function claimAttemptSuccessAtomically({
           lateSuccessAt: now,
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
     return {
       classification: lateConcurrentAttempt
@@ -599,7 +601,7 @@ export async function claimAttemptSuccessAtomically({
         lateSuccessAt: now,
       },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
   return {
     classification: lateAfterExpiry
@@ -720,7 +722,9 @@ export async function ensureLateSuccessRefundOperation({
       status: orderPaymentAttemptStatusEnum.LATE_SUCCESS_REFUND_REQUIRED,
     },
     { $set: { refundOperation: getId(result.operation) } },
-    session ? { new: true, session } : { new: true },
+    session
+      ? { returnDocument: "after", session }
+      : { returnDocument: "after" },
   );
 
   return {
@@ -802,7 +806,7 @@ export async function claimRefundOperation({
       },
       $inc: { attempts: 1 },
     },
-    { new: true, sort: { nextAttemptAt: 1, createdAt: 1 } },
+    { returnDocument: "after", sort: { nextAttemptAt: 1, createdAt: 1 } },
   );
 }
 
@@ -831,7 +835,9 @@ export async function markRefundOperationSucceeded({
       },
       $unset: { leaseToken: 1, leaseExpiresAt: 1, errorCode: 1, errorAt: 1 },
     },
-    session ? { new: true, session } : { new: true },
+    session
+      ? { returnDocument: "after", session }
+      : { returnDocument: "after" },
   );
 }
 
@@ -862,7 +868,9 @@ export async function markRefundOperationProviderSucceeded({
         }),
       },
     },
-    session ? { new: true, session } : { new: true },
+    session
+      ? { returnDocument: "after", session }
+      : { returnDocument: "after" },
   );
 }
 
@@ -896,7 +904,9 @@ export async function markRefundOperationFailure({
       },
       $unset: { leaseToken: 1, leaseExpiresAt: 1 },
     },
-    session ? { new: true, session } : { new: true },
+    session
+      ? { returnDocument: "after", session }
+      : { returnDocument: "after" },
   );
 }
 

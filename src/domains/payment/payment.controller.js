@@ -304,7 +304,7 @@ async function handleLateSuccessfulPayment(order, txData) {
     const updatedUser = await UserModel.findByIdAndUpdate(
       order.user,
       { $inc: { walletBalance: order.total } },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     await WalletTransactionModel.create({

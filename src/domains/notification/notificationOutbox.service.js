@@ -237,7 +237,7 @@ export async function claimNextNotificationOutbox({
     },
     withSession(
       {
-        new: true,
+        returnDocument: "after",
         sort: { nextAttemptAt: 1, createdAt: 1 },
         select: "+leaseToken",
       },
@@ -275,7 +275,7 @@ export async function markNotificationOutboxSent({
       },
       $unset: { leaseToken: 1, leaseExpiresAt: 1 },
     },
-    withSession({ new: true }, session),
+    withSession({ returnDocument: "after" }, session),
   );
 }
 
@@ -301,7 +301,7 @@ export async function markNotificationOutboxRetryable({
       },
       $unset: { leaseToken: 1, leaseExpiresAt: 1 },
     },
-    withSession({ new: true }, session),
+    withSession({ returnDocument: "after" }, session),
   );
 }
 
@@ -325,7 +325,7 @@ export async function markNotificationOutboxDeadLetter({
       },
       $unset: { leaseToken: 1, leaseExpiresAt: 1 },
     },
-    withSession({ new: true }, session),
+    withSession({ returnDocument: "after" }, session),
   );
 }
 

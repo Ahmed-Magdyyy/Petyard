@@ -81,7 +81,7 @@ export async function createInAppNotificationService({
       { dedupeKey: doc.dedupeKey },
       { $setOnInsert: doc },
       {
-        new: true,
+        returnDocument: "after",
         upsert: true,
         setDefaultsOnInsert: true,
         ...(session ? { session } : {}),
@@ -224,7 +224,7 @@ export async function markNotificationAsReadForActorService({
   const notification = await InAppNotificationModel.findOneAndUpdate(
     { _id: notificationId, ...getActorFilter({ userId, guestId }) },
     { isRead: true, readAt: new Date() },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   return notification ? { success: true } : { success: false };

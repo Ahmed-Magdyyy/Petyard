@@ -154,7 +154,7 @@ async function renewRefundLease({ operation, leaseMs, deps }) {
       leaseExpiresAt: { $gt: now },
     },
     { $set: { leaseExpiresAt: new Date(now.getTime() + leaseMs) } },
-    { new: true },
+    { returnDocument: "after" },
   );
 }
 
@@ -218,7 +218,7 @@ async function finalizeRefundLocally({ operation, deps }) {
             refundedAt: deps.now(),
           },
         },
-        { new: true, session },
+        { returnDocument: "after", session },
       );
       if (!refundedAttempt) {
         throw refundError(

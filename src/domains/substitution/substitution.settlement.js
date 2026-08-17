@@ -54,7 +54,7 @@ async function applyWalletMutation({
   const user = await UserModel.findOneAndUpdate(
     filter,
     { $inc: { walletBalance: direction * amount } },
-    { new: true, session },
+    { returnDocument: "after", session },
   ).select("walletBalance");
   if (!user) {
     throw conflict(
@@ -276,4 +276,3 @@ export async function applySubstitutionSettlement({
 
   return result;
 }
-

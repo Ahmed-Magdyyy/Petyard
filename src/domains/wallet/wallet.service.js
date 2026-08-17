@@ -204,7 +204,7 @@ export async function adjustWalletBalanceForAdminService({
       updatedUser = await UserModel.findOneAndUpdate(
         updateFilter,
         { $inc: { walletBalance: adjustmentAmount } },
-        { new: true, session },
+        { returnDocument: "after", session },
       )
         .select("_id name phone email role walletBalance")
         .lean();

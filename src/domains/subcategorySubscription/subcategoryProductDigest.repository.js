@@ -18,14 +18,14 @@ export async function queueDigestProduct({
     return await SubcategoryProductDigestModel.findOneAndUpdate(
       filter,
       update,
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     ).lean();
   } catch (error) {
     // Concurrent first products for the same subcategory/window may race on
     // the unique index. The winning digest is safe to update normally.
     if (error?.code === 11000) {
       return SubcategoryProductDigestModel.findOneAndUpdate(filter, update, {
-        new: true,
+        returnDocument: "after",
       }).lean();
     }
     throw error;
@@ -66,7 +66,7 @@ export function claimNextDueDigest({ now, claimToken, excludeDigestIds = [] }) {
       },
       $inc: { attempts: 1 },
     },
-    { new: true, sort: { scheduledFor: 1, _id: 1 } },
+    { returnDocument: "after", sort: { scheduledFor: 1, _id: 1 } },
   ).lean();
 }
 

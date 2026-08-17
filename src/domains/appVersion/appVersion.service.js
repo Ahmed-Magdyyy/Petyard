@@ -123,7 +123,7 @@ async function getOrCreateDefaultRelease(platform) {
         mustUpdate: false,
       },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
   );
 }
 
@@ -183,7 +183,7 @@ async function getOrCreatePlatformPolicy(platform) {
         minRelease: defaultRelease._id,
       },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
   );
 
   policy = await populatePolicy(policy);

@@ -1762,7 +1762,7 @@ export async function confirmSubstitutionCardPaymentService({ attempt }) {
                 lateSuccessAt: new Date(),
               },
             },
-            { new: true, session },
+            { returnDocument: "after", session },
           );
           if (!lateAttempt) {
             throw substitutionError(

@@ -44,7 +44,7 @@ export function activateSubscription({ userId, guestId, productId, warehouseId }
         warehouse: warehouseId,
       },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true }
   ).lean();
 }
 
@@ -62,7 +62,7 @@ export function cancelSubscription({ userId, guestId, productId, warehouseId }) 
         claimedAt: null,
       },
     },
-    { new: true }
+    { returnDocument: "after" }
   ).lean();
 }
 
@@ -149,7 +149,7 @@ export function claimActiveSubscription({ subscriptionId, claimToken, claimedAt 
         claimedAt,
       },
     },
-    { new: true }
+    { returnDocument: "after" }
   ).lean();
 }
 

@@ -2732,7 +2732,7 @@ async function awardLoyaltyPointsForOrder(order, session) {
   const userAfterPoints = await UserModel.findOneAndUpdate(
     { _id: order.user },
     { $inc: { loyaltyPoints: pointsToAward } },
-    { session, new: true, select: "loyaltyPoints" },
+    { session, returnDocument: "after", select: "loyaltyPoints" },
   );
 
   order.loyaltyPointsAwarded = pointsToAward;
@@ -2977,7 +2977,7 @@ export async function confirmOrderPaymentService({
           UserModel.findByIdAndUpdate(
             order.user,
             { $inc: { walletBalance: order.total } },
-            { new: true },
+            { returnDocument: "after" },
           ),
         ]);
 
