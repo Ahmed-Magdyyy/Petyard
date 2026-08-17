@@ -439,6 +439,10 @@ test("offer implementation protects stored order warehouse and original quantity
   assert.match(offerSource, /SUBSTITUTION_ALREADY_ACTIVE/);
   assert.doesNotMatch(
     offerSource,
+    /originalInstapayVerified|ORIGINAL_INSTAPAY_NOT_VERIFIED/,
+  );
+  assert.doesNotMatch(
+    offerSource,
     /line\.lineKind\s*===\s*orderLineKindEnum\.SUBSTITUTE/,
   );
   assert.doesNotMatch(

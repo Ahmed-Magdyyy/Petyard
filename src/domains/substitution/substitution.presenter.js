@@ -265,9 +265,6 @@ export function presentSubstitutionRequest(
       : [],
     isActive: Boolean(value.isActive),
     offeredBy: presentReferenceId(value.offeredBy),
-    originalInstapayVerifiedAt: value.originalInstapayVerifiedAt || null,
-    originalInstapayVerifiedBy:
-      presentReferenceId(value.originalInstapayVerifiedBy) || null,
     reservation: presentReservation(value.reservation),
     settlementOperationId: value.settlementOperationId || null,
     lifecycle: presentLifecycle(value.lifecycle),

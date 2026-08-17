@@ -183,11 +183,6 @@ const substitutionRequestSchema = new Schema(
       ref: "User",
       required: true,
     },
-    originalInstapayVerifiedAt: { type: Date },
-    originalInstapayVerifiedBy: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-    },
     offerIdempotencyKey: { type: String, required: true, trim: true },
     responseIdempotencyKey: { type: String, trim: true },
     responseSubmittedAt: { type: Date },

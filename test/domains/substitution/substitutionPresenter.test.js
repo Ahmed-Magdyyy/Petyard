@@ -130,6 +130,8 @@ test("staff substitution presentation retains safe operations data with Arabic n
   assert.equal(alternative.unitPrice, 30);
   assert.equal(alternative.stockQuantitySnapshot, 15);
   assert.equal("guestId" in presented, false);
+  assert.equal("originalInstapayVerifiedAt" in presented, false);
+  assert.equal("originalInstapayVerifiedBy" in presented, false);
   assert.equal("user" in presented, false);
   assert.equal(
     JSON.stringify(presented).match(

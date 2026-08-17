@@ -2352,19 +2352,12 @@ export async function updateOrderStatusService({
         order.paymentStatus = paymentStatusEnum.PAID;
       }
 
-      // Auto-mark InstaPay as paid when accepted (admin verified the screenshot)
+      // Accepting an InstaPay order is staff's manual verification of its proof.
       const postPendingStatuses = [
         orderStatusEnum.ACCEPTED,
         orderStatusEnum.SHIPPED,
         orderStatusEnum.DELIVERED,
       ];
-      if (
-        postPendingStatuses.includes(newStatus) &&
-        order.paymentMethod === paymentMethodEnum.INSTAPAY &&
-        order.paymentStatus !== paymentStatusEnum.PAID
-      ) {
-        order.paymentStatus = paymentStatusEnum.PAID;
-      }
       if (
         postPendingStatuses.includes(newStatus) &&
         order.substitutionState ===
@@ -2375,6 +2368,26 @@ export async function updateOrderStatusService({
           actorUserId,
           session,
         });
+      }
+
+      // The additional substitution transfer is finalized first above. Any
+      // remaining submitted InstaPay balance is the original order transfer.
+      if (
+        postPendingStatuses.includes(newStatus) &&
+        order.paymentMethod === paymentMethodEnum.INSTAPAY &&
+        order.paymentStatus !== paymentStatusEnum.PAID
+      ) {
+        const submittedPiastres =
+          order.settlement?.instapaySubmittedPiastres || 0;
+        if (submittedPiastres > 0) {
+          order.settlement.instapaySubmittedPiastres = 0;
+          order.settlement.instapayConfirmedPiastres =
+            (order.settlement.instapayConfirmedPiastres || 0) +
+            submittedPiastres;
+          order.settlement.revision = (order.settlement.revision || 0) + 1;
+          assertSettlementInvariant(order.settlement);
+        }
+        order.paymentStatus = paymentStatusEnum.PAID;
       }
 
       // Award loyalty points when payment becomes PAID (unified for COD + Card)

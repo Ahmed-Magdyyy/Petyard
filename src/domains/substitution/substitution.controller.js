@@ -60,7 +60,6 @@ export const createSubstitutionOffer = asyncHandler(async (req, res) => {
     warehouseScope: req.orderWarehouseScope,
     idempotencyKey: req.get("idempotency-key"),
     expiresInMinutes: req.body.expiresInMinutes,
-    originalInstapayVerified: req.body.originalInstapayVerified,
     shortages: req.body.shortages,
   });
   res.status(result.idempotent ? 200 : 201).json({

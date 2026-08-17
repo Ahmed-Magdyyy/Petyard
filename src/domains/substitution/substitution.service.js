@@ -398,7 +398,6 @@ export async function createSubstitutionOfferService({
   warehouseScope,
   idempotencyKey,
   expiresInMinutes,
-  originalInstapayVerified,
   shortages,
 }) {
   const normalizedKey = String(idempotencyKey || "").trim();
@@ -441,33 +440,6 @@ export async function createSubstitutionOfferService({
           409,
           "SUBSTITUTION_ALREADY_ACTIVE",
         );
-      }
-
-      const verifiesOriginalInstapay =
-        order.paymentMethod === paymentMethodEnum.INSTAPAY;
-      if (verifiesOriginalInstapay) {
-        if (
-          originalInstapayVerified !== true ||
-          !order.instapayScreenshot
-        ) {
-          throw substitutionError(
-            "The original InstaPay transfer must be verified before offering substitutes",
-            409,
-            "ORIGINAL_INSTAPAY_NOT_VERIFIED",
-          );
-        }
-
-        const submittedPiastres =
-          order.settlement.instapaySubmittedPiastres || 0;
-        if (submittedPiastres > 0) {
-          order.settlement.instapaySubmittedPiastres = 0;
-          order.settlement.instapayConfirmedPiastres =
-            (order.settlement.instapayConfirmedPiastres || 0) +
-            submittedPiastres;
-        }
-        order.paymentStatus = paymentStatusEnum.PAID;
-        order.settlement.revision = (order.settlement.revision || 0) + 1;
-        assertSettlementInvariant(order.settlement);
       }
 
       const submittedShortages = Array.isArray(shortages) ? shortages : [];
@@ -693,12 +665,6 @@ export async function createSubstitutionOfferService({
           offerPresetMinutes,
           offerExpiresAt,
           offeredBy: actorUserId,
-          originalInstapayVerifiedAt: verifiesOriginalInstapay
-            ? new Date()
-            : undefined,
-          originalInstapayVerifiedBy: verifiesOriginalInstapay
-            ? actorUserId
-            : undefined,
           offerIdempotencyKey: normalizedKey,
           shortages: normalizedShortages,
           lifecycle: [
