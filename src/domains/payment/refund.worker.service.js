@@ -14,6 +14,7 @@ import {
   createSettlementOperationId,
 } from "../settlement/settlement.service.js";
 import { OrderModel } from "../order/order.model.js";
+import { enqueueSubstitutionRefundNotification } from "../substitution/substitution.notification.js";
 import { OrderPaymentAttemptModel } from "./orderPaymentAttempt.model.js";
 import { RefundOperationModel } from "./refundOperation.model.js";
 import { refundTransaction } from "./paymob.service.js";
@@ -60,6 +61,7 @@ function resolveDependencies(overrides = {}) {
     createSettlementOperationId,
     assertSettlementInvariant,
     now: () => new Date(),
+    enqueueSubstitutionRefundNotification,
     randomUUID: crypto.randomUUID,
     ...overrides,
   };
@@ -237,6 +239,15 @@ async function finalizeRefundLocally({ operation, deps }) {
     });
     if (!completed) {
       throw refundError("Refund worker lease was lost", "REFUND_LEASE_LOST");
+    }
+    if (!isLateTopUp && operation.substitutionRequest && order.guestId) {
+      await deps.enqueueSubstitutionRefundNotification({
+        order,
+        requestId: operation.substitutionRequest,
+        amountPiastres: Number(operation.amountPiastres),
+        method: "card",
+        session,
+      });
     }
     return completed;
   });

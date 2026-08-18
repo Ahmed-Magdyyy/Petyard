@@ -1,4 +1,5 @@
 import { enabledControls, roles } from "../../shared/constants/enums.js";
+import { fromPiastres } from "../../shared/utils/money.js";
 import { enqueueNotificationOutbox } from "../notification/notificationOutbox.service.js";
 import { UserModel } from "../user/user.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
@@ -122,6 +123,56 @@ function commonOutboxFields({ order, request, event, message }) {
   };
 }
 
+function formatEgp(amountPiastres) {
+  const amount = fromPiastres(amountPiastres);
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+}
+
+function refundOutboxFields({ order, requestId, event, message, icon }) {
+  const orderId = identifier(order?._id, "order._id");
+  const normalizedRequestId = identifier(requestId, "requestId");
+  return {
+    title_en: message.title_en,
+    title_ar: message.title_ar,
+    body_en: message.body_en,
+    body_ar: message.body_ar,
+    icon,
+    action: {
+      type: "order_detail",
+      screen: "OrderDetailScreen",
+      params: { orderId, substitutionRequestId: normalizedRequestId },
+    },
+    source: {
+      domain: "order",
+      event,
+      referenceId: normalizedRequestId,
+    },
+  };
+}
+
+function refundMessage({ amountPiastres, method }) {
+  if (!Number.isSafeInteger(amountPiastres) || amountPiastres <= 0) {
+    throw new Error("amountPiastres must be a positive safe integer");
+  }
+  const amount = formatEgp(amountPiastres);
+  if (method === "wallet") {
+    return {
+      title_en: "Refund added to your wallet",
+      title_ar: "\u062A\u0645\u062A \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0645\u0628\u0644\u063A \u0627\u0644\u0645\u0633\u062A\u0631\u062F \u0625\u0644\u0649 \u0645\u062D\u0641\u0638\u062A\u0643",
+      body_en: `${amount} EGP has been added to your wallet for your updated order.`,
+      body_ar: `\u062A\u0645\u062A \u0625\u0636\u0627\u0641\u0629 ${amount} \u062C\u0646\u064A\u0647 \u0625\u0644\u0649 \u0645\u062D\u0641\u0638\u062A\u0643 \u0628\u0639\u062F \u062A\u062D\u062F\u064A\u062B \u0637\u0644\u0628\u0643.`,
+    };
+  }
+  if (method === "card") {
+    return {
+      title_en: "Refund sent to your card",
+      title_ar: "\u062A\u0645 \u0625\u0631\u0633\u0627\u0644 \u0627\u0644\u0645\u0628\u0644\u063A \u0627\u0644\u0645\u0633\u062A\u0631\u062F \u0625\u0644\u0649 \u0628\u0637\u0627\u0642\u062A\u0643",
+      body_en: `A refund of ${amount} EGP has been sent to the card used for your order. It may take time to appear in your bank account.`,
+      body_ar: `\u062A\u0645 \u0625\u0631\u0633\u0627\u0644 \u0645\u0628\u0644\u063A \u0645\u0633\u062A\u0631\u062F \u0642\u062F\u0631\u0647 ${amount} \u062C\u0646\u064A\u0647 \u0625\u0644\u0649 \u0627\u0644\u0628\u0637\u0627\u0642\u0629 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645\u0629 \u0641\u064A \u0637\u0644\u0628\u0643. \u0642\u062F \u064A\u0633\u062A\u063A\u0631\u0642 \u0638\u0647\u0648\u0631\u0647 \u0641\u064A \u062D\u0633\u0627\u0628\u0643 \u0627\u0644\u0628\u0646\u0643\u064A \u0628\u0639\u0636 \u0627\u0644\u0648\u0642\u062A.`,
+    };
+  }
+  throw new Error(`Unsupported substitution refund notification method: ${method}`);
+}
 /**
  * Enqueue the customer event inside the caller's Mongo transaction.  The
  * durable record, not a push token, is the transaction boundary.
@@ -145,6 +196,34 @@ export async function enqueueSubstitutionCustomerNotification({
   });
 }
 
+/**
+ * Kept separate from the generic substitution-completed event: a refund is a
+ * distinct financial outcome and a guest card refund completes asynchronously.
+ */
+export async function enqueueSubstitutionRefundNotification({
+  order,
+  requestId,
+  amountPiastres,
+  method,
+  session,
+  enqueue = enqueueNotificationOutbox,
+}) {
+  const recipient = ownerRecipient(order);
+  const normalizedRequestId = identifier(requestId, "requestId");
+  const message = refundMessage({ amountPiastres, method });
+  return enqueue({
+    ...recipient,
+    dedupeKey: `substitution:${normalizedRequestId}:${recipient.key}:refund_${method}`,
+    ...refundOutboxFields({
+      order,
+      requestId: normalizedRequestId,
+      event: `substitution_refund_${method}`,
+      message,
+      icon: method === "wallet" ? "wallet" : "card",
+    }),
+    session,
+  });
+}
 /** Exact staff routing: global order-capable staff plus active moderators of
  * the order's already-selected warehouse.  It never recalculates fulfillment.
  */

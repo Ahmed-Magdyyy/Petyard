@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   enqueueSubstitutionCustomerNotification,
+  enqueueSubstitutionRefundNotification,
   enqueueSubstitutionStaffNotification,
   resolveSubstitutionStaffRecipients,
 } from "../../../src/domains/substitution/substitution.notification.js";
@@ -65,6 +66,43 @@ test("customer substitution notifications use the exact registered or guest owne
   assert.equal(entries[1].recipientGuestId, "guest-88");
   assert.equal(entries[1].dedupeKey, "substitution:request-1:guest:guest-88:offered");
   assert.equal(JSON.stringify(entries).match(/token|proof|secret|card/i), null);
+});
+test("substitution refund notifications describe the completed wallet credit or guest card refund", async () => {
+  const entries = [];
+  const enqueue = async (entry) => {
+    entries.push(entry);
+    return entry;
+  };
+
+  await enqueueSubstitutionRefundNotification({
+    order,
+    requestId: request._id,
+    amountPiastres: 125,
+    method: "wallet",
+    session: "transaction-session",
+    enqueue,
+  });
+  await enqueueSubstitutionRefundNotification({
+    order: { ...order, user: undefined, guestId: "guest-88" },
+    requestId: request._id,
+    amountPiastres: 250,
+    method: "card",
+    enqueue,
+  });
+
+  assert.equal(entries[0].recipientUser, "user-1");
+  assert.equal(entries[0].dedupeKey, "substitution:request-1:user:user-1:refund_wallet");
+  assert.equal(entries[0].icon, "wallet");
+  assert.equal(entries[0].title_en, "Refund added to your wallet");
+  assert.equal(entries[0].body_en, "1.25 EGP has been added to your wallet for your updated order.");
+  assert.deepEqual(entries[0].action.params, {
+    orderId: "order-1",
+    substitutionRequestId: "request-1",
+  });
+  assert.equal(entries[1].recipientGuestId, "guest-88");
+  assert.equal(entries[1].dedupeKey, "substitution:request-1:guest:guest-88:refund_card");
+  assert.equal(entries[1].title_en, "Refund sent to your card");
+  assert.match(entries[1].body_en, /2.50 EGP/);
 });
 
 test("staff routing is active superadmins, order-enabled admins, and active exact-warehouse moderators only", async () => {

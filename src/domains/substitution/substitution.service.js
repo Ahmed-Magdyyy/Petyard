@@ -53,6 +53,7 @@ import { calculateSubstitutionQuote } from "./substitution.pricing.js";
 import {
   enqueueSubstitutionCustomerNotification,
   enqueueSubstitutionStaffNotification,
+  enqueueSubstitutionRefundNotification,
 } from "./substitution.notification.js";
 import {
   applyQuoteToLegacyOrderAmounts,
@@ -1455,6 +1456,15 @@ export async function respondToSubstitutionService({
         event: customerEvent,
         session,
       });
+      if (settlementResult.walletCreditedPiastres > 0) {
+        await enqueueSubstitutionRefundNotification({
+          order,
+          requestId: request._id,
+          amountPiastres: settlementResult.walletCreditedPiastres,
+          method: "wallet",
+          session,
+        });
+      }
       await enqueueSubstitutionStaffNotification({
         order,
         request,

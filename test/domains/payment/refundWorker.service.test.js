@@ -53,6 +53,7 @@ function makeOrder() {
   return {
     _id: "order-1",
     currency: "EGP",
+    guestId: "guest-1",
     settlement: {
       currentOrderValuePiastres: 1000,
       walletDebitedPiastres: 0,
@@ -92,6 +93,7 @@ function makeOperation(overrides = {}) {
 function makeDependencies({ operation, order = makeOrder(), failTransaction = false, refundTransaction, paymentAttempt = null } = {}) {
   const model = refundModel(operation);
   const ledgers = [];
+  const notifications = [];
   const attempt = paymentAttempt;
   const fakeMongoose = {
     async startSession() {
@@ -123,8 +125,12 @@ function makeDependencies({ operation, order = makeOrder(), failTransaction = fa
       ledgers.push(input);
       return { ledger: input, created: true };
     },
+    async enqueueSubstitutionRefundNotification(input) {
+      notifications.push(input);
+    },
     ledgers,
     order,
+    notifications,
     operation: model.row,
   };
 }
@@ -146,6 +152,13 @@ test("worker sends exact piastres, settles the liability, and records a card-ref
   assert.equal(deps.operation.status, refundOperationStatusEnum.SUCCEEDED);
   assert.equal(deps.ledgers.length, 1);
   assert.equal(deps.ledgers[0].providerReference, "provider-refund-1");
+  assert.equal(deps.notifications.length, 1);
+  const notification = deps.notifications[0];
+  assert.equal(notification.order, deps.order);
+  assert.equal(notification.requestId, "request-1");
+  assert.equal(notification.amountPiastres, 200);
+  assert.equal(notification.method, "card");
+  assert.ok(notification.session);
 });
 
 test("manual and missing-transaction operations never call Paymob", async () => {
