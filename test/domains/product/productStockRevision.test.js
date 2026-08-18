@@ -6,6 +6,9 @@ import {
   mapProductToDetailDto,
   updateProductStockService,
 } from "../../../src/domains/product/product.service.js";
+import {
+  getStaffStockRevisionAccess,
+} from "../../../src/domains/product/product.controller.js";
 import { mergeWarehouseStocks } from "../../../src/domains/product/product.middleware.js";
 import productRoutes from "../../../src/domains/product/product.routes.js";
 import { ProductModel } from "../../../src/domains/product/product.model.js";
@@ -34,6 +37,35 @@ function simpleProduct({ warehouse, quantity = 8, revision = 6 } = {}) {
     ratingCount: 0,
   };
 }
+
+test("moderators receive scoped stock revisions without enabled controls", () => {
+  const warehouse = new mongoose.Types.ObjectId();
+
+  const access = getStaffStockRevisionAccess({
+    user: { role: "moderator", enabledControls: [] },
+    productWarehouseScope: [warehouse],
+    query: { warehouse: String(warehouse) },
+  });
+
+  assert.equal(access.allowed, true);
+  assert.deepEqual(access.warehouseScope, [warehouse]);
+});
+
+test("product enabled controls remain required for admins", () => {
+  const withoutControl = getStaffStockRevisionAccess({
+    user: { role: "admin", enabledControls: [] },
+    productWarehouseScope: null,
+    query: {},
+  });
+  const withControl = getStaffStockRevisionAccess({
+    user: { role: "admin", enabledControls: ["products"] },
+    productWarehouseScope: null,
+    query: {},
+  });
+
+  assert.equal(withoutControl.allowed, false);
+  assert.equal(withControl.allowed, true);
+});
 
 test("staff product details expose stock revisions while shared details keep hiding them", () => {
   const warehouse = new mongoose.Types.ObjectId();

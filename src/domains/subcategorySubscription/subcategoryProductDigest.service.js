@@ -174,11 +174,11 @@ export function buildSubcategoryDigestNotification({
         ? `منتج جديد في ${arabicName}`
         : `منتجات جديدة في ${arabicName}`,
       body_en: singular
-        ? `1 new product was added to ${englishName} today.`
-        : `${count} new products were added to ${englishName} today.`,
+        ? `A new product was added to ${englishName}. View it now.`
+        : `${count} new products were added to ${englishName}. Explore them now.`,
       body_ar: singular
-        ? `تمت إضافة منتج جديد إلى ${arabicName} اليوم.`
-        : `تمت إضافة ${count} منتجات جديدة إلى ${arabicName} اليوم.`,
+        ? `تمت إضافة منتج جديد إلى قسم ${arabicName}. شاهده الآن.`
+        : `تمت إضافة ${count} منتجات جديدة إلى قسم ${arabicName}. اكتشفها الآن.`,
     },
     icon: "product",
     action: {

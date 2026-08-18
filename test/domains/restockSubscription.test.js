@@ -405,10 +405,10 @@ test("restock processing notifies only the warehouses currently in stock with th
   assert.equal(store.subscriptions[0].status, restockSubscriptionStatus.NOTIFIED);
   assert.equal(store.subscriptions[1].status, restockSubscriptionStatus.ACTIVE);
   assert.deepEqual(payloads[0].notification, {
-    title_en: "Back in stock",
-    title_ar: "متوفر الآن",
-    body_en: "Royal Canin is back in stock.",
-    body_ar: "رويال كانين متوفر الآن.",
+    title_en: "Product back in stock",
+    title_ar: "المنتج متوفر الآن",
+    body_en: "Royal Canin is available again. Shop now.",
+    body_ar: "عاد رويال كانين إلى المخزون. اطلبه الآن.",
   });
   assert.equal(payloads[0].icon, "product");
   assert.deepEqual(payloads[0].action, {

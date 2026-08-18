@@ -58,8 +58,8 @@ test("daily digest notification content is exact for singular and plural counts"
     notification: {
       title_en: "New product in Cat Food",
       title_ar: "منتج جديد في طعام القطط",
-      body_en: "1 new product was added to Cat Food today.",
-      body_ar: "تمت إضافة منتج جديد إلى طعام القطط اليوم.",
+      body_en: "A new product was added to Cat Food. View it now.",
+      body_ar: "تمت إضافة منتج جديد إلى قسم طعام القطط. شاهده الآن.",
     },
     icon: "product",
     action: {
@@ -81,8 +81,8 @@ test("daily digest notification content is exact for singular and plural counts"
   assert.deepEqual(plural.notification, {
     title_en: "New products in Cat Food",
     title_ar: "منتجات جديدة في طعام القطط",
-    body_en: "3 new products were added to Cat Food today.",
-    body_ar: "تمت إضافة 3 منتجات جديدة إلى طعام القطط اليوم.",
+    body_en: "3 new products were added to Cat Food. Explore them now.",
+    body_ar: "تمت إضافة 3 منتجات جديدة إلى قسم طعام القطط. اكتشفها الآن.",
   });
 });
 
@@ -265,8 +265,8 @@ test("one due digest fans out one aggregated notification per identity", async (
     notification: {
       title_en: "New products in Cat Food",
       title_ar: "منتجات جديدة في طعام القطط",
-      body_en: "3 new products were added to Cat Food today.",
-      body_ar: "تمت إضافة 3 منتجات جديدة إلى طعام القطط اليوم.",
+      body_en: "3 new products were added to Cat Food. Explore them now.",
+      body_ar: "تمت إضافة 3 منتجات جديدة إلى قسم طعام القطط. اكتشفها الآن.",
     },
     icon: "product",
     action: {

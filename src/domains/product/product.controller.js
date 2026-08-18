@@ -100,13 +100,14 @@ export const getProductsForAdmin = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
-function getStaffStockRevisionAccess(req) {
+export function getStaffStockRevisionAccess(req) {
   const user = req.user;
   if (!user) return { allowed: false, warehouseScope: null };
 
   const hasProductControl =
     user.role === roles.SUPER_ADMIN ||
-    ((user.role === roles.ADMIN || user.role === roles.MODERATOR) &&
+    user.role === roles.MODERATOR ||
+    (user.role === roles.ADMIN &&
       user.enabledControls?.includes(enabledControls.PRODUCTS));
   if (!hasProductControl) {
     return { allowed: false, warehouseScope: null };

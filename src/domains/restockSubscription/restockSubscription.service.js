@@ -158,10 +158,10 @@ function notificationPayload({ product, warehouseId }) {
   const productId = String(product._id);
   return {
     notification: {
-      title_en: "Back in stock",
-      title_ar: "متوفر الآن",
-      body_en: `${product.name_en} is back in stock.`,
-      body_ar: `${product.name_ar} متوفر الآن.`,
+      title_en: "Product back in stock",
+      title_ar: "المنتج متوفر الآن",
+      body_en: `${product.name_en} is available again. Shop now.`,
+      body_ar: `عاد ${product.name_ar} إلى المخزون. اطلبه الآن.`,
     },
     icon: "product",
     action: {
