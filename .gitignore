@@ -30,7 +30,11 @@ scripts/tags_changelog_1777584774228.json
 scripts/tags_changelog_1777585138994.json
 scripts/tags_changelog_1777586462419.json
 checkout_key_implementation_plan.md
+.antigravitycli/
+.codex/
+.vscode/
 exports/
+scripts/
 scripts/*
 !scripts/
 !scripts/syncNotificationBroadcastTopics.mjs
@@ -47,3 +51,6 @@ scripts/substitution-migration-reports/
 BUNNY_MEDIA_MIGRATION_IMPLEMENTATION_PLAN.md
 CLOUDINARY_DELIVERY_OPTIMIZATION_IMPLEMENTATION_PLAN.md
 PRODUCT_SUBSTITUTIONS_FRONTEND_INTEGRATION_GUIDE.md
+CLOUDINARY_DELIVERY_OPTIMIZATION_IMPLEMENTATION_PLAN.md
+PRODUCT_SUBSTITUTIONS_FRONTEND_INTEGRATION_GUIDE.md
+fe_payment_guide.md
