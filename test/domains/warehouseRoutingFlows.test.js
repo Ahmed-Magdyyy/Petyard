@@ -188,7 +188,7 @@ test('public products use fallback warehouse stock', async (t) => {
   assert.doesNotMatch(serializedFilter, new RegExp(String(source._id)));
 });
 
-test('public product listings omit out-of-stock items', async (t) => {
+test('public product listings return out-of-stock items after available items', async (t) => {
   const { source, fallback } = makeWarehousePair();
   const inStock = new mongoose.Types.ObjectId();
   const outOfStock = new mongoose.Types.ObjectId();
@@ -235,20 +235,20 @@ test('public product listings omit out-of-stock items', async (t) => {
     'en',
     {
       onlyActive: true,
-      hideOutOfStock: true,
+      includeZeroStockInWarehouse: true,
+      prioritizeInStock: true,
     },
   );
 
   assert.deepEqual(
     result.data.map((product) => String(product.id)),
-    [String(inStock)],
+    [String(inStock), String(outOfStock)],
   );
   assert.deepEqual(
     result.data.map((product) => product.inStock),
-    [true],
+    [true, false],
   );
   assert.match(JSON.stringify(findFilters), new RegExp(String(fallback._id)));
-  assert.doesNotMatch(JSON.stringify(findFilters), /"\$nor"/);
 });
 
 test('admin product listings are not forced to active products', async (t) => {
@@ -298,6 +298,7 @@ test('q search includes simple and variant SKUs', async (t) => {
   let productFilter = null;
 
   t.mock.method(BrandModel, 'find', () => queryResult([]));
+  t.mock.method(SubcategoryModel, 'find', () => queryResult([]));
   t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
   t.mock.method(ProductModel, 'countDocuments', async (filter) => {
     productFilter = filter;
@@ -314,6 +315,49 @@ test('q search includes simple and variant SKUs', async (t) => {
   const searchCondition = productFilter.$and.find((condition) => condition.$or);
   assert.ok(searchCondition.$or.some((condition) => condition.sku));
   assert.ok(searchCondition.$or.some((condition) => condition['variants.sku']));
+});
+
+test('q search includes products from subcategories matched by partial localized name', async (t) => {
+  const matchingSubcategoryId = new mongoose.Types.ObjectId();
+  let subcategoryFilter = null;
+  let productFilter = null;
+
+  t.mock.method(BrandModel, 'find', () => queryResult([]));
+  t.mock.method(SubcategoryModel, 'find', (filter) => {
+    subcategoryFilter = filter;
+    return queryResult([{ _id: matchingSubcategoryId }]);
+  });
+  t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
+  t.mock.method(ProductModel, 'countDocuments', async (filter) => {
+    productFilter = filter;
+    return 0;
+  });
+  t.mock.method(ProductModel, 'find', () => queryResult([]));
+
+  await getProductsService(
+    { q: 'طعام' },
+    'en',
+    { includeZeroStockInWarehouse: true },
+  );
+
+  assert.deepEqual(
+    subcategoryFilter.$or.map((condition) => Object.keys(condition)[0]),
+    ['name_en', 'name_ar'],
+  );
+  const localizedRegex = subcategoryFilter.$or[1].name_ar;
+  assert.equal(
+    new RegExp(localizedRegex.$regex, localizedRegex.$options).test('طعام جاف'),
+    true,
+  );
+
+  const searchCondition = productFilter.$and.find((condition) => condition.$or);
+  const matchedSubcategoryCondition = searchCondition.$or.find(
+    (condition) => condition.subcategory,
+  );
+  assert.deepEqual(
+    matchedSubcategoryCondition.subcategory.$in.map(String),
+    [String(matchingSubcategoryId)],
+  );
 });
 
 test('public live search excludes inactive products', async (t) => {
@@ -335,6 +379,60 @@ test('public live search excludes inactive products', async (t) => {
   });
 
   assert.equal(productFilter.$and[0].isActive, true);
+});
+
+test('public live search returns out-of-stock products last and includes their suggestions', async (t) => {
+  const { source, fallback } = makeWarehousePair();
+  const inStockId = new mongoose.Types.ObjectId();
+  const outOfStockId = new mongoose.Types.ObjectId();
+
+  mockWarehouseLookup(t, source, fallback);
+  t.mock.method(BrandModel, 'find', () => queryResult([]));
+  t.mock.method(CollectionModel, 'updateMany', async () => ({ acknowledged: true }));
+  t.mock.method(CollectionModel, 'find', () => queryResult([]));
+  t.mock.method(SubcategoryModel, 'find', () => queryResult([]));
+  t.mock.method(ProductModel, 'find', (filter) => {
+    const isOutOfStockQuery = JSON.stringify(filter).includes('"$nor"');
+    return queryResult([
+      {
+        _id: isOutOfStockQuery ? outOfStockId : inStockId,
+        slug: isOutOfStockQuery ? 'royal-back-soon' : 'royal-available',
+        type: 'SIMPLE',
+        isActive: true,
+        name_en: isOutOfStockQuery ? 'Royal Back Soon' : 'Royal Available',
+        name_ar: isOutOfStockQuery ? 'رويال قريباً' : 'رويال متوفر',
+        price: 100,
+        images: [],
+        warehouseStocks: [
+          {
+            warehouse: fallback._id,
+            quantity: isOutOfStockQuery ? 0 : 3,
+          },
+        ],
+        variants: [],
+        category: null,
+        subcategory: null,
+        brand: null,
+      },
+    ]);
+  });
+
+  const result = await searchProductsService({
+    q: 'royal',
+    warehouse: String(source._id),
+    lang: 'en',
+    limit: 2,
+  });
+
+  assert.deepEqual(
+    result.products.map((product) => String(product.id)),
+    [String(inStockId), String(outOfStockId)],
+  );
+  assert.deepEqual(
+    result.products.map((product) => product.inStock),
+    [true, false],
+  );
+  assert.deepEqual(result.suggestions, ['Royal Available', 'Royal Back Soon']);
 });
 
 test('best_seller sorts products by quantities sold before unsold products', async (t) => {

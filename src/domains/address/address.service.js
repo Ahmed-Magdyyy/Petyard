@@ -1,5 +1,6 @@
 import { AddressModel } from "./address.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
+import { syncActiveCartAddressSnapshots } from "../cart/cartAddressSnapshot.js";
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -113,6 +114,7 @@ export async function updateMyAddressService({ userId, addressId, payload }) {
   
   Object.assign(address, fields);
   await address.save({ validateModifiedOnly: true });
+  await syncActiveCartAddressSnapshots(address);
 
   return allAddresses({ user: userId });
 }
@@ -193,6 +195,7 @@ export async function updateGuestAddressService({
 
   Object.assign(address, fields);
   await address.save({ validateModifiedOnly: true });
+  await syncActiveCartAddressSnapshots(address);
 
   return sanitize(address);
 }

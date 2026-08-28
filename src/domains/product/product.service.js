@@ -55,6 +55,7 @@ import {
 import { brandExists } from "../brand/brand.repository.js";
 import { BrandModel } from "../brand/brand.model.js";
 import { findSubcategoryById } from "../subcategory/subcategory.repository.js";
+import { SubcategoryModel } from "../subcategory/subcategory.model.js";
 import { CategoryModel } from "../category/category.model.js";
 import {
   countWarehouses,
@@ -1149,7 +1150,7 @@ async function getProductsService(
     Object.assign(filter, collectionFilter);
   }
 
-  // Free-text search on names, tags, product/variant SKUs, and matched brands.
+  // Free-text search on names, tags, product/variant SKUs, and matched refs.
   const orConditions = [];
   if (typeof q === "string" && q.trim()) {
     const regex = {
@@ -1173,6 +1174,20 @@ async function getProductsService(
 
     if (matchedBrands.length > 0) {
       orConditions.push({ brand: { $in: matchedBrands.map((b) => b._id) } });
+    }
+
+    // Also search by localized subcategory name so partial English or Arabic
+    // names return products assigned to the matching subcategories.
+    const matchedSubcategories = await SubcategoryModel.find({
+      $or: [{ name_en: regex }, { name_ar: regex }],
+    })
+      .select("_id")
+      .lean();
+
+    if (matchedSubcategories.length > 0) {
+      orConditions.push({
+        subcategory: { $in: matchedSubcategories.map((item) => item._id) },
+      });
     }
   }
 
@@ -2499,8 +2514,8 @@ async function deleteProductService(id) {
 //  • Redis cache (15 s TTL) keyed on warehouse+lang+q+limit covers the entire
 //    DB workload — repeat keystrokes within the debounce window are free.
 //  • isFavorite is user-specific and injected OUTSIDE the cache.
-//  • Suggestions are derived ONLY from products that actually exist and are
-//    in-stock — no orphan brand/name suggestions that lead to empty results.
+//  • Suggestions are derived ONLY from products that actually exist in the
+//    returned result set — no orphan brand/name suggestions.
 //  • Brand lookup is used solely for widening the product filter (find products
 //    whose brand name matches q). Suggestion text comes from the product
 //    results themselves.
@@ -2536,11 +2551,11 @@ export async function searchProductsService({
   autoHideExpiredCollectionsThrottled().catch(() => {});
 
   // Cache key excludes userId — isFavorite is injected after cache hit
-  const cacheKey = `search:v4:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}${includeZeroStock ? ":admin" : ""}`;
+  const cacheKey = `search:v5:${warehouseId}:${normalizedLang}:${trimmedQ.toLowerCase()}:${limitNum}${includeZeroStock ? ":admin" : ""}`;
 
   // ── Cached core: suggestions + product DTOs (without isFavorite) ────────────
   const { suggestions, dtos } = await getOrSetCache(cacheKey, 15, async () => {
-    // Warehouse stock filter — in-stock only in the specified warehouse
+    // Warehouse stock filter used to prioritize available public results.
     const warehouseStockFilter = {
       $or: [
         {
@@ -2589,12 +2604,29 @@ export async function searchProductsService({
     const listSelect =
       "_id slug type isActive name_en name_ar price discountedPrice images warehouseStocks.warehouse warehouseStocks.quantity variants.price variants.discountedPrice variants.warehouseStocks.warehouse variants.warehouseStocks.quantity ratingAverage ratingCount category subcategory brand";
 
-    // findProducts() already populates brand with name_en, name_ar — we use
-    // this to extract brand suggestion text from REAL, in-stock products.
-    const rawProducts = await findProducts(
-      { $and: [productQFilter, ...(includeZeroStock ? [] : [warehouseStockFilter])] },
-      { limit: limitNum, select: listSelect, lean: true },
-    );
+    // Public live search returns both stock groups, while keeping available
+    // products first. Admin search keeps its existing unrestricted behavior.
+    let rawProducts;
+    if (includeZeroStock) {
+      rawProducts = await findProducts(productQFilter, {
+        limit: limitNum,
+        select: listSelect,
+        lean: true,
+      });
+    } else {
+      const inStockProducts = await findProducts(
+        { $and: [productQFilter, warehouseStockFilter] },
+        { limit: limitNum, select: listSelect, lean: true },
+      );
+      const remainingLimit = limitNum - inStockProducts.length;
+      const outOfStockProducts = remainingLimit
+        ? await findProducts(
+            { $and: [productQFilter, { $nor: [warehouseStockFilter] }] },
+            { limit: remainingLimit, select: listSelect, lean: true },
+          )
+        : [];
+      rawProducts = [...inStockProducts, ...outOfStockProducts];
+    }
 
     // ── Round 3: promotions (needs rawProducts from round 2) ─────────────
     const promotionsByProductId = await findActivePromotionsForProducts(
@@ -2603,7 +2635,8 @@ export async function searchProductsService({
     );
 
     // ── Build suggestions from ACTUAL product results only ────────────────
-    // Every suggestion is backed by real, in-stock products.
+    // Every suggestion is backed by a real returned product, including
+    // out-of-stock matches when they fit within the live-search limit.
     // A name only qualifies as a suggestion if it flexibly matches the query.
     // This keeps suggestions backed by real product/brand names while allowing
     // user spelling like "cats white" to match "Cat's White".
