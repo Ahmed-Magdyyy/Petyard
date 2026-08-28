@@ -90,6 +90,11 @@ const userSchema = new Schema(
       default: 0,
     },
 
+    signupWelcomeRewardGrantedAt: {
+      type: Date,
+      select: false,
+    },
+
     password: {
       type: String,
       minlength: [8, "Password must be at least 6 characters"],

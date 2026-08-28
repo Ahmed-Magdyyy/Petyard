@@ -38,7 +38,7 @@ const loyaltyTransactionSchema = new Schema(
     },
     referenceType: {
       type: String,
-      enum: ["ORDER", "REDEMPTION", "ADMIN"],
+      enum: ["ORDER", "REDEMPTION", "ADMIN", "SIGNUP_WELCOME_REWARD"],
       required: true,
     },
     referenceId: {

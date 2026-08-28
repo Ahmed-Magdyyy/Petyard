@@ -24,38 +24,15 @@ import {
   accountStatus,
   authProviderEnum,
 } from "../../shared/constants/enums.js";
+import { issueSessionTokensForUser } from "./authSession.service.js";
+import {
+  completeInitialPhoneVerificationService,
+  initialPhoneVerificationStorage,
+} from "./phoneVerificationCompletion.service.js";
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { forgetPasswordEmailHTML } from "../../shared/Email/emailHtml.js";
 import { getRedisClient } from "../../config/redis.js";
 import { DEFAULT_USER_AVATAR_URL } from "../../shared/constants/media.js";
-
-async function issueSessionTokensForUser(user) {
-  const now = Date.now();
-
-  user.refreshTokens = (user.refreshTokens || []).filter(
-    (t) => !t.expiresAt || t.expiresAt.getTime() > now,
-  );
-
-  const accessToken = createAccessToken(user._id, user.role);
-  const refreshToken = createRefreshToken(user._id);
-  const hashedRefreshToken = crypto
-    .createHash("sha256")
-    .update(refreshToken)
-    .digest("hex");
-
-  user.refreshTokens.push({
-    token: hashedRefreshToken,
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-  });
-
-  await user.save();
-
-  return {
-    accessToken,
-    refreshToken,
-    accessTokenExpires: new Date(Date.now() + 3 * 60 * 60 * 1000),
-  };
-}
 
 function buildAuthUserResponse(user) {
   return {
@@ -244,19 +221,21 @@ export async function verifyPhoneService({ identifier, phone, otp }) {
     throw new ApiError("Invalid OTP, please request a new OTP", 400);
   }
 
-  user.phoneVerified = true;
-  user.phoneVerificationCode = undefined;
-  user.phoneVerificationExpires = undefined;
-  user.phoneOtpLastSentAt = undefined;
-  user.phoneOtpSendCountToday = 0;
-  user.account_status = accountStatus.CONFIRMED;
-
-  const { accessToken, refreshToken, accessTokenExpires } =
-    await issueSessionTokensForUser(user);
+  const {
+    user: verifiedUser,
+    accessToken,
+    refreshToken,
+    accessTokenExpires,
+  } = await completeInitialPhoneVerificationService({
+    userId: user._id,
+    storage: initialPhoneVerificationStorage.CURRENT,
+    expectedCodeHash: user.phoneVerificationCode,
+    now: new Date(),
+  });
 
   return {
-    ...buildAuthUserResponse(user),
-    phoneVerified: user.phoneVerified,
+    ...buildAuthUserResponse(verifiedUser),
+    phoneVerified: verifiedUser.phoneVerified,
     accessToken,
     refreshToken,
     accessTokenExpires,
@@ -809,6 +788,8 @@ export async function oauthVerifyPhoneService({ userId, phone, otp }) {
     throw new ApiError("User not found", 404);
   }
 
+  const isInitialPhoneVerification = user.phoneVerified === false;
+
   const requestedPhone = phone || user.pendingPhone || user.phone;
   if (!requestedPhone) {
     throw new ApiError("phone is required", 400);
@@ -857,6 +838,33 @@ export async function oauthVerifyPhoneService({ userId, phone, otp }) {
 
   if (existing) {
     throw new ApiError("Phone is already in use", 409);
+  }
+
+  if (isInitialPhoneVerification) {
+    const storage = verifyPendingPhone
+      ? initialPhoneVerificationStorage.PENDING
+      : initialPhoneVerificationStorage.CURRENT;
+
+    const {
+      user: verifiedUser,
+      accessToken,
+      refreshToken,
+      accessTokenExpires,
+    } = await completeInitialPhoneVerificationService({
+      userId: user._id,
+      storage,
+      expectedCodeHash: verificationCode,
+      ...(verifyPendingPhone ? { normalizedPhone } : {}),
+      now: new Date(),
+    });
+
+    return {
+      ...buildAuthUserResponse(verifiedUser),
+      phoneVerified: verifiedUser.phoneVerified,
+      accessToken,
+      refreshToken,
+      accessTokenExpires,
+    };
   }
 
   user.phone = normalizedPhone;
