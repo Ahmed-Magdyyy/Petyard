@@ -173,13 +173,27 @@ export async function validateAndApplyCoupon({
 
     // Item is ineligible if it already has any discount (manual or promotion)
     if (item.hasDiscount) {
-      eligibilityLog.push({ productId, brandId: itemBrandId, lineTotal: item.lineTotal, reason: "has_discount" });
+      eligibilityLog.push({
+        productId,
+        brandId: itemBrandId,
+        lineTotal: item.lineTotal,
+        reason: "has_discount",
+      });
       continue;
     }
 
     // Item is ineligible if its product brand is in the coupon's excluded list
-    if (excludedBrandIds.size > 0 && itemBrandId && excludedBrandIds.has(String(itemBrandId))) {
-      eligibilityLog.push({ productId, brandId: itemBrandId, lineTotal: item.lineTotal, reason: "brand_excluded" });
+    if (
+      excludedBrandIds.size > 0 &&
+      itemBrandId &&
+      excludedBrandIds.has(String(itemBrandId))
+    ) {
+      eligibilityLog.push({
+        productId,
+        brandId: itemBrandId,
+        lineTotal: item.lineTotal,
+        reason: "brand_excluded",
+      });
       continue;
     }
 
@@ -189,17 +203,16 @@ export async function validateAndApplyCoupon({
         ? item.lineTotal
         : 0;
     eligibleSubtotal += lineTotal;
-    eligibilityLog.push({ productId, brandId: itemBrandId, lineTotal, reason: "eligible" });
+    eligibilityLog.push({
+      productId,
+      brandId: itemBrandId,
+      lineTotal,
+      reason: "eligible",
+    });
   }
 
   // Log eligibility decisions when brand exclusions are active
   if (excludedBrandIds.size > 0) {
-    console.log(
-      `[Coupon] Brand exclusion audit for ${coupon.code}: ` +
-      `excludedBrands=[${[...excludedBrandIds]}], ` +
-      `eligibleSubtotal=${eligibleSubtotal}, fullSubtotal=${subtotal}, ` +
-      `items=${JSON.stringify(eligibilityLog)}`,
-    );
   }
 
   // If nothing is eligible for price discount AND coupon has a price discount, reject.
@@ -214,7 +227,11 @@ export async function validateAndApplyCoupon({
   }
 
   // ── Guardrail: re-verify no excluded-brand item leaked into eligibleSubtotal ──
-  if (excludedBrandIds.size > 0 && eligibleSubtotal > 0 && coupon.discountType) {
+  if (
+    excludedBrandIds.size > 0 &&
+    eligibleSubtotal > 0 &&
+    coupon.discountType
+  ) {
     let verifiedEligible = 0;
     for (const entry of eligibilityLog) {
       if (entry.reason === "eligible") {
@@ -222,7 +239,7 @@ export async function validateAndApplyCoupon({
         if (entry.brandId && excludedBrandIds.has(String(entry.brandId))) {
           console.error(
             `[Coupon] GUARDRAIL TRIGGERED: item ${entry.productId} with brand ${entry.brandId} ` +
-            `leaked through brand exclusion for coupon ${coupon.code}. Zeroing discount.`,
+              `leaked through brand exclusion for coupon ${coupon.code}. Zeroing discount.`,
           );
           verifiedEligible = 0;
           break;
