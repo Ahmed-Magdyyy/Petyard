@@ -36,7 +36,8 @@ export const getProducts = asyncHandler(async (req, res) => {
     req.lang,
     {
       onlyActive: true,
-      hideOutOfStock: true,
+      includeZeroStockInWarehouse: true,
+      prioritizeInStock: true,
     },
     userId,
     guestId,

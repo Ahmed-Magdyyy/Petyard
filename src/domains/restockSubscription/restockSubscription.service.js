@@ -11,6 +11,7 @@ import {
   aggregateRestockDemandSummary,
   cancelSubscription,
   claimActiveSubscription,
+  countPendingSubscriptions,
   deleteSubscriptionsForProduct,
   deleteSubscriptionsForGuest,
   findActiveSubscriptions,
@@ -177,6 +178,93 @@ function notificationPayload({ product, warehouseId }) {
   };
 }
 
+function subscriberDisplayName(name, guestId) {
+  const normalizedName = typeof name === "string" ? name.trim() : "";
+  if (normalizedName) {
+    return normalizedName.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
+  }
+  return guestId ? "a guest" : "a customer";
+}
+
+function adminDemandNotificationPayload({
+  product,
+  warehouseId,
+  subscriberName,
+  guestId,
+  totalSubscribers,
+}) {
+  const productId = String(product._id);
+  const productNameEn = product.name_en || product.name_ar || "A product";
+  const productNameAr = product.name_ar || product.name_en || "منتج";
+  const latestSubscriber = subscriberDisplayName(subscriberName, guestId);
+  const normalizedTotal = Math.max(1, Number(totalSubscribers) || 1);
+  const otherSubscribers = normalizedTotal - 1;
+  const demandTextEn = otherSubscribers
+    ? `${latestSubscriber} and ${otherSubscribers} other ${otherSubscribers === 1 ? "customer" : "customers"} requested a restock alert`
+    : `${latestSubscriber} requested a restock alert`;
+  const hasSubscriberName =
+    typeof subscriberName === "string" && subscriberName.trim();
+  const latestSubscriberAr = hasSubscriberName
+    ? latestSubscriber
+    : guestId
+      ? "ضيف"
+      : "أحد العملاء";
+  const demandTextAr = otherSubscribers
+    ? `${latestSubscriberAr} و${otherSubscribers} من العملاء الآخرين طلبوا إشعاراً عند توفره`
+    : `${latestSubscriberAr} طلب إشعاراً عند توفره`;
+
+  return {
+    notification: {
+      title_en: "Out-of-Stock Product in Demand",
+      title_ar: "طلب على منتج غير متوفر",
+      body_en: `${productNameEn} is out of stock and ${demandTextEn}. Please restock it as soon as possible.`,
+      body_ar: `${productNameAr} غير متوفر و${demandTextAr}. يرجى إعادة توفيره في أقرب وقت ممكن.`,
+    },
+    icon: "product",
+    action: {
+      type: "product_detail",
+      screen: "ProductDetailScreen",
+      params: { productId, warehouseId: String(warehouseId) },
+    },
+    source: {
+      domain: "restock_subscription",
+      event: "new_demand",
+      referenceId: productId,
+    },
+    channels: { push: true, inApp: true },
+  };
+}
+
+async function notifySuperAdminsOfNewDemand({
+  product,
+  productId,
+  warehouseId,
+  subscriberName,
+  guestId,
+}) {
+  try {
+    const totalSubscribers = await countPendingSubscriptions({
+      productId,
+      warehouseId,
+    });
+    return await restockNotificationGateway.dispatchToSuperAdmins(
+      adminDemandNotificationPayload({
+        product,
+        warehouseId,
+        subscriberName,
+        guestId,
+        totalSubscribers,
+      }),
+    );
+  } catch (error) {
+    console.error(
+      "[Restock Subscription] Failed to notify super admins of new demand:",
+      error.message,
+    );
+    return { skipped: true, reason: "dispatch_failed" };
+  }
+}
+
 async function getValidOutOfStockProductAndWarehouse({ productId, warehouseId }) {
   const [product, warehouse] = await Promise.all([
     ProductModel.findById(productId),
@@ -198,11 +286,23 @@ async function getValidOutOfStockProductAndWarehouse({ productId, warehouseId })
 export async function subscribeToRestockService({
   userId,
   guestId,
+  subscriberName,
   productId,
   warehouseId,
 }) {
   const identity = getSubscriptionIdentity({ userId, guestId });
-  await getValidOutOfStockProductAndWarehouse({ productId, warehouseId });
+  const product = await getValidOutOfStockProductAndWarehouse({
+    productId,
+    warehouseId,
+  });
+  const existingSubscription = await findSubscription({
+    ...identity,
+    productId,
+    warehouseId,
+  });
+  const isAlreadyPending =
+    existingSubscription?.status === "ACTIVE" ||
+    existingSubscription?.status === "PROCESSING";
   const subscription = await activateSubscription({
     ...identity,
     productId,
@@ -218,6 +318,20 @@ export async function subscribeToRestockService({
     productId,
     warehouseId,
   });
+
+  const hasPendingDemand =
+    currentSubscription?.status === "ACTIVE" ||
+    currentSubscription?.status === "PROCESSING";
+  if (!isAlreadyPending && hasPendingDemand) {
+    await notifySuperAdminsOfNewDemand({
+      product,
+      productId,
+      warehouseId,
+      subscriberName,
+      guestId,
+    });
+  }
+
   return toSubscriptionResponse(currentSubscription || subscription);
 }
 

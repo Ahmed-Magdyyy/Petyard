@@ -44,6 +44,7 @@ export const subscribeToRestock = asyncHandler(async (req, res) => {
   const data = await subscribeToRestockService({
     userId: req.user?._id,
     guestId: req.guestId,
+    subscriberName: req.user?.name,
     productId: req.body.productId,
     warehouseId: req.body.warehouseId,
   });

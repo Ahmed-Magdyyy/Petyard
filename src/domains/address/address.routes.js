@@ -22,6 +22,9 @@ const router = Router();
 router.get("/guest", getGuestAddresses);
 router.post("/guest", addAddressValidator, addGuestAddress);
 router.patch("/guest/:addressId", updateAddressValidator, updateGuestAddress);
+// Temporary compatibility for released clients that still send PUT.
+// Remove after the PATCH-based client version has been adopted.
+router.put("/guest/:addressId", updateAddressValidator, updateGuestAddress);
 router.delete("/guest/:addressId", deleteAddressValidator, deleteGuestAddress);
 router.patch(
   "/guest/:addressId/default",

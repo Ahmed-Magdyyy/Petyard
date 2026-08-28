@@ -28,6 +28,7 @@ import {
 } from "./cart.repository.js";
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { abandonedCart } from "../../shared/Email/emailHtml.js";
+import { buildCartDeliveryAddressSnapshot } from "./cartAddressSnapshot.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
 
@@ -575,24 +576,7 @@ export async function setCartAddressFromUserService({
     throw new ApiError("Cart not found", 404);
   }
 
-  baseCart.deliveryAddress = {
-    userAddressId: address._id,
-    label: address.label || undefined,
-    name: address.name || undefined,
-    governorate: address.governorate || undefined,
-    area: address.area || undefined,
-    phone: address.phone || undefined,
-    building: address.building || undefined,
-    floor: address.floor || undefined,
-    apartment: address.apartment || undefined,
-    location: address.location
-      ? {
-          lat: address.location.lat,
-          lng: address.location.lng,
-        }
-      : undefined,
-    details: address.details || undefined,
-  };
+  baseCart.deliveryAddress = buildCartDeliveryAddressSnapshot(address);
 
   baseCart.warehouse = warehouseId;
   await baseCart.save();
@@ -638,25 +622,7 @@ export async function setCartAddressForGuestService({
     throw new ApiError("Cart not found", 404);
   }
 
-  baseCart.deliveryAddress = {
-    userAddressId: undefined,
-    guestAddressId: address._id,
-    label: address.label || undefined,
-    name: address.name || undefined,
-    governorate: address.governorate || undefined,
-    area: address.area || undefined,
-    phone: address.phone || undefined,
-    building: address.building || undefined,
-    floor: address.floor || undefined,
-    apartment: address.apartment || undefined,
-    location: address.location
-      ? {
-          lat: address.location.lat,
-          lng: address.location.lng,
-        }
-      : undefined,
-    details: address.details || undefined,
-  };
+  baseCart.deliveryAddress = buildCartDeliveryAddressSnapshot(address);
 
   baseCart.warehouse = warehouseId;
   await baseCart.save();

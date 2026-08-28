@@ -51,6 +51,7 @@ function simpleProduct(productId, stocks) {
 function installMemoryStore(t, { product, warehouses = [] }) {
   const subscriptions = [];
   const deletedFilters = [];
+  const superAdminDemandNotifications = [];
 
   t.mock.method(ProductModel, "findById", async (productId) =>
     String(productId) === String(product?._id) ? product : null
@@ -93,6 +94,14 @@ function installMemoryStore(t, { product, warehouses = [] }) {
           (!filter.warehouse || filter.warehouse.$in || String(item.warehouse) === String(filter.warehouse))
       )
     )
+  );
+  t.mock.method(RestockSubscriptionModel, "countDocuments", async (filter) =>
+    subscriptions.filter(
+      (item) =>
+        String(item.product) === String(filter.product) &&
+        String(item.warehouse) === String(filter.warehouse) &&
+        filter.status.$in.includes(item.status)
+    ).length
   );
   t.mock.method(RestockSubscriptionModel, "findOneAndUpdate", (filter, update, options = {}) => {
     let item = subscriptions.find((candidate) => {
@@ -150,8 +159,19 @@ function installMemoryStore(t, { product, warehouses = [] }) {
     inApp: null,
     push: { successCount: 1, failureCount: 0 },
   }));
+  t.mock.method(
+    restockNotificationGateway,
+    "dispatchToSuperAdmins",
+    async (payload) => {
+      superAdminDemandNotifications.push(payload);
+      return {
+        inApp: { success: true },
+        push: { successCount: 1, failureCount: 0 },
+      };
+    }
+  );
 
-  return { subscriptions, deletedFilters };
+  return { subscriptions, deletedFilters, superAdminDemandNotifications };
 }
 
 test("simple and variant warehouse stock validation only allows subscriptions while out of stock", async (t) => {
@@ -199,6 +219,31 @@ test("subscribe is unique/idempotent and unsubscribe/status are isolated by ware
   await subscribeToRestockService({ userId, productId, warehouseId: warehouseA });
   await subscribeToRestockService({ userId, productId, warehouseId: warehouseB });
   assert.equal(store.subscriptions.length, 2);
+  assert.equal(store.superAdminDemandNotifications.length, 2);
+
+  const alert = store.superAdminDemandNotifications[0];
+  assert.deepEqual(alert.channels, { push: true, inApp: true });
+  assert.equal(alert.notification.title_en, "Out-of-Stock Product in Demand");
+  assert.equal(
+    alert.notification.body_en,
+    "Royal Canin is out of stock and a customer requested a restock alert. Please restock it as soon as possible."
+  );
+  assert.deepEqual(alert.action.params, {
+    productId,
+    warehouseId: warehouseA,
+  });
+
+  await subscribeToRestockService({
+    userId: id(),
+    subscriberName: "ahmed magdy",
+    productId,
+    warehouseId: warehouseA,
+  });
+  const reminder = store.superAdminDemandNotifications.at(-1);
+  assert.equal(
+    reminder.notification.body_en,
+    "Royal Canin is out of stock and Ahmed Magdy and 1 other customer requested a restock alert. Please restock it as soon as possible."
+  );
 
   await unsubscribeFromRestockService({ userId, productId, warehouseId: warehouseA });
   const statusA = await getRestockSubscriptionStatusService({ userId, productId, warehouseId: warehouseA });
@@ -233,6 +278,15 @@ test("guests can subscribe, query and unsubscribe independently from users", asy
   await subscribeToRestockService({ guestId, productId, warehouseId: warehouseB });
   await subscribeToRestockService({ userId, productId, warehouseId: warehouseA });
   assert.equal(store.subscriptions.length, 3);
+  assert.equal(store.superAdminDemandNotifications.length, 3);
+  assert.equal(
+    store.superAdminDemandNotifications[0].notification.body_en,
+    "Royal Canin is out of stock and a guest requested a restock alert. Please restock it as soon as possible."
+  );
+  assert.equal(
+    store.superAdminDemandNotifications[2].notification.body_en,
+    "Royal Canin is out of stock and a customer and 1 other customer requested a restock alert. Please restock it as soon as possible."
+  );
 
   const guestWarehouseA = await getRestockSubscriptionStatusService({
     guestId,

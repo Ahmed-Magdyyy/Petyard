@@ -126,7 +126,10 @@ function collectVariantExpectations(product, payload) {
       );
       expectations.push({
         product: product._id,
-        variantId,
+        // `product.$where` is passed directly to the MongoDB driver during
+        // `save()`, so Mongoose does not cast values in the custom guard.
+        // Keep the stored ObjectId instead of the string sent by the client.
+        variantId: currentVariant?._id || variantId,
         warehouse: submitted.warehouse,
         expectedRevision,
         currentRevision: current ? storedRevision(current) : null,
@@ -183,7 +186,7 @@ export function prepareProductStockRevisionGuard(product, payload) {
 export function translateStockRevisionSaveError(error, expectations) {
   if (
     expectations.length > 0 &&
-    error?.name === "DocumentNotFoundError"
+    ["DocumentNotFoundError", "VersionError"].includes(error?.name)
   ) {
     throw conflictError(expectations, { raced: true });
   }

@@ -86,6 +86,14 @@ router.patch(
   updateAddressValidator,
   updateMyAddress,
 );
+// Temporary compatibility for released clients that still send PUT.
+// Remove after the PATCH-based client version has been adopted.
+router.put(
+  "/me/addresses/:addressId",
+  protect,
+  updateAddressValidator,
+  updateMyAddress,
+);
 router.delete(
   "/me/addresses/:addressId",
   protect,

@@ -206,6 +206,59 @@ test("matching response revision alias adds the same atomic save guard", () => {
   });
 });
 
+test("variant guard uses stored ObjectIds when the client submits string ids", () => {
+  const warehouse = new mongoose.Types.ObjectId();
+  const variantId = new mongoose.Types.ObjectId();
+  const product = {
+    ...simpleProduct({ warehouse }),
+    type: "VARIANT",
+    warehouseStocks: [],
+    variants: [
+      {
+        _id: variantId,
+        warehouseStocks: [{ warehouse, quantity: 2, revision: 0 }],
+      },
+    ],
+  };
+
+  const expectations = prepareProductStockRevisionGuard(product, {
+    variants: [
+      {
+        _id: String(variantId),
+        warehouseStocks: [
+          {
+            warehouse: String(warehouse),
+            quantity: 3,
+            revision: 0,
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(expectations[0].variantId, variantId);
+  assert.deepEqual(product.$where, {
+    $and: [
+      {
+        variants: {
+          $elemMatch: {
+            _id: variantId,
+            warehouseStocks: {
+              $elemMatch: {
+                warehouse,
+                $or: [
+                  { revision: 0 },
+                  { revision: { $exists: false } },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ],
+  });
+});
+
 test("stale expectedRevision fails with the current stock snapshot", () => {
   const warehouse = new mongoose.Types.ObjectId();
   const product = simpleProduct({ warehouse, quantity: 8, revision: 6 });
@@ -277,6 +330,25 @@ test("a save-time guard miss is translated to a stock conflict", () => {
   });
   const race = new Error("No document matched");
   race.name = "DocumentNotFoundError";
+
+  assert.throws(
+    () => translateStockRevisionSaveError(race, expectations),
+    (error) =>
+      error.statusCode === 409 &&
+      error.code === "STOCK_REVISION_CONFLICT",
+  );
+});
+
+test("a versioned array guard miss is translated to a stock conflict", () => {
+  const warehouse = new mongoose.Types.ObjectId();
+  const product = simpleProduct({ warehouse });
+  const expectations = prepareProductStockRevisionGuard(product, {
+    warehouseStocks: [
+      { warehouse, quantity: 7, expectedRevision: 6 },
+    ],
+  });
+  const race = new Error("No matching versioned document");
+  race.name = "VersionError";
 
   assert.throws(
     () => translateStockRevisionSaveError(race, expectations),

@@ -89,6 +89,19 @@ export function findActiveSubscriptions({ productId, warehouseIds }) {
   return RestockSubscriptionModel.find(filter).lean();
 }
 
+export function countPendingSubscriptions({ productId, warehouseId }) {
+  return RestockSubscriptionModel.countDocuments({
+    product: productId,
+    warehouse: warehouseId,
+    status: {
+      $in: [
+        restockSubscriptionStatus.ACTIVE,
+        restockSubscriptionStatus.PROCESSING,
+      ],
+    },
+  });
+}
+
 export function findActiveSubscriptionsForUser({
   userId,
   guestId,
