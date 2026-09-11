@@ -319,11 +319,19 @@ test('q search includes simple and variant SKUs', async (t) => {
 
 test('q search includes products from subcategories matched by partial localized name', async (t) => {
   const matchingSubcategoryId = new mongoose.Types.ObjectId();
+  const childSubcategoryId = new mongoose.Types.ObjectId();
   let subcategoryFilter = null;
   let productFilter = null;
 
   t.mock.method(BrandModel, 'find', () => queryResult([]));
   t.mock.method(SubcategoryModel, 'find', (filter) => {
+    if (filter.parent) {
+      return queryResult(
+        String(filter.parent) === String(matchingSubcategoryId)
+          ? [{ _id: childSubcategoryId }]
+          : [],
+      );
+    }
     subcategoryFilter = filter;
     return queryResult([{ _id: matchingSubcategoryId }]);
   });
@@ -356,7 +364,7 @@ test('q search includes products from subcategories matched by partial localized
   );
   assert.deepEqual(
     matchedSubcategoryCondition.subcategory.$in.map(String),
-    [String(matchingSubcategoryId)],
+    [String(matchingSubcategoryId), String(childSubcategoryId)],
   );
 });
 

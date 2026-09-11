@@ -1185,8 +1185,18 @@ async function getProductsService(
       .lean();
 
     if (matchedSubcategories.length > 0) {
+      const matchedSubcategoryIds = matchedSubcategories.map((item) =>
+        String(item._id),
+      );
+      const descendantIdGroups = await Promise.all(
+        matchedSubcategoryIds.map(getSubcategoryChildrenIds),
+      );
+      const expandedSubcategoryIds = [
+        ...new Set([...matchedSubcategoryIds, ...descendantIdGroups.flat()]),
+      ];
+
       orConditions.push({
-        subcategory: { $in: matchedSubcategories.map((item) => item._id) },
+        subcategory: { $in: expandedSubcategoryIds },
       });
     }
   }
