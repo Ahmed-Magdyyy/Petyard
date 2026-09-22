@@ -50,6 +50,7 @@ import {
 } from "./product.middleware.js";
 
 import reviewRoutes from "../review/review.routes.js";
+import { exportProductsForSuperAdmin } from "./productExport.controller.js";
 
 const router = Router();
 const PRODUCT_IMAGE_UPLOAD_MAX_COUNT = 10;
@@ -69,6 +70,14 @@ router.get(
   scopeProductsToModeratorWarehouses,
   listProductsQueryValidator,
   getProductsForAdmin,
+);
+
+// One-sheet live database export for the super admin. Keep before /:id.
+router.get(
+  "/admin/export",
+  protect,
+  allowedTo(roles.SUPER_ADMIN),
+  exportProductsForSuperAdmin,
 );
 
 // Must be before /:id to avoid Express treating "search" as a product ID
