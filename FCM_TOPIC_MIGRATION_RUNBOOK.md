@@ -39,6 +39,8 @@ the Instance ID API to the FCM v1 topic subscription API before September 29,
    last. Check each process is online and reports Node 22.
 3. Verify `GET /` returns HTTP 200. Run the canary again from `/root/Petyard`
    using the same Node 22 binary and `FCM_CANARY_PROJECT_ID=petyard-dev`.
+   Set `FCM_CANARY_DRY_RUN_SEND=true` to validate one direct and one topic send
+   without delivering messages.
 4. Save the PM2 process list only after every check passes, so reboots retain
    the Node 22 interpreter. Monitor subscription failures and push sends.
 

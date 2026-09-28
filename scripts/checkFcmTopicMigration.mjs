@@ -54,6 +54,15 @@ async function main() {
 
       if (!result.failureCount) {
         console.log(`FCM topic subscription succeeded for ${expectedProjectId}: ${topic}`);
+        if (process.env.FCM_CANARY_DRY_RUN_SEND === "true") {
+          const notification = {
+            title: "Petyard FCM validation",
+            body: "Dry run only",
+          };
+          await messaging.send({ token: device.token, notification }, true);
+          await messaging.send({ topic, notification }, true);
+          console.log("FCM direct and topic sends validated in dry-run mode");
+        }
         return;
       }
 
