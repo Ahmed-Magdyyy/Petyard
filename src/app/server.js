@@ -25,7 +25,7 @@ import { startNotificationJobs } from "../shared/jobs/notification.jobs.js";
 import { startAbandonedPaymentsJob } from "../shared/jobs/abandonedPayments.job.js";
 import { startAppDownloadsJob } from "../shared/jobs/appDownloads.job.js";
 import { getRedisClient } from "../config/redis.js";
-import { getFirebaseAdmin } from "../config/firebase.js";
+import { getFirebaseMessaging } from "../config/firebase.js";
 import cors from "cors";
 import { egyptTimezoneReplacer } from "../shared/utils/egyptTimezone.js";
 import { validateMediaConfiguration } from "../shared/utils/mediaConfig.js";
@@ -120,7 +120,7 @@ const server = app.listen(PORT, () =>
 );
 
 getRedisClient();
-getFirebaseAdmin();
+getFirebaseMessaging();
 
 // // Ping the server immediately after starting the server
 // pingServer();

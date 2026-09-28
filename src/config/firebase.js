@@ -1,12 +1,13 @@
-import admin from "firebase-admin";
+import { cert, initializeApp } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import fs from "fs";
 import path from "path";
 
-let initialized = false;
+let messaging;
 
-export function getFirebaseAdmin() {
-  if (initialized) {
-    return admin;
+export function getFirebaseMessaging() {
+  if (messaging) {
+    return messaging;
   }
 
   let serviceAccountJson;
@@ -51,15 +52,15 @@ export function getFirebaseAdmin() {
   }
 
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccountJson),
+    const app = initializeApp({
+      credential: cert(serviceAccountJson),
     });
+    messaging = getMessaging(app);
   } catch (err) {
     console.error("[Firebase] Failed to initialize admin SDK:", err.message);
     return null;
   }
 
-  initialized = true;
   console.log("[Firebase] Admin initialized");
-  return admin;
+  return messaging;
 }

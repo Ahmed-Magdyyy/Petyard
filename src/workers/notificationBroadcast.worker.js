@@ -5,7 +5,7 @@ import {
   bullMqConfig,
   createBullMqConnection,
 } from "../config/bullmq.js";
-import { getFirebaseAdmin } from "../config/firebase.js";
+import { getFirebaseMessaging } from "../config/firebase.js";
 import {
   dispatchBroadcastNotification,
   dispatchBroadcastTopicBucket,
@@ -35,7 +35,7 @@ async function connectDatabase() {
 
 async function startWorker() {
   await connectDatabase();
-  getFirebaseAdmin();
+  getFirebaseMessaging();
 
   workerConnection = createBullMqConnection("notification-broadcast-worker");
 

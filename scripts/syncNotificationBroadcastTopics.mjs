@@ -1,6 +1,6 @@
 import "@dotenvx/dotenvx/config";
 import mongoose from "mongoose";
-import { getFirebaseAdmin } from "../src/config/firebase.js";
+import { getFirebaseMessaging } from "../src/config/firebase.js";
 import { syncBroadcastTopicsForDevices } from "../src/domains/notification/notificationTopics.service.js";
 
 async function main() {
@@ -11,7 +11,7 @@ async function main() {
   const conn = await mongoose.connect(process.env.MONGO_URI);
   console.log(`[Notification Topics Sync] Connected to DB: ${conn.connection.host}`);
 
-  getFirebaseAdmin();
+  getFirebaseMessaging();
 
   const result = await syncBroadcastTopicsForDevices();
   console.log(JSON.stringify(result, null, 2));

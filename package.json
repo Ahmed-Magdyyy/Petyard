@@ -12,11 +12,15 @@
     "start:substitution-refund-worker": "NODE_ENV=production node src/workers/substitutionRefund.worker.js",
     "start:substitution-expiration-worker": "NODE_ENV=production node src/workers/substitutionExpiration.worker.js",
     "substitution:backfill": "node scripts/backfillSubstitutionReadiness.js",
-    "substitution:audit": "node scripts/auditSubstitutionReadiness.js"
+    "substitution:audit": "node scripts/auditSubstitutionReadiness.js",
+    "fcm:canary": "node scripts/checkFcmTopicMigration.mjs"
   },
   "author": "",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.64.0",
     "@google/genai": "^1.41.0",
@@ -35,7 +39,7 @@
     "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^8.2.1",
     "express-validator": "^7.3.0",
-    "firebase-admin": "^13.6.0",
+    "firebase-admin": "14.5.0",
     "google-auth-library": "^10.5.0",
     "helmet": "^8.1.0",
     "hpp": "^0.2.3",

@@ -1,6 +1,6 @@
 import "@dotenvx/dotenvx/config";
 import mongoose from "mongoose";
-import { getFirebaseAdmin } from "../config/firebase.js";
+import { getFirebaseMessaging } from "../config/firebase.js";
 import { drainNotificationOutbox } from "../domains/notification/notificationOutbox.worker.service.js";
 
 const POLL_MS = Math.max(1_000, Number(process.env.NOTIFICATION_OUTBOX_POLL_MS) || 5_000);
@@ -31,7 +31,7 @@ async function start() {
   if (!process.env.MONGO_URI) throw new Error("MONGO_URI is required for notification outbox worker");
   const connection = await mongoose.connect(process.env.MONGO_URI);
   console.log(`[Notification Outbox Worker] Connected to DB: ${connection.connection.host}`);
-  getFirebaseAdmin();
+  getFirebaseMessaging();
   await poll();
   timer = setInterval(poll, POLL_MS);
   console.log("[Notification Outbox Worker] Started");

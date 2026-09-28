@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { ApiError } from "../../shared/utils/ApiError.js";
-import { getFirebaseAdmin } from "../../config/firebase.js";
+import { getFirebaseMessaging } from "../../config/firebase.js";
 import { NotificationDeviceModel } from "./notification.model.js";
 import {
   dispatchNotification,
@@ -237,8 +237,8 @@ function buildDataPayload(data) {
 }
 
 async function sendPushToTokens({ tokens, notification, data }) {
-  const admin = getFirebaseAdmin();
-  if (!admin) {
+  const messaging = getFirebaseMessaging();
+  if (!messaging) {
     return { skipped: true, successCount: 0, failureCount: 0 };
   }
 
@@ -275,7 +275,7 @@ async function sendPushToTokens({ tokens, notification, data }) {
     };
 
     try {
-      const response = await admin.messaging().sendEachForMulticast(message);
+      const response = await messaging.sendEachForMulticast(message);
 
       console.log(
         "[Notification] FCM responses (batch starting at index %d):",

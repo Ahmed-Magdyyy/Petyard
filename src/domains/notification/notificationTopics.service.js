@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { getFirebaseAdmin } from "../../config/firebase.js";
+import { getFirebaseMessaging } from "../../config/firebase.js";
 import { parseBoundedInt } from "../../shared/utils/env.js";
 import { NotificationDeviceModel } from "./notification.model.js";
 
@@ -164,8 +164,8 @@ export function getBroadcastBucketDelayMs(bucketIndex) {
 }
 
 export async function subscribeTokensToBroadcastTopic(tokens, topic) {
-  const admin = getFirebaseAdmin();
-  if (!admin) {
+  const messaging = getFirebaseMessaging();
+  if (!messaging) {
     return {
       skipped: true,
       successCount: 0,
@@ -185,7 +185,7 @@ export async function subscribeTokensToBroadcastTopic(tokens, topic) {
     };
   }
 
-  const response = await admin.messaging().subscribeToTopic(uniqueTokens, topic);
+  const response = await messaging.subscribeToTopic(uniqueTokens, topic);
   const invalidTokens = [];
 
   for (const item of response.errors || []) {
@@ -289,8 +289,8 @@ export async function sendPushToBroadcastTopic({
   data,
   pushOptions,
 }) {
-  const admin = getFirebaseAdmin();
-  if (!admin) {
+  const messaging = getFirebaseMessaging();
+  if (!messaging) {
     return {
       skipped: true,
       topicMessageCount: 0,
@@ -306,7 +306,7 @@ export async function sendPushToBroadcastTopic({
     ...buildPushPlatformConfig(pushOptions),
   };
 
-  const messageId = await admin.messaging().send(message);
+  const messageId = await messaging.send(message);
 
   return {
     topic,

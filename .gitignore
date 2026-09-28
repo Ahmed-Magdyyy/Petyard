@@ -38,6 +38,7 @@ scripts/
 scripts/*
 !scripts/
 !scripts/syncNotificationBroadcastTopics.mjs
+!scripts/checkFcmTopicMigration.mjs
 !scripts/cloudinaryToBunnyCopy.js
 !scripts/cloudinaryToBunnyRewriteDbUrls.js
 !scripts/cloudinaryToBunnyAudit.js

@@ -18,7 +18,7 @@
  */
 
 import { NotificationDeviceModel } from "./notification.model.js";
-import { getFirebaseAdmin } from "../../config/firebase.js";
+import { getFirebaseMessaging } from "../../config/firebase.js";
 import {
   createInAppNotificationService,
   createBulkInAppNotificationsService,
@@ -171,8 +171,8 @@ async function sendPushToTokens({
   pushOptions,
   batchDelayMs = 0,
 }) {
-  const admin = getFirebaseAdmin();
-  if (!admin) {
+  const messaging = getFirebaseMessaging();
+  if (!messaging) {
     return { skipped: true, successCount: 0, failureCount: 0 };
   }
 
@@ -198,7 +198,7 @@ async function sendPushToTokens({
     };
 
     try {
-      const response = await admin.messaging().sendEachForMulticast(message);
+      const response = await messaging.sendEachForMulticast(message);
       totalSuccess += response.successCount;
       totalFailure += response.failureCount;
 

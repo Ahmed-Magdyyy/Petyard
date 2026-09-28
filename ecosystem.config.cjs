@@ -1,7 +1,15 @@
+const fs = require("node:fs");
+
+const serverNode22 = "/root/.local/opt/node-v22.23.3-linux-x64/bin/node";
+const nodeInterpreter =
+  process.env.PETYARD_NODE_BIN ||
+  (fs.existsSync(serverNode22) ? serverNode22 : "node");
+
 module.exports = {
   apps: [
     {
       name: "petyard",
+      interpreter: nodeInterpreter,
       cwd: "/root/Petyard",
       script: "src/app/server.js",
 
@@ -54,6 +62,7 @@ module.exports = {
     },
     {
       name: "petyard-notification-worker",
+      interpreter: nodeInterpreter,
       cwd: "/root/Petyard",
       script: "src/workers/notificationBroadcast.worker.js",
 
@@ -87,6 +96,7 @@ module.exports = {
       // Durable substitution/user notification delivery. Keep it separate from
       // the broadcast worker so an FCM retry cannot hold up API traffic.
       name: "petyard-notification-outbox-worker",
+      interpreter: nodeInterpreter,
       cwd: "/root/Petyard",
       script: "src/workers/notificationOutbox.worker.js",
 
@@ -118,6 +128,7 @@ module.exports = {
     {
       // Retries provider/manual refund operations created by substitutions.
       name: "petyard-substitution-refund-worker",
+      interpreter: nodeInterpreter,
       cwd: "/root/Petyard",
       script: "src/workers/substitutionRefund.worker.js",
 
@@ -149,6 +160,7 @@ module.exports = {
       // Sweeps offer and additional-card expirations; polling prevents stale
       // reservations from surviving a process restart.
       name: "petyard-substitution-expiration-worker",
+      interpreter: nodeInterpreter,
       cwd: "/root/Petyard",
       script: "src/workers/substitutionExpiration.worker.js",
 
