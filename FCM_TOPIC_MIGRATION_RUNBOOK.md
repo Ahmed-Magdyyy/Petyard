@@ -51,3 +51,15 @@ Git commit and old `node_modules` directory, then restart the affected PM2
 processes with `/usr/bin/node`. Verify API health and the process list before
 ending the incident. Do not run the full broadcast topic sync as a migration
 step; existing subscriptions remain in FCM.
+
+## Deployment record: September 28, 2026
+
+- Previous commit: `b0f71975215c36ad09224d6a7f50a921516d6bb3`.
+- Migration commit: `de65a4f`; dry-run check commit: `0ea2e89`.
+- Previous dependencies are at
+  `/root/.local/releases/petyard-fcm-v1-de65a4f/node_modules-old`.
+- The live repository uses Firebase Admin SDK 14.5.0. All five PM2 processes
+  report Node 22.23.3. `pm2 save` recorded the absolute Node 22 interpreter,
+  and the existing `pm2-root` systemd startup service is enabled and active.
+- Verification passed: 54 tests in the isolated checkout, local API HTTP 200,
+  topic subscription canary, direct send dry run, and topic send dry run.
