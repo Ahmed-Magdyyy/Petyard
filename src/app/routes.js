@@ -28,6 +28,12 @@ import serviceReservationRoutes from "../domains/serviceReservation/reservations
 import recommendationRoutes from "../domains/recommendation/recommendation.routes.js";
 import addressRoutes from "../domains/address/address.routes.js";
 import homeLayoutRoutes from "../domains/homeLayout/homeLayout.routes.js";
+import {
+  adminUiLayoutRouter,
+  adminUiBuilderRouter,
+  publicUiLayoutRouter,
+  publicUiLayoutPreviewRouter,
+} from "../domains/uiLayout/uiLayout.routes.js";
 import paymentRoutes from "../domains/payment/payment.routes.js";
 import bankAccountRoutes from "../domains/bankAccount/bankAccount.routes.js";
 import standaloneProfileBannerRoutes from "../domains/standaloneProfileBanner/standaloneProfileBanner.routes.js";
@@ -80,6 +86,10 @@ export function mountRoutes(app) {
   app.use("/api/v1/service-locations", serviceLocationRoutes);
   app.use("/api/v1/service-reservations", serviceReservationRoutes);
   app.use("/api/v1/home-layout", homeLayoutRoutes);
+  app.use("/api/v1/home-layout/preview", publicUiLayoutPreviewRouter);
+  app.use("/api/v1/ui-layouts", publicUiLayoutRouter);
+  app.use("/api/v1/admin/ui-builder", adminUiBuilderRouter);
+  app.use("/api/v1/admin/home-layouts", adminUiLayoutRouter);
   app.use("/api/v1/payments", paymentRoutes);
   app.use("/api/v1/bank-accounts", bankAccountRoutes);
   app.use("/api/v1/pet-profile-banner", standaloneProfileBannerRoutes);

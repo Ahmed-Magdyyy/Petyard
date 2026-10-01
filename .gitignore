@@ -44,6 +44,7 @@ scripts/*
 !scripts/cloudinaryToBunnyAudit.js
 !scripts/bunnyMediaCanary.js
 !scripts/setWarehouseStockZero.js
+!scripts/testUiLayoutMongoIntegration.js
 !scripts/normalizeProductWarehouseStocks.js
 !scripts/backfillSubstitutionReadiness.js
 !scripts/auditSubstitutionReadiness.js

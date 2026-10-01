@@ -69,7 +69,16 @@ app.use(
       "Accept-Language",
       "x-guest-id",
       "Idempotency-Key",
+      "If-Match",
+      "If-None-Match",
+      "X-Client-Mutation-Id",
+      "X-App-Platform",
+      "X-App-Version",
+      "X-App-Locale",
+      "X-Location-Id",
+      "X-Country-Code",
     ],
+    exposedHeaders: ["ETag", "X-Request-Id"],
     credentials: true,
   }),
 );
@@ -81,7 +90,8 @@ app.use(
     const statusColor =
       status >= 500 ? 31 : status >= 400 ? 33 : status >= 300 ? 36 : 32;
 
-    return `\x1b[0m${tokens.method(req, res)} ${tokens.url(req, res)} ` +
+    const safeUrl = tokens.url(req, res)?.replace(/([?&]token=)[^&]*/gi, "$1[REDACTED]");
+    return `\x1b[0m${tokens.method(req, res)} ${safeUrl} ` +
       `\x1b[${statusColor}m${status}\x1b[0m ` +
       `${tokens["response-time"](req, res)} ms - ` +
       `${tokens.res(req, res, "content-length") || "-"} ` +

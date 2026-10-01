@@ -77,7 +77,7 @@ const logOperationalError = (err, req) => {
       errors: err.errors || [],
       loggedAt: new Date().toISOString(),
       method: req.method,
-      path: req.originalUrl || req.url,
+      path: (req.originalUrl || req.url)?.replace(/([?&]token=)[^&]*/gi, "$1[REDACTED]"),
       requestId: req.requestId,
       userId: req.user?._id,
       role: req.user?.role,
