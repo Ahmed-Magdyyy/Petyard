@@ -193,6 +193,10 @@ export function findSubstitutionCandidateProducts({
   return query.lean();
 }
 
+export async function isProductActive(id) {
+  return Boolean(await ProductModel.exists({ _id: id, isActive: true }));
+}
+
 export function countSubstitutionCandidateProducts(filterOptions) {
   return ProductModel.countDocuments(
     buildSubstitutionCandidateProductFilter(filterOptions),

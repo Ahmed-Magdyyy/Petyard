@@ -4,6 +4,7 @@ import {
   getProducts,
   getProductsForAdmin,
   getProduct,
+  getProductsBatch,
   createProduct,
   updateProduct,
   updateProductStock,
@@ -34,6 +35,7 @@ import {
   updateProductValidator,
   updateProductStockValidator,
   productIdParamValidator,
+  productBatchValidator,
   listProductsQueryValidator,
   searchProductsQueryValidator,
   adminSearchProductsQueryValidator,
@@ -51,6 +53,8 @@ import {
 
 import reviewRoutes from "../review/review.routes.js";
 import { exportProductsForSuperAdmin } from "./productExport.controller.js";
+import { productBatchLimiter } from "./product.limiters.js";
+import { productBatchBodyParser } from "./productBatch.middleware.js";
 
 const router = Router();
 const PRODUCT_IMAGE_UPLOAD_MAX_COUNT = 10;
@@ -58,6 +62,8 @@ const PRODUCT_IMAGE_UPLOAD_MAX_COUNT = 10;
 // ─── Public routes ───────────────────────────────────────────────────────────
 
 router.get("/", optionalProtect, listProductsQueryValidator, getProducts);
+router.post("/batch", productBatchLimiter, productBatchBodyParser, optionalProtect,
+  scopeProductsToModeratorWarehouses, productBatchValidator, getProductsBatch);
 
 // ─── Admin listing — admins + moderators ─────────────────────────────────────
 // Must be before /:id to avoid Express treating "admin" as a product ID

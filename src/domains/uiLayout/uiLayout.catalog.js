@@ -3,8 +3,13 @@ import {
   UI_LAYOUT_MAX_ITEMS, NAVIGATION_ITEMS, BUILTIN_SECTION_TYPES,
   PROMO_VISIBILITY, PROMO_LAYOUTS, DISPLAY_TYPES, CARD_STYLES,
   UI_ASSET_MIME, UI_ASSET_MAX_BYTES, UI_ASSET_USAGES,
+  UI_LAYOUT_MAX_BLOCK_DEPTH, UI_LAYOUT_MAX_BLOCK_NODES, UI_LAYOUT_MAX_BLOCK_CHILDREN,
 } from "./uiLayout.constants.js";
 import { isUiLayoutSchedulingConfigured } from "./uiLayout.queue.js";
+import { BLOCK_PROP_SCHEMAS, ID_ONLY_ITEM_SCHEMA, localizedTextSchema } from "./uiLayout.blocks.js";
+import { getIdOnlyMinimumAppVersion } from "./uiLayout.compatibility.js";
+import { PRODUCT_BATCH_MAX_IDS, PRODUCT_BATCH_MAX_REQUEST_BYTES,
+  PRODUCT_BATCH_MAX_RESPONSE_BYTES, PRODUCT_BATCH_QUERY_TIMEOUT_MS } from "../product/productBatch.constants.js";
 
 const ACTION_CONFIG_SCHEMA = {
   type: "object", additionalProperties: false, required: ["type", "value"],
@@ -24,6 +29,9 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
     scheduled_publish: true,
     review_workflow: false,
     component_tree: false,
+    component_tree_draft_storage: true,
+    product_id_references: false,
+    product_id_draft_storage: true,
     chatbot_fab_config: false,
     chatbot_fab_draft_storage: true,
   },
@@ -32,6 +40,10 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
     max_navigation_items: Object.keys(NAVIGATION_ITEMS).length,
     max_dynamic_items: UI_LAYOUT_MAX_ITEMS,
     max_payload_bytes: UI_LAYOUT_MAX_BYTES,
+    max_product_ids: PRODUCT_BATCH_MAX_IDS,
+    max_block_depth: UI_LAYOUT_MAX_BLOCK_DEPTH,
+    max_block_nodes: UI_LAYOUT_MAX_BLOCK_NODES,
+    max_block_children: UI_LAYOUT_MAX_BLOCK_CHILDREN,
   },
   asset_upload: {
     mode: "multipart",
@@ -76,6 +88,48 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
       },
     } },
   ],
+  // New-profile schemas are separate so legacy consumers keep their existing definitions.
+  product_reference_formats: ["id_only_v1"],
+  content_profiles: [{
+    key: "id_only_v1", schema_version: UI_LAYOUT_SCHEMA_VERSION,
+    section_name_required: false,
+    localized_text_schema: localizedTextSchema(1000),
+    item_schema: ID_ONLY_ITEM_SCHEMA,
+    custom_text_limits: { title: 80, subtitle: 180, cta_text: 30, item_name: 80, item_subtitle: 100 },
+    composed_section: { type: "object", additionalProperties: false,
+      required: ["enabled", "root"], properties: {
+        enabled: { type: "boolean" }, root: { $ref: "#/$defs/root" },
+      }, $defs: {
+        root: { allOf: [{ $ref: "#/$defs/node" }, { properties: { type: { const: "column" } } }] },
+        node: { oneOf: Object.entries(BLOCK_PROP_SCHEMAS).map(([type, properties]) => ({
+          type: "object", additionalProperties: false,
+          required: ["id", "type", "props", ...(["row", "column"].includes(type) ? ["children"] : [])],
+          properties: { id: { type: "string", format: "uuid" }, type: { const: type },
+            props: { type: "object", additionalProperties: false, properties },
+            ...(["row", "column"].includes(type) ? { children: { type: "array",
+              maxItems: UI_LAYOUT_MAX_BLOCK_CHILDREN, items: { $ref: "#/$defs/node" } } } : {}),
+          },
+        })) },
+      },
+    },
+  }],
+  block_types: Object.entries(BLOCK_PROP_SCHEMAS).map(([key, properties]) => ({ key,
+    config_schema: { type: "object", additionalProperties: false, properties },
+  })),
+  block_renderer_tokens: { unit: "logical_pixels", spacing: { none: 0, sm: 8, md: 16, lg: 24 } },
+  block_renderer_defaults: {
+    image: { aspect_ratio: "16:9", fit: "cover", border_radius: "none" },
+    text: { max_lines: 6, styles: {
+      title_large: { font_size: 28, bold: true }, title_medium: { font_size: 22, bold: true },
+      body_medium: { font_size: 16 }, body_small: { font_size: 12 },
+    } },
+    button: { variant: "primary", size: "medium", padding_by_size: { medium: 12, large: 20 } },
+    catalog_list: { limit: 10 }, row: { preset: "two_columns", gap: "md", padding: "none" },
+    column: { gap: "md", padding: "none" }, spacer: { size: "md" }, divider: { height: 16 },
+  },
+  product_batch: { method: "POST", endpoint: "/api/v1/products/batch", max_ids: PRODUCT_BATCH_MAX_IDS,
+    max_request_bytes: PRODUCT_BATCH_MAX_REQUEST_BYTES, max_response_bytes: PRODUCT_BATCH_MAX_RESPONSE_BYTES,
+    query_timeout_ms: PRODUCT_BATCH_QUERY_TIMEOUT_MS, rate_limit: { requests: 60, window_seconds: 900 } },
   navigation_destinations: Object.entries(NAVIGATION_ITEMS).map(([key, value]) => ({
     key, ...value, required: key === "home",
   })),
@@ -83,13 +137,31 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
 });
 
 export function getUiLayoutCatalog() {
+  const minimum = getIdOnlyMinimumAppVersion();
   return {
     ...UI_LAYOUT_CATALOG,
+    section_types: [...UI_LAYOUT_CATALOG.section_types, { key: "composed_section", repeatable: true,
+      requires_content_profile: "id_only_v1", config_schema: UI_LAYOUT_CATALOG.content_profiles[0].composed_section }],
+    content_profiles: UI_LAYOUT_CATALOG.content_profiles.map((profile) => ({ ...profile,
+      section_types: UI_LAYOUT_CATALOG.section_types.filter((section) => ["admin_promo", "dynamic_section"].includes(section.key))
+        .map((section) => ({ ...section, config_schema: { ...section.config_schema,
+          properties: { ...section.config_schema.properties,
+            title: localizedTextSchema(80), subtitle: localizedTextSchema(180),
+            ...(section.key === "admin_promo" ? { cta_text: localizedTextSchema(30) } : {
+              items: { ...section.config_schema.properties.items, items: ID_ONLY_ITEM_SCHEMA },
+            }),
+          },
+        } })),
+    })),
     capabilities: {
       ...UI_LAYOUT_CATALOG.capabilities,
       publish_now: process.env.UI_BUILDER_PUBLISH_ENABLED === "true",
+      // These remain false during FE preparation; draft storage is advertised independently.
+      component_tree: process.env.UI_BUILDER_PUBLISH_ENABLED === "true" && minimum !== null,
+      product_id_references: process.env.UI_BUILDER_PUBLISH_ENABLED === "true" && minimum !== null,
       scheduled_publish: process.env.UI_BUILDER_PUBLISH_ENABLED === "true" &&
         isUiLayoutSchedulingConfigured(),
     },
+    id_only_min_app_version: minimum,
   };
 }

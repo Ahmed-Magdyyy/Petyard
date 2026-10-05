@@ -3,6 +3,20 @@ import validator from "validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 import { normalizeProductType } from "../../shared/utils/productType.js";
 import { productTypeEnum } from "../../shared/constants/enums.js";
+import { parseProductBatchBody } from "./productBatch.contract.js";
+import { ApiError } from "../../shared/utils/ApiError.js";
+
+export const productBatchValidator = (req, res, next) => {
+  try {
+    res.locals.productBatchIds = parseProductBatchBody(req.body);
+    if (Object.keys(req.query).some((key) => key !== "warehouse")) throw new ApiError("Unknown product batch query parameter.", 400);
+    if (req.query.warehouse !== undefined &&
+      (typeof req.query.warehouse !== "string" || !/^[0-9a-f]{24}$/i.test(req.query.warehouse))) {
+      throw new ApiError("warehouse must be a valid MongoDB ID.", 400);
+    }
+    next();
+  } catch (error) { next(error); }
+};
 
 export const createProductValidator = [
   body("type")

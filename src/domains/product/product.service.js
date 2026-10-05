@@ -4,6 +4,7 @@ import {
   findProductIds,
   findProductById,
   findProductByIdWithRefs,
+  isProductActive,
   findProductBySlug,
   createProduct,
   deleteProductById,
@@ -72,6 +73,7 @@ import {
   processRestockSubscriptionsForProduct,
 } from "../restockSubscription/restockSubscription.service.js";
 import { completeWarehouseStocks } from "./productWarehouseStocks.js";
+import { projectProductMedia } from "../videos/public/productMedia.service.js";
 import {
   prepareProductStockRevisionGuard,
   translateStockRevisionSaveError,
@@ -122,6 +124,7 @@ export {
   deleteProductService,
   mapProductToCardDto,
   mapProductToDetailDto,
+  getFavoriteProductIdsForIdentity,
 };
 
 function normalizeLang(lang) {
@@ -1470,6 +1473,13 @@ async function getProductByIdService(
       (user.role === roles.ADMIN &&
         user.enabledControls?.includes(enabledControls.PRODUCTS)));
 
+  const allowInactive = includeAllLanguages ||
+    (user?.role === roles.MODERATOR && includeStockRevisions);
+  // Visibility must be checked even on a product-detail cache hit.
+  if (!allowInactive && !await isProductActive(id)) {
+    throw new ApiError(`No product found for this id: ${id}`, 404);
+  }
+
   if (warehouseId && !includeAllLanguages) {
     warehouseId = String(
       (await resolveEffectiveWarehouse(warehouseId)).effectiveWarehouse._id,
@@ -1484,7 +1494,7 @@ async function getProductByIdService(
 
     const product = await findProductByIdWithRefs(id);
 
-    if (!product) {
+    if (!product || (!allowInactive && product.isActive === false)) {
       throw new ApiError(`No product found for this id: ${id}`, 404);
     }
 
@@ -1522,6 +1532,7 @@ async function getProductByIdService(
     guestId,
   });
   const output = { ...result };
+  output.media = await projectProductMedia({ productId: id, images: output.images });
   output.isFavorite = favoriteProductIds.has(String(id));
   output.isRestockNotificationRequested = false;
 

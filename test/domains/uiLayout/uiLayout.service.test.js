@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createUiLayoutService } from "../../../src/domains/uiLayout/uiLayout.service.js";
 import { UiLayoutError } from "../../../src/domains/uiLayout/uiLayout.error.js";
 import { decodePageCursor } from "../../../src/domains/uiLayout/uiLayout.pagination.js";
+import { readFileSync } from "node:fs";
 
 const ACTOR = "507f1f77bcf86cd799439011";
 const SECTION = "b8e793a5-dcde-49a5-b207-e79cc24b6a88";
@@ -107,7 +108,7 @@ function content() {
   };
 }
 
-function fixture({ getOrSet } = {}) {
+function fixture({ getOrSet, getMinimumAppVersion, inspectReferences = async () => [] } = {}) {
   sequence = 0;
   objectSequence = 0;
   const models = {
@@ -118,12 +119,77 @@ function fixture({ getOrSet } = {}) {
   };
   let clock = new Date("2026-09-24T00:00:00Z");
   const service = createUiLayoutService({
-    ...models, inspectReferences: async () => [], uuid, now: () => clock,
+    ...models, inspectReferences, getMinimumAppVersion, uuid, now: () => clock,
     getOrSet: getOrSet ?? (async (_key, _ttl, fetchFresh) => fetchFresh()),
     startSession: async () => ({ withTransaction: async (fn) => fn(), endSession: async () => {} }),
   });
   return { service, models, setTime: (value) => { clock = new Date(value); } };
 }
+
+const idOnlyContent = () => JSON.parse(readFileSync(new URL("../../fixtures/uiLayout.idOnly.json", import.meta.url), "utf8")).content;
+
+test("prepared ID-only drafts and immutable previews work while new-format publication remains disabled", async () => {
+  const { service, models } = fixture({ getMinimumAppVersion: () => null });
+  const draft = await service.createDraft({ name: "Prepared", source: { type: "blank" }, actorId: ACTOR });
+  const body = { name: "Prepared", targeting: draft.targeting, content: idOnlyContent() };
+  const saved = await service.saveDraft({ id: draft.id, revision: 1, body, mutationId: KEY, actorId: ACTOR });
+  assert.deepEqual(saved.content, body.content);
+  assert.deepEqual(await service.saveDraft({ id: draft.id, revision: 1, body, mutationId: KEY, actorId: ACTOR }), saved);
+  const validation = await service.validateDraft({ id: draft.id, actorId: ACTOR });
+  assert.equal(validation.valid, false);
+  assert.ok(validation.errors.some((error) => error.code === "CLIENT_VERSION_UNSUPPORTED"));
+  const preview = await service.createPreview({ id: draft.id, revision: 2, actorId: ACTOR });
+  const response = await service.getPreview(preview.token);
+  assert.equal(response.data.product_reference_format, "id_only_v1");
+  assert.deepEqual(response.data.product_ids, body.content.product_ids);
+  assert.deepEqual(response.data.sections, body.content.sections);
+  const changed = structuredClone(body); changed.content.sections[0].data.title.en = "Edited";
+  await service.saveDraft({ id: draft.id, revision: 2, body: changed, mutationId: uuid(), actorId: ACTOR });
+  assert.deepEqual((await service.getPreview(preview.token)).data, response.data);
+  for (const operation of [
+    () => service.publish({ id: draft.id, revision: 3, changeNote: "Blocked", idempotencyKey: uuid(), actorId: ACTOR }),
+    () => service.schedule({ id: draft.id, revision: 3, changeNote: "Blocked", scheduledFor: "2026-09-24T00:03:00Z", idempotencyKey: uuid(), actorId: ACTOR }),
+  ]) await assert.rejects(operation(), (error) => error.code === "UI_LAYOUT_VALIDATION_FAILED" &&
+    error.details.some((detail) => detail.code === "CLIENT_VERSION_UNSUPPORTED"));
+  assert.equal(models.versionModel.rows.length, 0);
+  assert.equal(models.activeModel.rows.length, 0);
+  assert.equal((await service.getDraft(draft.id)).status, "draft");
+});
+
+test("new-profile publish, history, clone, scheduling and rollback preserve content and protect old clients", async () => {
+  let minimum = "2.0.0";
+  const { service, setTime } = fixture({ getMinimumAppVersion: () => minimum });
+  const first = await service.createDraft({ name: "Legacy fallback", source: { type: "blank" }, actorId: ACTOR });
+  await service.saveDraft({ id: first.id, revision: 1,
+    body: { name: "Fallback", targeting: first.targeting, content: content() }, actorId: ACTOR });
+  const fallback = await service.publish({ id: first.id, revision: 2, changeNote: "Fallback", idempotencyKey: uuid(), actorId: ACTOR });
+  const next = await service.createDraft({ name: "New format", source: { type: "published", version_id: fallback.version_id }, actorId: ACTOR });
+  const authored = idOnlyContent();
+  const saved = await service.saveDraft({ id: next.id, revision: 1, actorId: ACTOR,
+    body: { name: "New format", content: authored, targeting: { ...next.targeting, min_app_version: "2.0.0", priority: 100 } } });
+  assert.equal((await service.validateDraft({ id: next.id, actorId: ACTOR })).valid, true);
+  const published = await service.publish({ id: next.id, revision: 2, changeNote: "Blocks", idempotencyKey: uuid(), actorId: ACTOR });
+  assert.deepEqual((await service.getVersion(published.version_id)).content, authored);
+  for (const request of [{}, { appVersion: "1.9.0" }]) {
+    const old = await service.getPublic(request); assert.equal(old.version_id, fallback.version_id);
+    assert.equal(old.product_reference_format, undefined);
+  }
+  const live = await service.getPublic({ appVersion: "2.0.0" });
+  assert.equal(live.version_id, published.version_id);
+  assert.deepEqual(live.sections, authored.sections); assert.deepEqual(live.product_ids, authored.product_ids);
+  const clone = await service.createDraft({ name: "Copy", source: { type: "published", version_id: published.version_id }, actorId: ACTOR });
+  assert.deepEqual(clone.content, authored); assert.deepEqual(clone.targeting, saved.targeting);
+  await service.schedule({ id: clone.id, revision: 1, scheduledFor: "2026-09-24T00:03:00Z",
+    changeNote: "Scheduled blocks", idempotencyKey: uuid(), actorId: ACTOR });
+  setTime("2026-09-24T00:03:01Z");
+  const [due] = await service.dueSchedules(); await service.publishScheduledDraft(due);
+  const rollback = await service.rollback({ versionId: published.version_id,
+    changeNote: "Rollback blocks", idempotencyKey: uuid(), actorId: ACTOR });
+  assert.deepEqual((await service.getVersion(rollback.version_id)).content, authored);
+  assert.equal((await service.getPublic({ appVersion: "2.0.0" })).version_id, rollback.version_id);
+  minimum = null;
+  assert.equal((await service.getPublic({ appVersion: "2.0.0" })).version_id, fallback.version_id);
+});
 
 test("full PATCH protects revisions, deduplicates retries, and leaves public draft-free", async () => {
   const { service } = fixture();

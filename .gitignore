@@ -45,6 +45,7 @@ scripts/*
 !scripts/bunnyMediaCanary.js
 !scripts/setWarehouseStockZero.js
 !scripts/testUiLayoutMongoIntegration.js
+!scripts/testUiLayoutIdOnlyIntegration.js
 !scripts/normalizeProductWarehouseStocks.js
 !scripts/backfillSubstitutionReadiness.js
 !scripts/auditSubstitutionReadiness.js

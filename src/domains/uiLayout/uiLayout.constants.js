@@ -3,6 +3,10 @@ export const UI_LAYOUT_SCHEMA_VERSION = 1;
 export const UI_LAYOUT_MAX_BYTES = 256 * 1024;
 export const UI_LAYOUT_MAX_SECTIONS = 30;
 export const UI_LAYOUT_MAX_ITEMS = 20;
+export const UI_LAYOUT_PRODUCT_REFERENCE_FORMAT = "id_only_v1";
+export const UI_LAYOUT_MAX_BLOCK_DEPTH = 6;
+export const UI_LAYOUT_MAX_BLOCK_NODES = 50;
+export const UI_LAYOUT_MAX_BLOCK_CHILDREN = 12;
 
 export const NAVIGATION_ITEMS = Object.freeze({
   home: { label_key: "home", icon_key: "home" },
@@ -16,7 +20,7 @@ export const BUILTIN_SECTION_TYPES = Object.freeze([
   "banners", "services", "newArrivals", "collections", "shopByUserPet",
   "petProfileBanner", "recommended", "categories", "bestSeller", "brands",
 ]);
-export const CONFIGURABLE_SECTION_TYPES = Object.freeze(["admin_promo", "dynamic_section"]);
+export const CONFIGURABLE_SECTION_TYPES = Object.freeze(["admin_promo", "dynamic_section", "composed_section"]);
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const OBJECT_ID = /^[0-9a-f]{24}$/i;
 export const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;

@@ -1,0 +1,233 @@
+{
+  "name": "Custom Home blocks",
+  "targeting": {
+    "platforms": [
+      "android",
+      "ios"
+    ],
+    "locales": [
+      "en",
+      "ar"
+    ],
+    "country_codes": [],
+    "location_ids": [],
+    "min_app_version": null,
+    "max_app_version": null,
+    "audience": "all",
+    "priority": 0
+  },
+  "content": {
+    "product_reference_format": "id_only_v1",
+    "product_ids": [
+      "68cf1234567890abcdef1234",
+      "68cf1234567890abcdef1235",
+      "68cf1234567890abcdef1236"
+    ],
+    "sections": [
+      {
+        "id": "991c3977-f045-4a93-b07e-7b3b87f8ad31",
+        "section_type": "dynamic_section",
+        "position": 0,
+        "data": {
+          "enabled": true,
+          "title": {
+            "en": "Popular picks",
+            "ar": "اختيارات شائعة"
+          },
+          "display_type": "slider",
+          "card_style": "product_card",
+          "limit": 10,
+          "items": [
+            {
+              "id": "d72b5f6c-9a65-49c5-a7e3-9f5374fe06fb",
+              "product_id": "68cf1234567890abcdef1234"
+            },
+            {
+              "id": "d72b5f6c-9a65-49c5-a7e3-9f5374fe06fc",
+              "product_id": "68cf1234567890abcdef1235"
+            }
+          ]
+        }
+      },
+      {
+        "id": "991c3977-f045-4a93-b07e-7b3b87f8ad32",
+        "section_type": "composed_section",
+        "position": 1,
+        "data": {
+          "enabled": true,
+          "root": {
+            "id": "c8beb25c-83f5-4050-bb56-548fa4e6a402",
+            "type": "column",
+            "props": {
+              "gap": "md",
+              "padding": "md"
+            },
+            "children": [
+              {
+                "id": "fb97f598-d1d3-4a37-8776-6b1c88f03c66",
+                "type": "image",
+                "props": {
+                  "image_url": "https://media.petyardstores.com/ui-builder/example-banner.webp",
+                  "aspect_ratio": "16:9",
+                  "fit": "cover",
+                  "border_radius": "md",
+                  "alt_text": {
+                    "en": "Cat essentials",
+                    "ar": "مستلزمات القطط"
+                  }
+                }
+              },
+              {
+                "id": "44f90743-b7a7-4515-af4e-a2e91e40bb09",
+                "type": "text",
+                "props": {
+                  "value": {
+                    "en": "Everything for your cat",
+                    "ar": "كل ما تحتاجه قطتك"
+                  },
+                  "style": "title_medium",
+                  "align": "start",
+                  "max_lines": 3,
+                  "color": "ink"
+                }
+              },
+              {
+                "id": "4c9884c0-e8ba-42e2-bde2-63c703bce084",
+                "type": "row",
+                "props": {
+                  "preset": "two_columns",
+                  "gap": "sm",
+                  "padding": "none"
+                },
+                "children": [
+                  {
+                    "id": "4c9884c0-e8ba-42e2-bde2-63c703bce085",
+                    "type": "catalog_list",
+                    "props": {
+                      "display_type": "grid",
+                      "card_style": "product_card",
+                      "columns_per_row": 2,
+                      "limit": 10,
+                      "items": [
+                        {
+                          "id": "d72b5f6c-9a65-49c5-a7e3-9f5374fe06fd",
+                          "product_id": "68cf1234567890abcdef1234"
+                        },
+                        {
+                          "id": "d72b5f6c-9a65-49c5-a7e3-9f5374fe06fe",
+                          "product_id": "68cf1234567890abcdef1235"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "4c9884c0-e8ba-42e2-bde2-63c703bce086",
+                    "type": "column",
+                    "props": {
+                      "gap": "sm",
+                      "padding": "none"
+                    },
+                    "children": [
+                      {
+                        "id": "4c9884c0-e8ba-42e2-bde2-63c703bce087",
+                        "type": "catalog_list",
+                        "props": {
+                          "display_type": "slider",
+                          "card_style": "product_card",
+                          "limit": 10,
+                          "items": [
+                            {
+                              "id": "d72b5f6c-9a65-49c5-a7e3-9f5374fe06ff",
+                              "name": {
+                                "en": "Example brand",
+                                "ar": "علامة تجارية تجريبية"
+                              },
+                              "image_url": "https://media.petyardstores.com/ui-builder/example-brand.webp",
+                              "action": {
+                                "type": "brand",
+                                "value": "68cf1234567890abcdef1237"
+                              }
+                            },
+                            {
+                              "id": "d72b5f6c-9a65-49c5-a7e3-9f5374fe0700",
+                              "name": {
+                                "en": "Cats",
+                                "ar": "القطط"
+                              },
+                              "image_url": "https://media.petyardstores.com/ui-builder/example-category.webp",
+                              "action": {
+                                "type": "category",
+                                "value": "68cf1234567890abcdef1238"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "fb97f598-d1d3-4a37-8776-6b1c88f03c67",
+                "type": "image",
+                "props": {
+                  "image_url": "https://media.petyardstores.com/ui-builder/example-second-banner.webp",
+                  "aspect_ratio": "4:3",
+                  "fit": "contain",
+                  "border_radius": "sm",
+                  "alt_text": {
+                    "en": "More treats",
+                    "ar": "المزيد من المكافآت"
+                  }
+                }
+              },
+              {
+                "id": "b6a23fb3-b048-40e1-85a4-40b92ef06cd1",
+                "type": "divider",
+                "props": {
+                  "color": "muted"
+                }
+              },
+              {
+                "id": "b6a23fb3-b048-40e1-85a4-40b92ef06cd2",
+                "type": "spacer",
+                "props": {
+                  "size": "sm"
+                }
+              },
+              {
+                "id": "b6a23fb3-b048-40e1-85a4-40b92ef06cd3",
+                "type": "button",
+                "props": {
+                  "label": {
+                    "en": "View a special pick",
+                    "ar": "شاهد اختياراً مميزاً"
+                  },
+                  "variant": "primary",
+                  "size": "medium",
+                  "action": {
+                    "type": "product",
+                    "value": "68cf1234567890abcdef1236"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "navigation": {
+      "items": [
+        {
+          "key": "home",
+          "label_key": "home",
+          "icon_key": "home",
+          "destination": "home",
+          "order": 0,
+          "enabled": true
+        }
+      ]
+    }
+  },
+  "change_note": "Prepared product-ID and block format; draft example only."
+}

@@ -275,6 +275,7 @@ export async function findActivePromotionsForProducts(products = [], now = new D
 
   const productIds = [];
   const subcategoryIds = [];
+  const subcategoryAncestors = new Map();
   const brandIds = [];
 
   for (const p of list) {
@@ -283,10 +284,11 @@ export async function findActivePromotionsForProducts(products = [], now = new D
     }
     const subId = p?.subcategory?._id || p?.subcategory;
     if (subId) {
-      subcategoryIds.push(subId);
-      // Walk up ancestors in memory — no extra DB calls
-      for (const aid of getAncestorIdsFromMap(subId, parentMap)) {
-        subcategoryIds.push(aid);
+      const key = String(subId);
+      if (!subcategoryAncestors.has(key)) {
+        const ancestors = [key, ...getAncestorIdsFromMap(subId, parentMap)];
+        subcategoryAncestors.set(key, new Set(ancestors));
+        subcategoryIds.push(...ancestors);
       }
     }
     const brandId = p?.brand?._id || p?.brand;
@@ -367,15 +369,11 @@ export async function findActivePromotionsForProducts(products = [], now = new D
       if (key && !promoBySubcategoryId.has(key)) {
         promoBySubcategoryId.set(key, promo);
       }
-      // Also map all child subcategories to this promotion
-      // so products under child subcategories get the discount
-      if (key) {
-        const childIds = await getSubcategoryChildrenIds(id);
-        for (const childId of childIds) {
-          const childKey = String(childId);
-          if (!promoBySubcategoryId.has(childKey)) {
-            promoBySubcategoryId.set(childKey, promo);
-          }
+      // Match only requested descendants using the parent map already loaded above.
+      // Preserve first-collection precedence without recursive database queries.
+      for (const [subId, ancestors] of subcategoryAncestors) {
+        if (key && ancestors.has(key) && !promoBySubcategoryId.has(subId)) {
+          promoBySubcategoryId.set(subId, promo);
         }
       }
     }

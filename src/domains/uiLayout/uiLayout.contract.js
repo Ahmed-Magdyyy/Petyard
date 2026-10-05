@@ -1,129 +1,31 @@
-import { isIP } from "node:net";
-
 import {
   UI_LAYOUT_MAX_BYTES, UI_LAYOUT_MAX_SECTIONS, UI_LAYOUT_MAX_ITEMS,
   NAVIGATION_ITEMS, BUILTIN_SECTION_TYPES, CONFIGURABLE_SECTION_TYPES,
   UUID, OBJECT_ID, SEMVER, LOCALE, COUNTRY, PROMO_LAYOUTS, PROMO_VISIBILITY,
-  DISPLAY_TYPES, CARD_STYLES, PLATFORMS, AUDIENCES,
+  DISPLAY_TYPES, CARD_STYLES, PLATFORMS, AUDIENCES, UI_LAYOUT_PRODUCT_REFERENCE_FORMAT,
 } from "./uiLayout.constants.js";
 import { compareVersions } from "./uiLayout.targeting.js";
+import {
+  object, add, keys, string, localizedText, bool, integer, oneOf, uuid, color,
+  safeHttpsUrl, action,
+} from "./uiLayout.fields.js";
+import { inspectCatalogItems, inspectComposedSection } from "./uiLayout.blocks.js";
+import { inspectProductManifest, canonicalizeProductReferences } from "./uiLayout.productReferences.js";
+
+export { isPublicHttpsUrl } from "./uiLayout.fields.js";
 
 const SECTION_TYPES = new Set([...BUILTIN_SECTION_TYPES, ...CONFIGURABLE_SECTION_TYPES]);
-const COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
-function object(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value) &&
-    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
-}
-
-function add(errors, path, code, message) {
-  errors.push({ path, code, message });
-}
-
-function keys(value, allowed, path, errors, required = []) {
-  if (!object(value)) {
-    add(errors, path, "INVALID_OBJECT", "Must be an object.");
-    return false;
-  }
-  for (const key of Object.keys(value)) {
-    if (!allowed.includes(key)) add(errors, `${path}.${key}`, "UNKNOWN_FIELD", "Unknown field.");
-  }
-  for (const key of required) {
-    if (!Object.hasOwn(value, key)) add(errors, `${path}.${key}`, "REQUIRED", "Required field.");
-  }
-  return true;
-}
-
-function string(value, path, errors, { max, required = false } = {}) {
-  if (value === undefined && !required) return;
-  if (typeof value !== "string" || (required && !value.trim()) || value.length > max) {
-    add(errors, path, "INVALID_STRING", `Must be a ${required ? "non-empty " : ""}string of at most ${max} characters.`);
-  }
-}
-
-function bool(value, path, errors, required = false) {
-  if (value === undefined && !required) return;
-  if (typeof value !== "boolean") add(errors, path, "INVALID_BOOLEAN", "Must be a boolean.");
-}
-
-function integer(value, path, errors, min, max, required = false) {
-  if (value === undefined && !required) return;
-  if (!Number.isSafeInteger(value) || value < min || value > max) {
-    add(errors, path, "INVALID_INTEGER", `Must be an integer from ${min} to ${max}.`);
-  }
-}
-
-function oneOf(value, allowed, path, errors, required = false) {
-  if (value === undefined && !required) return;
-  if (!allowed.has(value)) add(errors, path, "INVALID_ENUM", `Must be one of: ${[...allowed].join(", ")}.`);
-}
-
-function uuid(value, path, errors) {
-  if (typeof value !== "string" || !UUID.test(value)) {
-    add(errors, path, "INVALID_UUID", "Must be a UUID.");
-  }
-}
-
-function color(value, path, errors) {
-  if (value !== undefined && (typeof value !== "string" || !COLOR.test(value))) {
-    add(errors, path, "INVALID_COLOR", "Must be #RRGGBB or #AARRGGBB.");
-  }
-}
-
-export function isPublicHttpsUrl(value) {
-  if (typeof value !== "string") return false;
-  try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    if (url.protocol !== "https:" || url.username || url.password || url.port ||
-      !host.includes(".") || host === "localhost" || host.endsWith(".local") ||
-      isIP(host) || /^(?:0|10|127|169\.254|172\.(?:1[6-9]|2\d|3[01])|192\.168)\./.test(host)) {
-      return false;
-    }
-    return true;
-  } catch { return false; }
-}
-
-function safeHttpsUrl(value, path, errors, required = false) {
-  if (value === undefined && !required) return;
-  if (!isPublicHttpsUrl(value)) {
-    add(errors, path, "INVALID_HTTPS_URL", "Must be a public HTTPS URL.");
-  }
-}
-
-function action(value, path, errors, required = false) {
-  if (value === undefined && !required) return;
-  if (!keys(value, ["type", "value"], path, errors, ["type", "value"])) return;
-  oneOf(value.type, new Set(["product", "category", "brand", "screen", "url"]), `${path}.type`, errors, true);
-  string(value.value, `${path}.value`, errors, { max: 2048, required: true });
-  if (["product", "category", "brand"].includes(value.type) &&
-    typeof value.value === "string" && !OBJECT_ID.test(value.value)) {
-    add(errors, `${path}.value`, "INVALID_REFERENCE_ID", "Must be a MongoDB ObjectId.");
-  }
-  if (value.type === "screen" && value.value !== "add_pet_profile") {
-    add(errors, `${path}.value`, "INVALID_SCREEN", "Only add_pet_profile is supported.");
-  }
-  if (value.type === "url") {
-    safeHttpsUrl(value.value, `${path}.value`, errors, true);
-    try {
-      const host = new URL(value.value).hostname.toLowerCase();
-      if (host !== "petyardstores.com" && !host.endsWith(".petyardstores.com")) {
-        add(errors, `${path}.value`, "URL_HOST_NOT_APPROVED", "Only approved PetYard hosts are supported.");
-      }
-    } catch { /* INVALID_HTTPS_URL was already recorded. */ }
-  }
-}
-
-function promo(data, path, errors, publish) {
+function promo(data, path, errors, publish, localized) {
   const allowed = ["enabled", "visibility", "layout", "image_url", "title", "subtitle", "cta_text",
     "background_color", "title_color", "subtitle_color", "cta_background", "cta_color", "action"];
   if (!keys(data, allowed, path, errors)) return;
   bool(data.enabled, `${path}.enabled`, errors, publish);
   oneOf(data.visibility, PROMO_VISIBILITY, `${path}.visibility`, errors, publish);
   oneOf(data.layout, PROMO_LAYOUTS, `${path}.layout`, errors, publish);
-  string(data.title, `${path}.title`, errors, { max: 80, required: publish });
-  string(data.subtitle, `${path}.subtitle`, errors, { max: 180 });
-  string(data.cta_text, `${path}.cta_text`, errors, { max: 30 });
+  localizedText(data.title, `${path}.title`, errors, { max: 80, required: publish, localized });
+  localizedText(data.subtitle, `${path}.subtitle`, errors, { max: 180, localized });
+  localizedText(data.cta_text, `${path}.cta_text`, errors, { max: 30, localized });
   safeHttpsUrl(data.image_url, `${path}.image_url`, errors);
   if (publish && ["split", "full_banner"].includes(data.layout) && !data.image_url) {
     add(errors, `${path}.image_url`, "IMAGE_REQUIRED", "This layout needs an image.");
@@ -134,13 +36,13 @@ function promo(data, path, errors, publish) {
   action(data.action, `${path}.action`, errors, publish && Boolean(data.cta_text));
 }
 
-function dynamic(data, path, errors, publish) {
+function dynamic(data, path, errors, publish, localized) {
   const allowed = ["enabled", "title", "subtitle", "display_type", "card_style",
     "columns_per_row", "limit", "show_see_all", "background_color", "action", "items"];
   if (!keys(data, allowed, path, errors)) return;
   bool(data.enabled, `${path}.enabled`, errors, publish);
-  string(data.title, `${path}.title`, errors, { max: 80, required: publish });
-  string(data.subtitle, `${path}.subtitle`, errors, { max: 180 });
+  localizedText(data.title, `${path}.title`, errors, { max: 80, required: publish, localized });
+  localizedText(data.subtitle, `${path}.subtitle`, errors, { max: 180, localized });
   oneOf(data.display_type, DISPLAY_TYPES, `${path}.display_type`, errors, publish);
   oneOf(data.card_style, CARD_STYLES, `${path}.card_style`, errors, publish);
   integer(data.columns_per_row, `${path}.columns_per_row`, errors, 1, 4);
@@ -148,6 +50,7 @@ function dynamic(data, path, errors, publish) {
   bool(data.show_see_all, `${path}.show_see_all`, errors);
   color(data.background_color, `${path}.background_color`, errors);
   action(data.action, `${path}.action`, errors, publish && data.show_see_all === true);
+  if (localized) return inspectCatalogItems(data.items, `${path}.items`, errors, { publish });
   if (data.items === undefined && !publish) return;
   if (!Array.isArray(data.items) || data.items.length > UI_LAYOUT_MAX_ITEMS ||
     (publish && data.items.length < 1)) {
@@ -215,10 +118,24 @@ function fab(value, errors) {
 
 export function inspectLayoutContent(value, { publish = false } = {}) {
   const errors = [];
-  if (!keys(value, ["sections", "navigation", "floating_action_button"], "content", errors,
+  if (!keys(value, ["sections", "navigation", "floating_action_button", "product_reference_format", "product_ids"], "content", errors,
     publish ? ["sections", "navigation"] : [])) return { valid: false, errors, content: null };
-  if (Buffer.byteLength(JSON.stringify(value), "utf8") > UI_LAYOUT_MAX_BYTES) {
+  const localized = value.product_reference_format === UI_LAYOUT_PRODUCT_REFERENCE_FORMAT;
+  if (value.product_reference_format !== undefined && !localized) {
+    add(errors, "content.product_reference_format", "UNSUPPORTED_PRODUCT_REFERENCE_FORMAT", "Only id_only_v1 is supported.");
+  }
+  if (!localized && value.product_ids !== undefined) {
+    add(errors, "content.product_ids", "UNSUPPORTED_PRODUCT_REFERENCE_FORMAT", "product_ids requires id_only_v1.");
+  }
+  let size;
+  try { size = Buffer.byteLength(JSON.stringify(value), "utf8"); }
+  catch {
+    add(errors, "content", "INVALID_OBJECT", "Must be bounded JSON content.");
+    return { valid: false, errors, content: null };
+  }
+  if (size > UI_LAYOUT_MAX_BYTES) {
     add(errors, "content", "PAYLOAD_TOO_LARGE", "Layout exceeds 256 KiB.");
+    return { valid: false, errors, content: null };
   }
   if (value.sections !== undefined) {
     if (!Array.isArray(value.sections) || value.sections.length > UI_LAYOUT_MAX_SECTIONS ||
@@ -233,8 +150,9 @@ export function inspectLayoutContent(value, { publish = false } = {}) {
         const path = `content.sections[${index}]`;
         if (!keys(section, ["id", "section_type", "key", "name", "position", "data"], path, errors)) return;
         uuid(section.id, `${path}.id`, errors);
-        if (ids.has(section.id)) add(errors, `${path}.id`, "DUPLICATE_ID", "Section ID must be unique.");
-        ids.add(section.id);
+        const sectionIdentity = localized && typeof section.id === "string" ? section.id.toLowerCase() : section.id;
+        if (ids.has(sectionIdentity)) add(errors, `${path}.id`, "DUPLICATE_ID", "Section ID must be unique.");
+        ids.add(sectionIdentity);
         if (!SECTION_TYPES.has(section.section_type)) add(errors, `${path}.section_type`, "UNSUPPORTED_SECTION", "Section type is not supported by the customer app.");
         if (BUILTIN_SECTION_TYPES.includes(section.section_type)) {
           if (builtins.has(section.section_type)) add(errors, `${path}.section_type`, "DUPLICATE_BUILTIN", "Built-in section cannot repeat.");
@@ -245,20 +163,29 @@ export function inspectLayoutContent(value, { publish = false } = {}) {
           if (sectionKeys.has(section.key)) add(errors, `${path}.key`, "DUPLICATE_KEY", "Section key must be unique.");
           sectionKeys.add(section.key);
         }
-        string(section.name, `${path}.name`, errors, { max: 120, required: publish });
+        string(section.name, `${path}.name`, errors, { max: 120, required: publish && !localized });
         integer(section.position, `${path}.position`, errors, 0, UI_LAYOUT_MAX_SECTIONS - 1, true);
         if (positions.has(section.position)) add(errors, `${path}.position`, "DUPLICATE_POSITION", "Position must be unique.");
         positions.add(section.position);
+        if (publish && localized && section.position !== index) {
+          add(errors, `${path}.position`, "NON_CONTIGUOUS_POSITION", "New-profile sections must be ordered with contiguous positions starting at zero.");
+        }
         if (!object(section.data)) add(errors, `${path}.data`, "INVALID_OBJECT", "Must be an object.");
         else if (BUILTIN_SECTION_TYPES.includes(section.section_type) && Object.keys(section.data).length) {
           add(errors, `${path}.data`, "BUILTIN_DATA_UNSUPPORTED", "Built-in section data must be empty.");
-        } else if (section.section_type === "admin_promo") promo(section.data, `${path}.data`, errors, publish);
-        else if (section.section_type === "dynamic_section") dynamic(section.data, `${path}.data`, errors, publish);
+        } else if (section.section_type === "admin_promo") promo(section.data, `${path}.data`, errors, publish, localized);
+        else if (section.section_type === "dynamic_section") dynamic(section.data, `${path}.data`, errors, publish, localized);
+        else if (section.section_type === "composed_section") {
+          if (!localized) add(errors, `${path}.section_type`, "UNSUPPORTED_PRODUCT_REFERENCE_FORMAT", "Custom blocks require id_only_v1.");
+          else inspectComposedSection(section.data, `${path}.data`, errors, { publish });
+        }
       });
     }
   }
   if (value.navigation !== undefined) navigation(value.navigation, errors, publish);
   fab(value.floating_action_button, errors);
+  // Only traverse a structurally valid, bounded document.
+  if (!errors.length && localized) inspectProductManifest(value, errors);
   if (errors.length) return { valid: false, errors, content: null };
   const content = structuredClone(value);
   if (Array.isArray(content.sections)) {
@@ -269,6 +196,7 @@ export function inspectLayoutContent(value, { publish = false } = {}) {
     content.navigation.items.sort((a, b) => a.order - b.order);
     content.navigation.items.forEach((item, order) => { item.order = order; });
   }
+  if (localized) canonicalizeProductReferences(content);
   return { valid: true, errors: [], content };
 }
 
@@ -309,5 +237,10 @@ export function inspectTargeting(value) {
 
 export function publicLayoutContent(content) {
   // The setting is saved with drafts/versions but the current Flutter app cannot apply it.
-  return { sections: content.sections, navigation: content.navigation };
+  return {
+    sections: content.sections, navigation: content.navigation,
+    ...(content.product_reference_format === UI_LAYOUT_PRODUCT_REFERENCE_FORMAT ? {
+      product_reference_format: content.product_reference_format, product_ids: content.product_ids,
+    } : {}),
+  };
 }

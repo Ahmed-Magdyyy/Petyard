@@ -1,5 +1,6 @@
 import asyncHandler from "express-async-handler";
 import { ApiError } from "../../shared/utils/ApiError.js";
+import { getProductsBatchService } from "./productBatch.service.js";
 import {
   enabledControls,
   roles,
@@ -135,6 +136,7 @@ export function getStaffStockRevisionAccess(req) {
 }
 
 export const getProduct = asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   const guestId = req.user ? null : getGuestId(req);
   const revisionAccess = getStaffStockRevisionAccess(req);
   const data = await getProductByIdService(
@@ -149,6 +151,17 @@ export const getProduct = asyncHandler(async (req, res) => {
     },
   );
 
+  res.status(200).json({ data });
+});
+
+export const getProductsBatch = asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  const revisionAccess = getStaffStockRevisionAccess(req);
+  const data = await getProductsBatchService(res.locals.productBatchIds, {
+    lang: req.lang, user: req.user || null, warehouseId: req.query.warehouse || null,
+    guestId: req.user ? null : getGuestId(req), includeStockRevisions: revisionAccess.allowed,
+    stockRevisionWarehouseScope: revisionAccess.warehouseScope,
+  });
   res.status(200).json({ data });
 });
 

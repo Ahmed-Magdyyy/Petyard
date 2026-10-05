@@ -29,6 +29,7 @@ import { getFirebaseMessaging } from "../config/firebase.js";
 import cors from "cors";
 import { egyptTimezoneReplacer } from "../shared/utils/egyptTimezone.js";
 import { validateMediaConfiguration } from "../shared/utils/mediaConfig.js";
+import { productBatchBodyParser } from "../domains/product/productBatch.middleware.js";
 
 validateMediaConfiguration();
 
@@ -36,6 +37,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // middlewares
 app.set("json replacer", egyptTimezoneReplacer);
+app.use("/api/v1/products/batch", productBatchBodyParser);
 app.use(express.urlencoded({ extended: false, limit: "5mb" }));
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(__dirname, "uploads")));

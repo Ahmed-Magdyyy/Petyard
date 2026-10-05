@@ -3,26 +3,9 @@ import { ProductModel } from "../product/product.model.js";
 import { CategoryModel } from "../category/category.model.js";
 import { BrandModel } from "../brand/brand.model.js";
 import { UiLayoutAssetModel } from "./uiLayout.model.js";
-
-function collect(content) {
-  const references = [];
-  for (const [sectionIndex, section] of content.sections.entries()) {
-    const path = `content.sections[${sectionIndex}].data`;
-    if (section.section_type === "admin_promo") {
-      if (section.data.image_url) references.push({ type: "asset", value: section.data.image_url, path: `${path}.image_url` });
-      if (section.data.action) references.push({ ...section.data.action, path: `${path}.action.value` });
-    }
-    if (section.section_type === "dynamic_section") {
-      if (section.data.action) references.push({ ...section.data.action, path: `${path}.action.value` });
-      for (const [itemIndex, item] of section.data.items.entries()) {
-        const itemPath = `${path}.items[${itemIndex}]`;
-        if (item.image_url) references.push({ type: "asset", value: item.image_url, path: `${itemPath}.image_url` });
-        if (item.action) references.push({ ...item.action, path: `${itemPath}.action.value` });
-      }
-    }
-  }
-  return references;
-}
+import { collectLayoutReferences } from "./uiLayout.productReferences.js";
+import { UI_LAYOUT_PRODUCT_REFERENCE_FORMAT } from "./uiLayout.constants.js";
+import { PRODUCT_BATCH_QUERY_TIMEOUT_MS } from "../product/productBatch.constants.js";
 
 export async function inspectLayoutReferences(content, {
   productModel = ProductModel,
@@ -32,10 +15,44 @@ export async function inspectLayoutReferences(content, {
   session,
 } = {}) {
   const errors = [];
-  const references = collect(content);
+  const references = collectLayoutReferences(content);
   const unique = new Map(references.map((entry) => [`${entry.type}:${entry.value}`, entry]));
   const existence = new Map();
+  const idOnly = content.product_reference_format === UI_LAYOUT_PRODUCT_REFERENCE_FORMAT;
+  if (idOnly) {
+    const values = (type) => [...unique.values()].filter((entry) => entry.type === type).map((entry) => entry.value);
+    const find = (model, filter, selection) => model.find(filter).select(selection)
+      .session(session ?? null).maxTimeMS(PRODUCT_BATCH_QUERY_TIMEOUT_MS).lean();
+    // Use bounded set queries, sequentially within the transaction, rather than one lookup per block.
+    for (const [type, model] of [["product", productModel], ["category", categoryModel], ["brand", brandModel]]) {
+      const ids = values(type);
+      if (!ids.length) continue;
+      const rows = await find(model, { _id: { $in: ids }, ...(type === "product" ? { isActive: true } : {}) }, "_id");
+      const available = new Set(rows.map((row) => String(row._id)));
+      ids.forEach((id) => existence.set(`${type}:${id}`, available.has(id)));
+    }
+    const urls = values("asset");
+    if (urls.length) {
+      const assets = await find(assetModel, { url: { $in: urls }, status: "ready" }, "url");
+      const ready = new Set(assets.map((asset) => asset.url));
+      const pending = urls.filter((url) => !ready.has(url));
+      if (pending.length) {
+        const products = await find(productModel, { isActive: true, $or: [
+          { "images.url": { $in: pending } }, { "variants.images.url": { $in: pending } },
+        ] }, "images.url variants.images.url");
+        for (const product of products) {
+          for (const image of [...(product.images ?? []), ...(product.variants ?? []).flatMap((variant) => variant.images ?? [])]) ready.add(image.url);
+        }
+        for (const model of [categoryModel, brandModel]) {
+          const rows = await find(model, { "image.url": { $in: pending } }, "image.url");
+          rows.forEach((row) => ready.add(row.image?.url));
+        }
+      }
+      urls.forEach((url) => existence.set(`asset:${url}`, ready.has(url)));
+    }
+  }
   for (const [key, entry] of unique) {
+    if (existence.has(key)) continue;
     if (entry.type === "screen" || entry.type === "url") {
       existence.set(key, true);
       continue;
@@ -80,7 +97,8 @@ export async function inspectLayoutReferences(content, {
     if (!existence.get(`${entry.type}:${entry.value}`)) {
       errors.push({
         path: entry.path,
-        code: entry.type === "asset" ? "ASSET_NOT_READY" : "REFERENCE_NOT_PUBLIC",
+        code: entry.type === "asset" ? "ASSET_NOT_READY" :
+          idOnly && entry.type === "product" ? "PRODUCT_REFERENCE_UNAVAILABLE" : "REFERENCE_NOT_PUBLIC",
         message: entry.type === "asset"
           ? "Image must be a ready UI Builder asset."
           : "Referenced catalog item is missing or unavailable.",
