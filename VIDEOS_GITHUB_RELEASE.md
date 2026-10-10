@@ -21,6 +21,31 @@ the restricted sandbox could not connect to the test servers.
 No real provider allocation, notification send, production database write,
 server restart or Bunny dashboard change was performed for this release.
 
+### VPS deployment report and packaging corrections
+
+The subsequent VPS-agent report states that `dded5bb` is live: all 15 model
+indexes were initialized and checked; MongoDB/Redis and encrypted settings
+validated; the API/provider/outbox workers remained online for over five
+minutes; HTTPS listing, authentication rejection, CORS, body limits and signed
+webhook validation passed. The reported server regression total is 774 passed,
+zero failures, five external opt-in skips. These are reported server results,
+not a new independent production acceptance run from the laptop.
+
+The report identified two release packaging errors. The three omitted optional
+peer dependency entries are restored in `package-lock.json` to match the server
+repair, without changing dependency versions. The Postman checker now uses its
+committed `postman/videos-route-inventory.json` instead of an ignored authoring
+file. Pull the corrective commit as well; preserve the server's CORS edit and
+its original patch/stash. The server lockfile repair should match the corrected
+GitHub lockfile after this update.
+
+Bunny's webhook URL remains unconfigured because the available Stream keys
+cannot authorize account/library-management requests. A locally signed test
+proved endpoint signature handling; it did not prove Bunny-origin delivery.
+Authenticated staff, real upload/playback/cleanup, and frontend/device acceptance
+remain open. No fresh provider-media or notification test approval is implied
+by this packaging correction.
+
 ## Enabled encrypted settings
 
 The tracked `.env` contains encrypted values for these settings, all set to

@@ -20,6 +20,9 @@ node postman/check-videos-collection.mjs
 
 It checks route and query coverage, variable references, request bodies against backend validators, response JSON/envelopes, all event shapes, and the validated 17,100 ms native watch example with one qualified view. It performs no HTTP requests, database writes, provider allocations, or notification sends. Full frontend/browser/device integration and deployed webhook/worker acceptance remain separate.
 
+The route inventory is committed as `postman/videos-route-inventory.json`, so
+the checker runs after a normal clone/pull without local handoff-authoring files.
+
 Verified on 2026-10-10: the local contract checker passed, and a full read-back of the saved Postman collection matched all 62 requests and 354 response examples. The comparison checked folder structure, descriptions, methods, URLs, headers, query defaults, authorization, JSON bodies, multipart fields, response status/body/headers, saved request context, and variable values. This verifies the stored documentation and examples; it is not a live endpoint or frontend integration test.
 
 The subsequent field-provenance audit corrected the draft-position success example to `{data:{videoId,draftPosition,revision}}`; it is a summary, not a full Video. The checker now compares that example against the actual editorial service result with an isolated repository stub. The corrected example and API-only editorial folder description were read back successfully from Postman. The handoff additionally documents active-generation session identity, browser transport constraints, and field origin/reuse/storage rules. Its checks cover all 53 frontend routes, 31 editorial schema field names, and 108 distinct response-example field names. Field-name coverage supplements source review; it does not independently prove every semantic rule or a live frontend integration.

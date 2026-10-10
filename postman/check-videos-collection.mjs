@@ -19,7 +19,7 @@ assert.equal(requests.length, 62);
 const rawUrl = request => typeof request.url === 'string' ? request.url : request.url.raw;
 const canonical = url => url.replace('{{BASE_URL}}', '').split('?')[0]
   .replace(/\{\{[^}]+\}\}/g, ':param').replace(/:[A-Za-z][A-Za-z0-9_]*/g, ':param');
-const routes = JSON.parse(fs.readFileSync('scripts/videos-handoff-drafts-20261010/route-inventory.json', 'utf8'));
+const routes = JSON.parse(fs.readFileSync(new URL('./videos-route-inventory.json', import.meta.url), 'utf8'));
 for (const route of routes) assert(requests.some(({ request: r }) => r.method === route.method && canonical(rawUrl(r)) === canonical(route.url)), `Missing ${route.method} ${route.url}`);
 assert(requests.some(i => rawUrl(i.request).endsWith('/integrations/bunny-stream/webhook')));
 

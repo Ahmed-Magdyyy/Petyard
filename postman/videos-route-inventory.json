@@ -1,0 +1,320 @@
+[
+  {
+    "area": "Public editorial/customer",
+    "method": "GET",
+    "url": "/api/v1/videos/youtube",
+    "source": "src/domains/videos/public/publicVideo.routes.js"
+  },
+  {
+    "area": "Public editorial/customer",
+    "method": "GET",
+    "url": "/api/v1/videos/feed",
+    "source": "src/domains/videos/public/publicVideo.routes.js"
+  },
+  {
+    "area": "Public editorial/customer",
+    "method": "GET",
+    "url": "/api/v1/videos/saved",
+    "source": "src/domains/videos/public/publicVideo.routes.js"
+  },
+  {
+    "area": "Public editorial/customer",
+    "method": "PUT",
+    "url": "/api/v1/videos/saved/:videoId",
+    "source": "src/domains/videos/public/publicVideo.routes.js"
+  },
+  {
+    "area": "Public editorial/customer",
+    "method": "DELETE",
+    "url": "/api/v1/videos/saved/:videoId",
+    "source": "src/domains/videos/public/publicVideo.routes.js"
+  },
+  {
+    "area": "Public editorial/customer",
+    "method": "POST",
+    "url": "/api/v1/videos/:id/player-errors",
+    "source": "src/domains/videos/public/publicVideo.routes.js"
+  },
+  {
+    "area": "Public editorial/customer",
+    "method": "GET",
+    "url": "/api/v1/videos/:id/playback",
+    "source": "src/domains/videos/public/publicVideo.routes.js"
+  },
+  {
+    "area": "Public editorial/customer",
+    "method": "GET",
+    "url": "/api/v1/videos/:id",
+    "source": "src/domains/videos/public/publicVideo.routes.js"
+  },
+  {
+    "area": "Public Product playback",
+    "method": "GET",
+    "url": "/api/v1/product-videos/:id/playback",
+    "source": "src/domains/videos/public/publicProductPlayback.routes.js"
+  },
+  {
+    "area": "Analytics/customer and staff",
+    "method": "GET",
+    "url": "/api/v1/videos/analytics/reports/daily",
+    "source": "src/domains/videos/analytics/videoAnalytics.routes.js"
+  },
+  {
+    "area": "Analytics/customer and staff",
+    "method": "POST",
+    "url": "/api/v1/videos/analytics/events",
+    "source": "src/domains/videos/analytics/videoAnalytics.routes.js"
+  },
+  {
+    "area": "Analytics/customer and staff",
+    "method": "POST",
+    "url": "/api/v1/videos/analytics/playback-sessions",
+    "source": "src/domains/videos/analytics/videoAnalytics.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "GET",
+    "url": "/api/v1/videos/admin",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "PATCH",
+    "url": "/api/v1/videos/admin/positions",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "GET",
+    "url": "/api/v1/videos/admin/:id",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "GET",
+    "url": "/api/v1/videos/admin/:id/preview",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/upload-session",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/replacement-upload-session",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "GET",
+    "url": "/api/v1/videos/admin/:id/replacement-upload-session",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/replacement-upload-sessions/:sessionId/authorization",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/replacement-upload-sessions/:sessionId/recovery",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "DELETE",
+    "url": "/api/v1/videos/admin/:id/replacement-upload-sessions/:sessionId",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "GET",
+    "url": "/api/v1/videos/admin/:id/upload-session",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/upload-sessions/:sessionId/authorization",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/upload-sessions/:sessionId/recovery",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "DELETE",
+    "url": "/api/v1/videos/admin/:id/upload-sessions/:sessionId",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/submit",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/approve",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/reject",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/publish",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/unpublish",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "PATCH",
+    "url": "/api/v1/videos/admin/:id/position",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "PATCH",
+    "url": "/api/v1/videos/admin/:id/draft-position",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/:id/cover",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "DELETE",
+    "url": "/api/v1/videos/admin/:id/cover",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "DELETE",
+    "url": "/api/v1/videos/admin/:id/pending-change",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "DELETE",
+    "url": "/api/v1/videos/admin/:id",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Editorial administration",
+    "method": "PATCH",
+    "url": "/api/v1/videos/admin/:id",
+    "source": "src/domains/videos/editorial/editorialVideo.routes.js"
+  },
+  {
+    "area": "Provider operations/superAdmin",
+    "method": "GET",
+    "url": "/api/v1/videos/admin/provider-operations",
+    "source": "src/domains/videos/provider/videoProviderAdmin.routes.js"
+  },
+  {
+    "area": "Provider operations/superAdmin",
+    "method": "POST",
+    "url": "/api/v1/videos/admin/provider-operations/:operationId/retry",
+    "source": "src/domains/videos/provider/videoProviderAdmin.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "GET",
+    "url": "/api/v1/products/:id/videos/:videoId/preview",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "GET",
+    "url": "/api/v1/products/:id/videos",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "POST",
+    "url": "/api/v1/products/:id/videos/upload-sessions",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "POST",
+    "url": "/api/v1/products/:id/videos/:videoId/upload-authorization",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "POST",
+    "url": "/api/v1/products/:id/videos/:videoId/upload-recovery",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "POST",
+    "url": "/api/v1/products/:id/videos/:videoId/replacement-upload-session",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "POST",
+    "url": "/api/v1/products/:id/videos/:videoId/replacements/:replacementId/upload-authorization",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "POST",
+    "url": "/api/v1/products/:id/videos/:videoId/replacements/:replacementId/upload-recovery",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "DELETE",
+    "url": "/api/v1/products/:id/videos/:videoId/replacements/:replacementId/upload-session",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "DELETE",
+    "url": "/api/v1/products/:id/videos/:videoId/upload-session",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "PATCH",
+    "url": "/api/v1/products/:id/videos/:videoId",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  },
+  {
+    "area": "Product administration",
+    "method": "DELETE",
+    "url": "/api/v1/products/:id/videos/:videoId",
+    "source": "src/domains/videos/productVideos/productVideo.routes.js"
+  }
+]
