@@ -7,6 +7,7 @@ import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { createRequire } from "module";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+import { isPrimeLocation as qualifiesForPrime, selectShippingPrice } from '../warehouse/warehouse.delivery.js';
 
 const require = createRequire(import.meta.url);
 const governoratesConfig = require("../../shared/constants/governorates.json");
@@ -30,6 +31,7 @@ function summarizeWarehouse(warehouse) {
     governorate: warehouse.governorate || null,
     isDefault: Boolean(warehouse.isDefault),
     defaultShippingPrice: warehouse.defaultShippingPrice ?? 0,
+    primeShippingPrice: warehouse.primeShippingPrice ?? null,
   };
 }
 
@@ -355,6 +357,7 @@ export async function resolveLocationByCoordinatesService({
     const warehouseSummary = summarizeWarehouse(effectiveWarehouse);
 
     return {
+      isPrimeLocation: false,
       warehouse: warehouseSummary,
       zoneWarehouse: summarizeWarehouse(zoneWarehouse),
       warehouseRouting: { rerouted },
@@ -430,7 +433,7 @@ export async function resolveLocationByCoordinatesService({
     active: true,
     boundaryGeometry: { $exists: true },
   }).select(
-    "name code governorate active defaultShippingPrice isDefault location boundaryGeometry",
+    "name code governorate active defaultShippingPrice primeShippingPrice primeBoundaryGeometry isDefault location boundaryGeometry",
   ).select('fulfillment');
 
   const insideCandidates = [];
@@ -543,11 +546,18 @@ export async function resolveLocationByCoordinatesService({
   const normalizedGov = decisionNormalizedGov || normalizedFromWarehouse;
   const isSupported = isSupportedGovernorate(normalizedGov);
 
-  const effectiveShippingPrice = productsWarehouseDoc.defaultShippingPrice ?? 0;
+  const isPrimeLocation = qualifiesForPrime({
+    zoneWarehouse: zoneWarehouseDoc,
+    effectiveWarehouse: productsWarehouseDoc,
+    location: { lat: latNum, lng: lngNum },
+    canDeliver,
+  });
+  const effectiveShippingPrice = selectShippingPrice(productsWarehouseDoc, isPrimeLocation) ?? 0;
 
   const productsSummary = summarizeWarehouse(productsWarehouseDoc);
 
   return {
+    isPrimeLocation,
     warehouse: productsSummary,
     zoneWarehouse: summarizeWarehouse(zoneWarehouseDoc),
     warehouseRouting: { rerouted },

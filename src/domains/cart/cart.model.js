@@ -94,6 +94,8 @@ const cartSchema = new Schema(
     },
 
     deliveryAddress: {
+      // Geographic zone; cart.warehouse remains the fulfillment warehouse.
+      warehouse: { type: Schema.Types.ObjectId, ref: "Warehouse" },
       userAddressId: {
         type: Schema.Types.ObjectId,
       },

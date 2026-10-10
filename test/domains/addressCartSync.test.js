@@ -195,6 +195,7 @@ test("guest address edits synchronize their referenced cart", async (t) => {
   let synchronizedSnapshot;
 
   t.mock.method(AddressModel, "findOne", () => queryResult(address));
+  t.mock.method(WarehouseModel, "find", () => queryResult([effectiveWarehouse]));
   t.mock.method(WarehouseModel, "findById", () =>
     queryResult(effectiveWarehouse),
   );

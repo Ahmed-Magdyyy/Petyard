@@ -89,6 +89,21 @@ const warehouseSchema = new Schema(
       min: 0,
       default: 0,
     },
+    primeBoundaryGeometry: {
+      type: {
+        type: String,
+        enum: ["MultiPolygon"],
+      },
+      coordinates: {
+        type: [[[[Number]]]], // polygons, rings, [lng, lat]
+        default: undefined,
+      },
+    },
+    primeShippingPrice: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
     isDefault: {
       type: Boolean,
       default: false,

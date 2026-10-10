@@ -29,14 +29,18 @@ import { getFirebaseMessaging } from "../config/firebase.js";
 import cors from "cors";
 import { egyptTimezoneReplacer } from "../shared/utils/egyptTimezone.js";
 import { validateMediaConfiguration } from "../shared/utils/mediaConfig.js";
+import { validateVideosStreamConfiguration } from "../domains/videos/provider/streamConfig.js";
+import { bunnyStreamWebhookBody, BUNNY_STREAM_WEBHOOK_PATH } from "../domains/videos/provider/bunnyStreamWebhook.middleware.js";
 import { productBatchBodyParser } from "../domains/product/productBatch.middleware.js";
 
 validateMediaConfiguration();
+validateVideosStreamConfiguration();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // middlewares
 app.set("json replacer", egyptTimezoneReplacer);
+app.use(BUNNY_STREAM_WEBHOOK_PATH, bunnyStreamWebhookBody);
 app.use("/api/v1/products/batch", productBatchBodyParser);
 app.use(express.urlencoded({ extended: false, limit: "5mb" }));
 app.use(express.json({ limit: "5mb" }));

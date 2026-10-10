@@ -79,6 +79,7 @@ export const enabledControls = Object.freeze({
   WALLET: "wallet",
   WAREHOUSES: "warehouses",
   HOME_LAYOUT: "home_layout",
+  VIDEOS: "videos",
 });
 
 export const productTypeEnum = Object.freeze({
@@ -194,4 +195,214 @@ export const serviceReservationStatusEnum = Object.freeze({
   CANCELLED: "CANCELLED",
   COMPLETED: "COMPLETED",
   NO_SHOW: "NO_SHOW",
+});
+
+// Videos lifecycles are separate even when their persisted values overlap.
+export const editorialVideoKindEnum = Object.freeze({
+  YOUTUBE: "youtube",
+  REEL: "reel",
+});
+
+export const editorialVideoStatusEnum = Object.freeze({
+  DRAFT: "draft",
+  IN_REVIEW: "in_review",
+  APPROVED: "approved",
+  PUBLISHED: "published",
+  UNPUBLISHED: "unpublished",
+});
+
+export const editorialReviewStatusEnum = Object.freeze({
+  DRAFT: "draft",
+  IN_REVIEW: "in_review",
+  REJECTED: "rejected",
+});
+
+export const videoAssetOwnerTypeEnum = Object.freeze({
+  REEL: "reel",
+  PRODUCT_VIDEO: "product_video",
+});
+
+export const videoAssetTechnicalStateEnum = Object.freeze({
+  AWAITING_UPLOAD: "awaiting_upload",
+  PROCESSING: "processing",
+  READY: "ready",
+  FAILED: "failed",
+  DELETING: "deleting",
+  DELETED: "deleted",
+});
+
+export const editorialCoverStateEnum = Object.freeze({
+  UPLOADING: "uploading",
+  UPLOADED: "uploaded",
+  ATTACHED: "attached",
+  DELETING: "deleting",
+  DELETED: "deleted",
+});
+
+export const productVideoLifecycleStateEnum = Object.freeze({
+  RESERVING: "reserving",
+  AWAITING_UPLOAD: "awaiting_upload",
+  PROCESSING: "processing",
+  READY: "ready",
+  DELETING: "deleting",
+  FAILED: "failed",
+  REMOVED: "removed",
+});
+
+export const productVideoUploadBatchStatusEnum = Object.freeze({
+  RESERVING: "reserving",
+  ISSUED: "issued",
+  FAILED: "failed",
+});
+
+export const productVideoReplacementStatusEnum = Object.freeze({
+  RESERVING: "reserving",
+  ISSUED: "issued",
+  COMPLETED: "completed",
+  FAILED: "failed",
+  CANCELLED: "cancelled",
+});
+
+export const reelUploadSessionStatusEnum = Object.freeze({
+  RESERVING: "reserving",
+  ISSUED: "issued",
+  FAILED: "failed",
+});
+
+export const videoUploadRecoveryStatusEnum = Object.freeze({
+  WAITING_CLEANUP: "waiting_cleanup",
+  RESERVING: "reserving",
+  ISSUED: "issued",
+  FAILED: "failed",
+});
+
+export const reelUploadPurposeEnum = Object.freeze({
+  INITIAL: "initial",
+  REPLACEMENT: "replacement",
+});
+
+export const videoProviderOperationTypeEnum = Object.freeze({
+  RECONCILE: "reconcile",
+  COPY_POSTER: "copy_poster",
+  DELETE: "delete",
+  ABANDONED_UPLOAD_CLEANUP: "abandoned_upload_cleanup",
+  VERIFY_DELETION: "verify_deletion",
+  COVER_CLEANUP: "cover_cleanup",
+});
+
+export const videoProviderOperationStatusEnum = Object.freeze({
+  PENDING: "pending",
+  RUNNING: "running",
+  NEEDS_ATTENTION: "needs_attention",
+  COMPLETED: "completed",
+});
+
+export const videoUploadAttemptStageEnum = Object.freeze({
+  SESSION: "session",
+  UPLOAD: "upload",
+  PROCESSING: "processing",
+  CLEANUP: "cleanup",
+});
+
+export const videoUploadAttemptOutcomeEnum = Object.freeze({
+  STARTED: "started",
+  SUCCEEDED: "succeeded",
+  FAILED: "failed",
+  CANCELLED: "cancelled",
+});
+
+export const videoContentKindEnum = Object.freeze({
+  YOUTUBE: "youtube",
+  REEL: "reel",
+  PRODUCT: "product",
+});
+
+export const videoIdentityTypeEnum = Object.freeze({
+  USER: "user",
+  GUEST: "guest",
+});
+
+export const videoAnalyticsEventTypeEnum = Object.freeze({
+  IMPRESSION: "impression",
+  SHARE: "share",
+  PLAYBACK_ERROR: "playback_error",
+  PLAY_START: "play_start",
+  REPLAY: "replay",
+  WATCH_TIME: "watch_time",
+  PROGRESS_25: "progress_25",
+  PROGRESS_50: "progress_50",
+  PROGRESS_75: "progress_75",
+  COMPLETE: "complete",
+  REBUFFER: "rebuffer",
+  SAVE_ADDED: "save_added",
+  SAVE_REMOVED: "save_removed",
+});
+
+export const videoPlaybackErrorReasonEnum = Object.freeze({
+  NETWORK: "network",
+  DECODE: "decode",
+  UNAVAILABLE: "unavailable",
+  EMBEDDING_DISABLED: "embedding_disabled",
+  UNKNOWN: "unknown",
+});
+
+export const videoPreviewSelectionEnum = Object.freeze({
+  ACTIVE: "active",
+  PENDING: "pending",
+});
+
+export const videoUploadResponseStatusEnum = Object.freeze({
+  NONE: "none",
+  APPLIED: "applied",
+  CANCELLED: "cancelled",
+  FAILED: "failed",
+  RESERVING: "reserving",
+  AWAITING_UPLOAD: "awaiting_upload",
+  PROCESSING: "processing",
+  READY: "ready",
+  RECOVERING: "recovering",
+  DELETING: "deleting",
+});
+
+export const videoAssetApplicationResultEnum = Object.freeze({
+  IGNORED: "ignored",
+  STALE: "stale",
+  ABANDONED: "abandoned",
+  FAILED: "failed",
+  READY: "ready",
+  REMOVED: "removed",
+  NOT_READY: "not_ready",
+  AWAITING_REVIEW: "awaiting_review",
+  PREVIEW_PENDING: "preview_pending",
+  APPLIED: "applied",
+  ALREADY_PUBLISHED: "already_published",
+  PUBLISHED: "published",
+});
+
+export const videoProviderExecutionStatusEnum = Object.freeze({
+  SKIPPED: "skipped",
+  RETRYABLE: "retryable",
+  COMPLETED: "completed",
+  STALE: "stale",
+});
+
+export const videoOrphanRecoveryStatusEnum = Object.freeze({
+  NOT_APPLICABLE: "not_applicable",
+  AMBIGUOUS: "ambiguous",
+  NO_MATCH_OBSERVED: "no_match_observed",
+  REQUIRES_REVIEW: "requires_review",
+  ALREADY_TRACKED: "already_tracked",
+  CANDIDATE: "candidate",
+  NOT_ENABLED: "not_enabled",
+  CLEANUP_RECORDED: "cleanup_recorded",
+  STALE: "stale",
+});
+
+export const productVideoSetupKindEnum = Object.freeze({
+  BATCH: "batch",
+  REPLACEMENT: "replacement",
+});
+
+export const videoAnalyticsMarkerEnum = Object.freeze({
+  QUALIFIED_VIEW: "qualified_view",
 });

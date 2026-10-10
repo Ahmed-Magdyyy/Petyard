@@ -62,6 +62,8 @@ import {
 import { MAX_INSTAPAY_SCREENSHOTS } from "./order.instapay.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
+import { resolveCartPrimeLocation } from '../cart/cartAddressSnapshot.js';
+import { selectShippingPrice } from '../warehouse/warehouse.delivery.js';
 import { restoreFinalOrderInventory } from "../inventory/inventory.service.js";
 import { selectFinalFulfilledOrderItems } from "./order.fulfillment.js";
 import { shouldDeferCardLoyaltyUntilAcceptance } from "../substitution/substitution.loyalty.js";
@@ -956,7 +958,8 @@ async function processOrderCreationWithCart({
     );
   }
 
-  const rawShipping = warehouse.defaultShippingPrice;
+  const isPrimeLocation = await resolveCartPrimeLocation(cart, warehouse, { session });
+  const rawShipping = selectShippingPrice(warehouse, isPrimeLocation);
   const baseShippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
   // Free shipping for orders with items subtotal >= threshold
@@ -1111,6 +1114,7 @@ async function processOrderCreationWithCart({
     subtotal,
     shippingFee,
     discountAmount: couponResult.discountAmount,
+    isPrimeLocation,
     shippingDiscount: couponResult.shippingDiscount,
     totalDiscount: couponResult.totalDiscount,
     walletUsed: walletResult.walletUsed,

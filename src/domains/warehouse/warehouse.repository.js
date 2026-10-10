@@ -5,7 +5,7 @@ export async function countWarehouses(filter = {}) {
 }
 
 export async function findWarehouses(filter = {}, { skip, limit, sort } = {}) {
-  const query = WarehouseModel.find(filter).select("-boundaryGeometry");
+  const query = WarehouseModel.find(filter).select("-boundaryGeometry -primeBoundaryGeometry");
 
   if (typeof skip === "number" && skip > 0) {
     query.skip(skip);

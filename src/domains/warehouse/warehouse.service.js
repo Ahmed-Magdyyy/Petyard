@@ -23,6 +23,26 @@ import {
   assertWarehouseNotInUseAsFallback,
   validateFallbackWarehouse,
 } from './warehouse.fulfillment.js';
+import { validatePrimeConfiguration } from './warehouse.delivery.js';
+
+function geometryValue(geometry) {
+  if (!geometry || (geometry.type === undefined && geometry.coordinates === undefined)) return null;
+  return { type: geometry.type, coordinates: geometry.coordinates };
+}
+
+function mergedDeliveryConfiguration(warehouse, payload) {
+  const defaultPrice = hasOwn(payload, 'defaultShippingPrice')
+    ? payload.defaultShippingPrice : warehouse?.defaultShippingPrice ?? 0;
+  return {
+    boundaryGeometry: hasOwn(payload, 'boundaryGeometry')
+      ? payload.boundaryGeometry : geometryValue(warehouse?.boundaryGeometry),
+    primeBoundaryGeometry: hasOwn(payload, 'primeBoundaryGeometry')
+      ? payload.primeBoundaryGeometry : geometryValue(warehouse?.primeBoundaryGeometry),
+    primeShippingPrice: hasOwn(payload, 'primeShippingPrice')
+      ? payload.primeShippingPrice : warehouse?.primeShippingPrice ?? null,
+    defaultShippingPrice: defaultPrice == null ? defaultPrice : Number(defaultPrice),
+  };
+}
 
 async function validateModeratorsOrThrow(moderators) {
   if (moderators === undefined) return undefined;
@@ -170,6 +190,8 @@ export async function getWarehouseByIdService(id) {
 export async function createWarehouseService(payload) {
   const { isDefault, active, moderators, fulfillment, ...rest } = payload || {};
 
+  validatePrimeConfiguration(mergedDeliveryConfiguration(null, rest));
+
   const validatedModerators = await validateModeratorsOrThrow(moderators);
   const validatedFulfillment = normalizeFulfillmentConfiguration({
     currentFulfillment: null,
@@ -246,8 +268,18 @@ export async function updateWarehouseService(id, payload) {
     isDefault,
     moderators,
     defaultShippingPrice,
+    primeBoundaryGeometry,
+    primeShippingPrice,
     fulfillment,
   } = payload;
+
+  const deliveryFields = ['boundaryGeometry', 'defaultShippingPrice', 'primeBoundaryGeometry', 'primeShippingPrice'];
+  const previousDelivery = mergedDeliveryConfiguration(warehouse, {});
+  const nextDelivery = mergedDeliveryConfiguration(warehouse, payload);
+  const changesDelivery = deliveryFields.some((field) => hasOwn(payload, field));
+  if (changesDelivery) validatePrimeConfiguration(nextDelivery);
+  // Also guard legacy edits: another writer may enable Prime after this read.
+  const guardDelivery = changesDelivery;
 
   const validatedFulfillment = normalizeFulfillmentConfiguration({
     currentFulfillment: warehouse.fulfillment,
@@ -287,6 +319,11 @@ export async function updateWarehouseService(id, payload) {
   if (email !== undefined) warehouse.email = email;
   if (phone !== undefined) warehouse.phone = phone;
   if (defaultShippingPrice !== undefined) warehouse.defaultShippingPrice = defaultShippingPrice;
+  if (primeShippingPrice !== undefined) warehouse.primeShippingPrice = primeShippingPrice;
+  if (primeBoundaryGeometry !== undefined) {
+    warehouse.primeBoundaryGeometry = primeBoundaryGeometry || undefined;
+    warehouse.markModified('primeBoundaryGeometry');
+  }
 
   if (location !== undefined) {
     if (
@@ -329,8 +366,25 @@ export async function updateWarehouseService(id, payload) {
   }
   if (active !== undefined) warehouse.active = resultingActive;
 
-  const updated = await warehouse.save();
-  return updated;
+  if (guardDelivery) {
+    // Mongoose adds these original-value conditions to this document's save.
+    // Competing geometry/price edits must not persist an invalid merged pair.
+    warehouse.$where = {
+      boundaryGeometry: previousDelivery.boundaryGeometry,
+      primeBoundaryGeometry: previousDelivery.primeBoundaryGeometry,
+      primeShippingPrice: previousDelivery.primeShippingPrice,
+      defaultShippingPrice: previousDelivery.defaultShippingPrice === 0
+        ? { $in: [0, null] } : previousDelivery.defaultShippingPrice,
+    };
+  }
+  try {
+    return await warehouse.save();
+  } catch (error) {
+    if (guardDelivery && ['DocumentNotFoundError', 'VersionError'].includes(error.name)) {
+      throw new ApiError('Warehouse delivery configuration changed. Reload and retry.', 409);
+    }
+    throw error;
+  }
 }
 
 export async function toggleWarehouseActiveService(id) {

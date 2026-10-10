@@ -1,6 +1,8 @@
 import { CartModel } from "./cart.model.js";
 import { resolveEffectiveWarehouse } from "../warehouse/warehouse.fulfillment.js";
 import { cartStatusEnum } from "../../shared/constants/enums.js";
+import { AddressModel } from "../address/address.model.js";
+import { isPrimeLocation } from "../warehouse/warehouse.delivery.js";
 
 function addressOwnership(address) {
   if (address?.user) {
@@ -29,6 +31,7 @@ export function buildCartDeliveryAddressSnapshot(address) {
 
   return {
     [referenceField]: address._id,
+    warehouse: address.warehouse || undefined,
     label: address.label || undefined,
     name: address.name || undefined,
     governorate: address.governorate || undefined,
@@ -45,6 +48,39 @@ export function buildCartDeliveryAddressSnapshot(address) {
       : undefined,
     details: address.details || undefined,
   };
+}
+
+/** Resolve legacy source context using an owned address, never a client flag. */
+export async function resolveCartPrimeLocation(cart, effectiveWarehouse, { session } = {}) {
+  if (!effectiveWarehouse?.primeBoundaryGeometry?.coordinates?.length ||
+      effectiveWarehouse.primeShippingPrice == null || !cart?.deliveryAddress) {
+    return false;
+  }
+
+  const snapshot = cart.deliveryAddress;
+  let sourceId = snapshot.warehouse;
+  if (!sourceId) {
+    const addressId = snapshot.userAddressId || snapshot.guestAddressId;
+    const owner = cart.user
+      ? { user: cart.user._id || cart.user }
+      : cart.guestId ? { guestId: cart.guestId } : null;
+    if (!addressId || !owner) return false;
+    let query = AddressModel.findOne({ _id: addressId, ...owner })
+      .select("warehouse location");
+    if (session) query = query.session(session);
+    const address = await query;
+    // A legacy snapshot cannot borrow the zone of a different coordinate pair.
+    if (!address || address.location?.lat !== snapshot.location?.lat ||
+        address.location?.lng !== snapshot.location?.lng) return false;
+    sourceId = address.warehouse;
+  }
+
+  if (!sourceId || String(sourceId) !== String(effectiveWarehouse._id)) return false;
+  return isPrimeLocation({
+    zoneWarehouse: effectiveWarehouse,
+    effectiveWarehouse,
+    location: snapshot.location,
+  });
 }
 
 /**

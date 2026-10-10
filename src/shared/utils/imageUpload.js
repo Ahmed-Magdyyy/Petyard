@@ -15,6 +15,7 @@ import {
 
 export const IMAGE_UPLOAD_PROFILES = Object.freeze({
   STANDARD: "standard",
+  PORTRAIT: "portrait",
   TILE: "tile",
   PROOF: "proof",
 });
@@ -103,6 +104,7 @@ async function processImage(file, profile) {
     };
   }
 
+  const portrait = profile === IMAGE_UPLOAD_PROFILES.PORTRAIT;
   const resizeOptions =
     profile === IMAGE_UPLOAD_PROFILES.TILE
       ? {
@@ -111,13 +113,15 @@ async function processImage(file, profile) {
           withoutEnlargement: true,
         }
       : {
-          width: 1920,
-          height: 1080,
+          width: portrait ? 1080 : 1920,
+          height: portrait ? 1920 : 1080,
           fit: "inside",
           withoutEnlargement: true,
         };
 
-  const buffer = await sharp(file.buffer)
+  const image = sharp(file.buffer);
+  if (portrait) image.autoOrient();
+  const buffer = await image
     .resize(resizeOptions)
     .webp({ quality: 80 })
     .toBuffer();

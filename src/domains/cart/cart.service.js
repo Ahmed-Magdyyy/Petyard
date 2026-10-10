@@ -28,7 +28,8 @@ import {
 } from "./cart.repository.js";
 import sendEmail from "../../shared/Email/sendEmails.js";
 import { abandonedCart } from "../../shared/Email/emailHtml.js";
-import { buildCartDeliveryAddressSnapshot } from "./cartAddressSnapshot.js";
+import { buildCartDeliveryAddressSnapshot, resolveCartPrimeLocation } from "./cartAddressSnapshot.js";
+import { selectShippingPrice } from "../warehouse/warehouse.delivery.js";
 
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
 
@@ -141,7 +142,7 @@ function computeTotalCartPrice(cart) {
   }, 0);
 }
 
-export function mapCartToResponse(cart, { shippingFee = 0 } = {}) {
+export function mapCartToResponse(cart, { shippingFee = 0, isPrimeLocation = false } = {}) {
   const removedItems =
     Array.isArray(cart._removedItems) && cart._removedItems.length > 0
       ? cart._removedItems.map((item) => ({
@@ -186,6 +187,7 @@ export function mapCartToResponse(cart, { shippingFee = 0 } = {}) {
     currency: cart.currency,
     totalCartPrice: cart.totalCartPrice,
     shippingFee,
+    isPrimeLocation,
     deliveryAddress,
     items: Array.isArray(cart.items)
       ? cart.items.map((item) => ({
@@ -218,6 +220,17 @@ export function mapCartToResponse(cart, { shippingFee = 0 } = {}) {
       : [],
     removedItems,
   };
+}
+
+async function mapCustomerCartToResponse(cart) {
+  const warehouse = cart.deliveryAddress?.location
+    ? await WarehouseModel.findById(cart.warehouse)
+      .select("active fulfillment boundaryGeometry primeBoundaryGeometry primeShippingPrice defaultShippingPrice")
+      .lean()
+    : null;
+  const isPrimeLocation = await resolveCartPrimeLocation(cart, warehouse);
+  // Preserve the legacy zero shipping fee in mutation/merge responses.
+  return mapCartToResponse(cart, { isPrimeLocation });
 }
 
 function pickMainImageUrl(images) {
@@ -527,24 +540,25 @@ export async function getCartService({
   warehouseId = await resolveCartWarehouseId(warehouseId);
 
   const warehouse = await WarehouseModel.findById(warehouseId)
-    .select("defaultShippingPrice")
+    .select("defaultShippingPrice primeShippingPrice primeBoundaryGeometry boundaryGeometry active fulfillment")
     .lean();
   if (!warehouse) {
     throw new ApiError(`No warehouse found for this id: ${warehouseId}`, 400);
   }
 
-  const rawShipping = warehouse.defaultShippingPrice;
-  const baseShippingFee =
-    typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
-
   const baseCart = await getOrCreateCart({ userId, guestId, warehouseId });
   const cart = await rebindCartToWarehouse(baseCart, warehouseId, lang);
+
+  const isPrimeLocation = await resolveCartPrimeLocation(cart, warehouse);
+  const rawShipping = selectShippingPrice(warehouse, isPrimeLocation);
+  const baseShippingFee =
+    typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
 
   // Free shipping for orders with items subtotal >= threshold
   const shippingFee =
     cart.totalCartPrice >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
 
-  return mapCartToResponse(cart, { shippingFee });
+  return mapCartToResponse(cart, { shippingFee, isPrimeLocation });
 }
 
 export async function setCartAddressFromUserService({
@@ -801,7 +815,7 @@ export async function upsertCartItemService({
   }
 
   const refreshed = await rebindCartToWarehouse(cart, warehouseId, lang);
-  return mapCartToResponse(refreshed);
+  return mapCustomerCartToResponse(refreshed);
 }
 
 export async function updateCartItemQuantityService({
@@ -900,7 +914,7 @@ export async function updateCartItemQuantityService({
   item.quantity = quantity;
 
   const refreshed = await rebindCartToWarehouse(cart, warehouseId, lang);
-  return mapCartToResponse(refreshed);
+  return mapCustomerCartToResponse(refreshed);
 }
 
 export async function removeCartItemService({
@@ -924,7 +938,7 @@ export async function removeCartItemService({
   item.deleteOne();
 
   const refreshed = await rebindCartToWarehouse(cart, warehouseId, lang);
-  return mapCartToResponse(refreshed);
+  return mapCustomerCartToResponse(refreshed);
 }
 
 export async function clearCartService({ userId, guestId, warehouseId }) {
@@ -955,7 +969,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
       baseUserCart,
       warehouseId,
     );
-    return mapCartToResponse(refreshedUserCart);
+    return mapCustomerCartToResponse(refreshedUserCart);
   }
 
   let userCart = await findCart({ user: userId });
@@ -969,7 +983,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     await guestCart.save();
 
     const adoptedCart = await rebindCartToWarehouse(guestCart, warehouseId);
-    return mapCartToResponse(adoptedCart);
+    return mapCustomerCartToResponse(adoptedCart);
   }
 
   // Case B: both guest and user carts exist -> merge with stock capping
@@ -984,7 +998,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
   if (!guestItems.length) {
     await deleteCart({ _id: refreshedGuest._id });
     const finalCart = await rebindCartToWarehouse(userCart, warehouseId);
-    return mapCartToResponse(finalCart);
+    return mapCustomerCartToResponse(finalCart);
   }
 
   const allItems = [...userItems, ...guestItems];
@@ -1082,7 +1096,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
   await userCart.save();
 
   const finalCart = await rebindCartToWarehouse(userCart, warehouseId);
-  return mapCartToResponse(finalCart);
+  return mapCustomerCartToResponse(finalCart);
 }
 
 export async function listCartsForAdminService(query = {}) {

@@ -1,3 +1,9 @@
+import {
+  videoAssetOwnerTypeEnum,
+  videoAssetTechnicalStateEnum,
+  productVideoLifecycleStateEnum,
+  videoContentKindEnum,
+} from "../../../shared/constants/enums.js";
 import mongoose from "mongoose";
 
 import { ProductModel } from "../../product/product.model.js";
@@ -7,7 +13,7 @@ import { PRODUCT_BATCH_MAX_IDS, PRODUCT_BATCH_QUERY_TIMEOUT_MS } from "../../pro
 
 export function productEligibleStages({ products, assets, feedOnly = false }) {
   return [
-    { $match: { activeSlot: true, lifecycleState: { $in: ["ready", "deleting"] },
+    { $match: { activeSlot: true, lifecycleState: { $in: [productVideoLifecycleStateEnum.READY, productVideoLifecycleStateEnum.DELETING] },
       activeAssetId: { $exists: true }, removedAt: { $exists: false },
       ...(feedOnly ? { showInReelsFeed: true } : {}) } },
     { $lookup: { from: products.collection.name, localField: "productId",
@@ -18,7 +24,7 @@ export function productEligibleStages({ products, assets, feedOnly = false }) {
       foreignField: "_id", as: "asset" } },
     { $unwind: "$asset" },
     { $match: {
-      "asset.ownerType": "product_video", "asset.technicalState": "ready",
+      "asset.ownerType": videoAssetOwnerTypeEnum.PRODUCT_VIDEO, "asset.technicalState": videoAssetTechnicalStateEnum.READY,
       "asset.providerStatus": 4, "asset.readyAt": { $type: "date" },
       // A durable request alone does not remove the current video. Bunny's
       // acceptance (or confirmed absence) is the public visibility boundary.
@@ -28,7 +34,7 @@ export function productEligibleStages({ products, assets, feedOnly = false }) {
       "asset.availableResolutions.0": { $exists: true },
       $expr: { $eq: ["$asset.ownerId", "$_id"] },
     } },
-    { $addFields: { kind: "product", feedAt: "$asset.readyAt" } },
+    { $addFields: { kind: videoContentKindEnum.PRODUCT, feedAt: "$asset.readyAt" } },
   ];
 }
 

@@ -1,3 +1,4 @@
+import { videoAssetOwnerTypeEnum, videoAssetTechnicalStateEnum } from "../../../shared/constants/enums.js";
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
@@ -6,7 +7,7 @@ const videoAssetSchema = new Schema(
   {
     ownerType: {
       type: String,
-      enum: ["reel", "product_video"],
+      enum: Object.values(videoAssetOwnerTypeEnum),
       required: true,
       immutable: true,
     },
@@ -19,8 +20,8 @@ const videoAssetSchema = new Schema(
     tusResourceExpiresAt: { type: Number, min: 1, validate: Number.isSafeInteger },
     technicalState: {
       type: String,
-      enum: ["awaiting_upload", "processing", "ready", "failed", "deleting", "deleted"],
-      default: "awaiting_upload",
+      enum: Object.values(videoAssetTechnicalStateEnum),
+      default: videoAssetTechnicalStateEnum.AWAITING_UPLOAD,
       required: true,
     },
     durationSeconds: { type: Number, min: 0 },

@@ -159,6 +159,9 @@ const productSchema = new Schema(
     },
     warehouseStocks: [warehouseStockSchema],
     images: [imageSchema],
+    // Incremented inside Product Video reservation transactions to serialize
+    // concurrent batches and preserve upload-selection order.
+    videoNextPosition: { type: Number, min: 0, default: 0, validate: Number.isSafeInteger },
     options: [productOptionSchema],
     variants: [variantSchema],
     isActive: {

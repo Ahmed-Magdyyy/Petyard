@@ -49,7 +49,17 @@ function queryResult(value) {
 }
 
 function makeWarehousePair() {
+  const boundaryGeometry = {
+    type: 'Polygon',
+    coordinates: [[[31.45, 29.9], [31.55, 29.9], [31.55, 30], [31.45, 30], [31.45, 29.9]]],
+  };
+  const primeConfiguration = {
+    boundaryGeometry,
+    primeBoundaryGeometry: { type: 'MultiPolygon', coordinates: [boundaryGeometry.coordinates] },
+    primeShippingPrice: 20,
+  };
   const fallback = {
+    ...primeConfiguration,
     _id: new mongoose.Types.ObjectId(),
     name: '5th Settlement New Cairo',
     code: '5TH_SETTELMENT',
@@ -63,6 +73,7 @@ function makeWarehousePair() {
     },
   };
   const source = {
+    ...primeConfiguration,
     _id: new mongoose.Types.ObjectId(),
     name: 'El-Andalus',
     code: '3RD_SETTELMENT',
@@ -133,6 +144,7 @@ test('location keeps the zone warehouse and returns the effective warehouse', as
   assert.equal(String(result.zoneWarehouse.id), String(source._id));
   assert.equal(String(result.warehouse.id), String(fallback._id));
   assert.equal(result.warehouseRouting.rerouted, true);
+  assert.equal(result.isPrimeLocation, false);
   assert.equal(result.delivery.shippingFee, fallback.defaultShippingPrice);
 });
 
@@ -160,6 +172,7 @@ test('saved address stores the geographic zone warehouse during maintenance', as
 
   assert.equal(String(createdFields.warehouse), String(source._id));
   assert.notEqual(String(createdFields.warehouse), String(fallback._id));
+  assert.equal(createdFields.isPrimeLocation, false);
 });
 
 test('public products use fallback warehouse stock', async (t) => {
@@ -553,6 +566,7 @@ test('checkout rebinds stock and shipping to the effective warehouse', async (t)
     },
   ];
   cart.deliveryAddress = {
+    warehouse: source._id,
     name: 'Test User',
     governorate: 'Cairo',
     area: 'New Cairo',
@@ -593,6 +607,7 @@ test('checkout rebinds stock and shipping to the effective warehouse', async (t)
   assert.equal(String(result.warehouseId), String(fallback._id));
   assert.equal(result.items.length, 1);
   assert.equal(result.pricing.shippingFee, fallback.defaultShippingPrice);
+  assert.equal(result.isPrimeLocation, false);
   assert.equal(String(cart.warehouse), String(fallback._id));
 });
 

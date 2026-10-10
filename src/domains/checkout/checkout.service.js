@@ -7,6 +7,7 @@ import { ProductModel } from "../product/product.model.js";
 import { UserModel } from "../user/user.model.js";
 import { calculateLoyaltyPointsForOrder } from "../loyalty/loyalty.service.js";
 import { FREE_SHIPPING_THRESHOLD } from "../../shared/constants/enums.js";
+import { isPrimeLocation as qualifiesForPrime, selectShippingPrice } from "../warehouse/warehouse.delivery.js";
 
 /**
  * Build the structures that validateAndApplyCoupon needs from cart items.
@@ -173,7 +174,12 @@ export async function applyCouponAtCheckoutService({
   }
 
   const warehouse = await getWarehouseByIdService(warehouseId);
-  const rawShipping = warehouse?.defaultShippingPrice;
+  const isPrimeLocation = cart.isPrimeLocation === true && qualifiesForPrime({
+    zoneWarehouse: warehouse,
+    effectiveWarehouse: warehouse,
+    location: cart.deliveryAddress?.location,
+  });
+  const rawShipping = selectShippingPrice(warehouse, isPrimeLocation);
   const baseShippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
   // Free shipping for orders with items subtotal >= threshold
@@ -196,6 +202,7 @@ export async function applyCouponAtCheckoutService({
 
   return {
     cartId: cart.id,
+    isPrimeLocation,
     warehouseId,
     currency: cart.currency || "EGP",
     coupon: couponSummary,
@@ -265,7 +272,12 @@ export async function getCheckoutSummaryService({
   }
 
   const warehouse = await getWarehouseByIdService(warehouseId);
-  const rawShipping = warehouse?.defaultShippingPrice;
+  const isPrimeLocation = cartResponse.isPrimeLocation === true && qualifiesForPrime({
+    zoneWarehouse: warehouse,
+    effectiveWarehouse: warehouse,
+    location: cartResponse.deliveryAddress?.location,
+  });
+  const rawShipping = selectShippingPrice(warehouse, isPrimeLocation);
   const baseShippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
   // Free shipping for orders with items subtotal >= threshold
@@ -391,6 +403,7 @@ export async function getCheckoutSummaryService({
 
   return {
     cartId: cartResponse.id,
+    isPrimeLocation,
     warehouseId: cartResponse.warehouseId,
     currency: cartResponse.currency || "EGP",
     deliveryAddress: addr,

@@ -14,7 +14,20 @@ const GOVERNORATE_CODES = (governoratesConfig.governorates || []).map(
   (g) => g.code,
 );
 
+const primeFields = () => [
+  body("primeBoundaryGeometry")
+    .optional({ nullable: true })
+    .isObject()
+    .withMessage("primeBoundaryGeometry must be a GeoJSON MultiPolygon object"),
+  body("primeShippingPrice")
+    .optional({ nullable: true })
+    .isFloat({ min: 0 })
+    .withMessage("primeShippingPrice must be a non-negative number")
+    .toFloat(),
+];
+
 export const createWarehouseValidator = [
+  ...primeFields(),
   body("name").notEmpty().withMessage("name is required"),
 
   body("code")
@@ -126,6 +139,7 @@ export const createWarehouseValidator = [
 ];
 
 export const updateWarehouseValidator = [
+  ...primeFields(),
   param("id").isMongoId().withMessage("Invalid warehouse id"),
 
   body("name").optional().isString().withMessage("name must be a string"),

@@ -55,6 +55,7 @@ import reviewRoutes from "../review/review.routes.js";
 import { exportProductsForSuperAdmin } from "./productExport.controller.js";
 import { productBatchLimiter } from "./product.limiters.js";
 import { productBatchBodyParser } from "./productBatch.middleware.js";
+import productVideoRoutes from "../videos/productVideos/productVideo.routes.js";
 
 const router = Router();
 const PRODUCT_IMAGE_UPLOAD_MAX_COUNT = 10;
@@ -137,6 +138,7 @@ router.get(
 );
 
 router.use("/:id/reviews", reviewRoutes);
+router.use("/:id/videos", productVideoRoutes);
 
 // ─── Create product — admins only ────────────────────────────────────────────
 

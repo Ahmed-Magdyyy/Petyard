@@ -7,7 +7,6 @@ import {
   isProductActive,
   findProductBySlug,
   createProduct,
-  deleteProductById,
 } from "./product.repository.js";
 import { findCollectionById } from "../collection/collection.repository.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
@@ -73,6 +72,7 @@ import {
   processRestockSubscriptionsForProduct,
 } from "../restockSubscription/restockSubscription.service.js";
 import { completeWarehouseStocks } from "./productWarehouseStocks.js";
+import { deleteProductWithVideoCleanup } from "../videos/productVideos/productVideoProductDeletion.service.js";
 import { projectProductMedia } from "../videos/public/productMedia.service.js";
 import {
   prepareProductStockRevisionGuard,
@@ -2517,7 +2517,7 @@ async function deleteProductService(id) {
     await deleteImage(descriptor);
   }
 
-  await deleteProductById(id);
+  await deleteProductWithVideoCleanup({ productId: id });
 
   await invalidateProductCaches(id);
 

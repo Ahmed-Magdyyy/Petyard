@@ -1,6 +1,8 @@
 import { AddressModel } from "./address.model.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { syncActiveCartAddressSnapshots } from "../cart/cartAddressSnapshot.js";
+import { WarehouseModel } from "../warehouse/warehouse.model.js";
+import { isPrimeLocation } from "../warehouse/warehouse.delivery.js";
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -43,19 +45,42 @@ function pickAddressFields(payload) {
 }
 
 async function allAddresses(ownerFilter) {
-  return AddressModel.find(ownerFilter)
+  const addresses = await AddressModel.find(ownerFilter)
     .select("-createdAt -user -guestId -__v")
     .sort({ createdAt: 1 })
     .lean();
+  return enrichPrimeLocations(addresses);
 }
 
-function sanitize(doc) {
+async function enrichPrimeLocations(addresses) {
+  const ids = [...new Set(addresses.map((a) => a.warehouse && String(a.warehouse)).filter(Boolean))];
+  const warehouses = ids.length
+    ? await WarehouseModel.find({ _id: { $in: ids } })
+      .select("active fulfillment boundaryGeometry primeBoundaryGeometry primeShippingPrice defaultShippingPrice")
+      .lean()
+    : [];
+  const byId = new Map(warehouses.map((w) => [String(w._id), w]));
+  return addresses.map((address) => {
+    const warehouse = byId.get(String(address.warehouse));
+    return {
+      ...address,
+      isPrimeLocation: isPrimeLocation({
+        zoneWarehouse: warehouse,
+        effectiveWarehouse: warehouse,
+        location: address.location,
+      }),
+    };
+  });
+}
+
+async function sanitize(doc) {
   const obj = doc.toObject ? doc.toObject() : { ...doc };
   delete obj.createdAt;
   delete obj.user;
   delete obj.guestId;
   delete obj.__v;
-  return obj;
+  const [presented] = await enrichPrimeLocations([obj]);
+  return presented;
 }
 
 // ── User address services (called from user.controller.js) ─────────────────
@@ -77,6 +102,10 @@ async function resolveWarehouseForAddressFields(fields) {
     if (zoneWarehouse?.id) {
       fields.warehouse = zoneWarehouse.id;
     }
+    fields.isPrimeLocation = resolved.isPrimeLocation === true;
+  }
+  if (fields.location !== undefined && fields.isPrimeLocation === undefined) {
+    fields.isPrimeLocation = false;
   }
 }
 

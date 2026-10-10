@@ -38,14 +38,15 @@ export function isBullMqConfigured() {
   return Boolean(bullMqConfig.redisUrl);
 }
 
-export function createBullMqConnection(connectionName) {
+export function createBullMqConnection(connectionName, { failFast = false } = {}) {
   if (!bullMqConfig.redisUrl) {
     throw new Error("REDIS_URL is required for BullMQ queues");
   }
 
   return new IORedis(bullMqConfig.redisUrl, {
     connectionName,
-    maxRetriesPerRequest: null,
+    maxRetriesPerRequest: failFast ? 1 : null,
+    enableOfflineQueue: !failFast,
     enableReadyCheck: true,
     retryStrategy: (times) => Math.min(times * 500, 5000),
   });

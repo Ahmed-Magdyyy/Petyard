@@ -160,3 +160,12 @@ test("product detail HTTP returns both legacy images and the derived media galle
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("the upload-selection counter is persisted on Product rather than each variant", () => {
+  assert.ok(ProductModel.schema.path("videoNextPosition"));
+  assert.equal(ProductModel.schema.path("variants").schema.path("videoNextPosition"), undefined);
+  const product = new ProductModel({ videoNextPosition: 3 });
+  assert.equal(product.videoNextPosition, 3);
+  assert.equal(new ProductModel().videoNextPosition, 0);
+  assert.equal(mongoose.isValidObjectId(product._id), true);
+});

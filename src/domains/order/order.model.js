@@ -237,6 +237,8 @@ const orderSchema = new Schema(
     },
     subtotal: { type: Number, required: true, min: 0 },
     shippingFee: { type: Number, required: true, min: 0 },
+    // Historical eligibility. Absent on orders created before Prime.
+    isPrimeLocation: { type: Boolean },
     discountAmount: { type: Number, required: true, min: 0, default: 0 },
     shippingDiscount: { type: Number, required: true, min: 0, default: 0 },
     totalDiscount: { type: Number, required: true, min: 0, default: 0 },

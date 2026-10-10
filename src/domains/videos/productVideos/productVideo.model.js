@@ -1,3 +1,4 @@
+import { productVideoLifecycleStateEnum } from "../../../shared/constants/enums.js";
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
@@ -12,13 +13,14 @@ const productVideoSchema = new Schema({
   activeSlot: { type: Boolean, required: true, default: true },
   lifecycleState: {
     type: String,
-    enum: ["reserving", "awaiting_upload", "processing", "ready", "deleting", "failed", "removed"],
+    enum: Object.values(productVideoLifecycleStateEnum),
     required: true,
-    default: "reserving",
+    default: productVideoLifecycleStateEnum.RESERVING,
   },
   activeAssetId: { type: Schema.Types.ObjectId, ref: "VideoAsset" },
   pendingAssetId: { type: Schema.Types.ObjectId, ref: "VideoAsset" },
   replacementId: { type: Schema.Types.ObjectId, ref: "ProductVideoReplacement" },
+  uploadRecoveryId: { type: Schema.Types.ObjectId, ref: "ProductVideoUploadRecovery" },
   replacementFailureCode: { type: String, maxlength: 64, match: /^[A-Z][A-Z0-9_]{0,63}$/ },
   uploadSessionIssuedAt: { type: Date },
   abandonAt: { type: Date },
@@ -33,5 +35,6 @@ productVideoSchema.index(
 productVideoSchema.index({ productId: 1, uploadBatchId: 1, clientId: 1 }, { unique: true });
 productVideoSchema.index({ productId: 1, lifecycleState: 1, position: 1 });
 productVideoSchema.index({ abandonAt: 1, lifecycleState: 1 });
+productVideoSchema.index({ activeSlot: 1, lifecycleState: 1, updatedAt: 1, _id: 1 });
 
 export const ProductVideoModel = model("ProductVideo", productVideoSchema);
