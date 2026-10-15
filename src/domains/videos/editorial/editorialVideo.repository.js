@@ -7,18 +7,38 @@ import { createReelUploadRepository } from "../reels/reelUpload.repository.js";
 import { ApiError } from "../../../shared/utils/ApiError.js";
 import { createEditorialCoverReferencePersistence } from "./editorialCover.repository.js";
 import { createEditorialVideoDeletionRepository } from "./editorialVideoDeletion.repository.js";
+import { ProductModel } from "../../product/product.model.js";
+import { assertVideoProductsEligible } from "./editorialProductLinks.repository.js";
+import { createEditorialVideoAuthorityFence } from "./editorialVideoAuthority.repository.js";
 
 function present(row) {
   if (!row) return null;
   const { _id, __v, associationRevision, ...rest } = row;
-  return { ...rest, id: String(_id) };
+  return { ...rest, productIds: (row.productIds ?? []).map(String),
+    ...(row.pendingChange ? { pendingChange: { ...row.pendingChange,
+      content: { ...row.pendingChange.content, productIds: (row.pendingChange.content?.productIds ?? []).map(String) } } } : {}),
+    id: String(_id) };
 }
 
-export function createEditorialVideoRepository({ videos = EditorialVideoModel, libraryId,
-  reelLifecycle = createReelLifecycleRepository({ videos, libraryId }), reelUploads,
-  connection = mongoose, coverReferences = createEditorialCoverReferencePersistence({ videos }), deletion } = {}) {
+export function createEditorialVideoRepository({ videos = EditorialVideoModel, libraryId, products = ProductModel,
+  users, assertAuthority = createEditorialVideoAuthorityFence({ users }), connection = mongoose,
+  reelLifecycle = createReelLifecycleRepository({ videos, libraryId, products, connection, assertAuthority }), reelUploads,
+  coverReferences = createEditorialCoverReferencePersistence({ videos }), deletion } = {}) {
+  async function withAuthority(actor, work) {
+    if (!actor) return work();
+    const session = await connection.startSession();
+    let result;
+    try {
+      await session.withTransaction(async () => {
+        await assertAuthority(actor, session);
+        result = await work(session);
+      });
+    } finally { await session.endSession(); }
+    return result;
+  }
   return Object.freeze({
-    ...createEditorialVideoDeletionRepository({ ...deletion, videos, connection }),
+    assertProductLinksEligible(productIds) { return assertVideoProductsEligible(productIds, { products }); },
+    ...createEditorialVideoDeletionRepository({ ...deletion, videos, connection, assertAuthority }),
     async list({ page, limit, kind, status }) {
       if (status === editorialVideoStatusEnum.DRAFT) {
         const [result] = await videos.aggregate([
@@ -43,38 +63,43 @@ export function createEditorialVideoRepository({ videos = EditorialVideoModel, l
       ]);
       return { totalResults, data: rows.map(present) };
     },
-    async create(record) {
-      const created = await videos.create(record);
-      return present(created.toObject());
+    async create(record, actor) {
+      return withAuthority(actor, async (session) => {
+        const [created] = await videos.create([record], { session });
+        return present(created.toObject?.() ?? created);
+      });
     },
     async get(id) {
       if (!mongoose.isValidObjectId(id)) return null;
       return present(await videos.findById(id).lean());
     },
-    async replace(id, expectedRevision, next) {
+    async replace(id, expectedRevision, next, actor) {
       if (!mongoose.isValidObjectId(id)) return null;
       const fields = Object.fromEntries(Object.entries(next).filter(([key]) => ![
         "id", "_id", "__v", "revision", "associationRevision", "createdAt", "updatedAt", "kind", "authorId",
       ].includes(key)));
-      return present(await videos.findOneAndUpdate(
+      return withAuthority(actor, async (session) => present(await videos.findOneAndUpdate(
         { _id: id, revision: expectedRevision },
         { $set: fields, $inc: { revision: 1 } },
-        { new: true, runValidators: true },
-      ).lean());
+        { session, new: true, runValidators: true },
+      ).lean()));
     },
-    async setDraftPosition(id, expectedRevision, draftPosition) {
-      const row = await videos.findOneAndUpdate(
-        { _id: id, kind: { $in: Object.values(editorialVideoKindEnum) }, status: editorialVideoStatusEnum.DRAFT, revision: expectedRevision },
-        { $set: { draftPosition }, $inc: { revision: 1 } },
-        { new: true, runValidators: true },
-      );
-      return present(row?.toObject?.() ?? row);
+    async setDraftPosition(id, expectedRevision, draftPosition, actor) {
+      return withAuthority(actor, async (session) => {
+        const row = await videos.findOneAndUpdate(
+          { _id: id, kind: { $in: Object.values(editorialVideoKindEnum) }, status: editorialVideoStatusEnum.DRAFT, revision: expectedRevision },
+          { $set: { draftPosition }, $inc: { revision: 1 } },
+          { session, new: true, runValidators: true },
+        );
+        return present(row?.toObject?.() ?? row);
+      });
     },
-    async setPublicPositions({ kind, items }) {
+    async setPublicPositions({ kind, items }, actor) {
       const session = await connection.startSession();
       let updated;
       try {
         await session.withTransaction(async () => {
+          if (actor) await assertAuthority(actor, session);
           // Reset on driver retries. A stale or unavailable item aborts the
           // whole batch, including earlier successful conditional writes.
           updated = [];
@@ -92,13 +117,14 @@ export function createEditorialVideoRepository({ videos = EditorialVideoModel, l
       } finally { await session.endSession(); }
       return { kind, items: updated };
     },
-    async replaceWithCovers(id, expectedRevision, next, { actorId, now = new Date() } = {}) {
+    async replaceWithCovers(id, expectedRevision, next, { actor, actorId, now = new Date() } = {}) {
       if (!mongoose.isValidObjectId(id)) return null;
       const session = await connection.startSession();
       let result;
       try {
         await session.withTransaction(async () => {
           result = null;
+          if (actor) await assertAuthority(actor, session);
           const current = await videos.findOne({ _id: id, revision: expectedRevision }).session(session);
           if (!current) return;
           const fields = Object.fromEntries(Object.entries(next).filter(([key]) => ![
@@ -121,7 +147,7 @@ export function createEditorialVideoRepository({ videos = EditorialVideoModel, l
     async cancelReelPendingChange(input) {
       if (!reelUploads && !libraryId) throw new ApiError("Reel cleanup is unavailable", 503,
         [{ code: "VIDEO_CLEANUP_UNAVAILABLE" }]);
-      const updated = await (reelUploads ?? createReelUploadRepository({ videos, libraryId })).cancelPendingChange(input);
+      const updated = await (reelUploads ?? createReelUploadRepository({ videos, libraryId, connection, assertAuthority })).cancelPendingChange(input);
       return updated ? { ...updated, video: present(updated.video?.toObject?.() ?? updated.video) } : null;
     },
   });

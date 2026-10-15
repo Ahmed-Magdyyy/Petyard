@@ -49,6 +49,24 @@ function fakeRepository() {
   };
 }
 
+test("public lists detail and saves expose only active ordered product links, not proposals or snapshots", async () => {
+  const repository = fakeRepository();
+  const productIds = ["507f1f77bcf86cd799439021", "507f1f77bcf86cd799439020"];
+  const linked = { ...published, productIds, pendingChange: { content: {
+    productIds: ["507f1f77bcf86cd799439022"] } } };
+  repository.listYouTube = async () => ({ totalResults: 1, data: [linked] });
+  repository.getPublished = async () => linked;
+  repository.listSaved = async () => ({ totalResults: 1, data: [linked] });
+  const app = createPublicVideoService({ repository, isEnabled: () => true, isProductEnabled: () => true });
+  assert.deepEqual((await app.listYouTube({})).data[0].productIds, productIds);
+  assert.deepEqual((await app.getVideo({ id: linked.id })).productIds, productIds);
+  assert.deepEqual((await app.listSaved({ identity: { type: "guest", id: "guest" } })).data[0].productIds, productIds);
+  assert.deepEqual((await app.listFeed({})).data[0].productIds, []);
+  const product = (await app.listFeed({ kind: "product" })).data[0];
+  assert.equal(Object.hasOwn(product, "productIds"), false);
+  assert.equal(product.productId, productVideo.productId);
+});
+
 test("custom editorial covers win over provider covers without changing product posters or leaking pending fields", async () => {
   const repository = fakeRepository();
   const custom = (row) => ({ ...row, activeCoverId: "private-cover-generation", cover: {
@@ -86,7 +104,7 @@ test("public YouTube DTO uses approved fields and never exposes pending or provi
   assert.equal(result.data[0].isSaved, false);
   assert.deepEqual(Object.keys(result.data[0]).sort(), [
     "canSave", "coverUrl", "description", "embedUrl", "id", "isSaved", "kind",
-    "publishedAt", "title", "youtubeId",
+    "productIds", "publishedAt", "title", "youtubeId",
   ].sort());
 });
 

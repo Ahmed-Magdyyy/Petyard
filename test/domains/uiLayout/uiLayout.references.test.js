@@ -89,9 +89,9 @@ test("new-profile images selected from public catalog data are approved, but mis
   }
   const errors = await inspectLayoutReferences(content, {
     assetModel: catalog([]), productModel: catalog([{ images: [{ url: productUrl }] }]),
-    categoryModel: catalog([{ image: { url: categoryUrl } }]), brandModel: catalog([]),
+    categoryModel: catalog([{ image: { url: categoryUrl } }]), brandModel: catalog([]), subcategoryModel: catalog([]),
   });
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   assert.equal(errors.length, 1); assert.equal(errors[0].code, "ASSET_NOT_READY");
   assert.equal(errors[0].path, "content.sections[0].data.items[2].image_url");
 });

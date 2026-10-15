@@ -1,8 +1,8 @@
 # PetYard UI Builder: product IDs and custom blocks
 
-Contract extension: `id_only_v1`, still `schema_version: 1`. Source-checked and expanded 2026-10-06.
+Contract extension: `id_only_v1`, still `schema_version: 1`. Source-checked and expanded 2026-10-15; October extensions are in section 18.
 
-This implements the FE revision-2 product IDs/blocks handoff in this checkout. It is not a deployment announcement. The customer app still uses legacy Home. No existing layout, database record, environment setting, or legacy route is automatically migrated or removed.
+This implements the FE revision-2 product IDs/blocks handoff in this checkout. It is not a deployment announcement. The October FE handoff reports dedicated `/ui-layouts/customer_home` integration; it does not approve the extended renderer or remove legacy Home compatibility. No existing layout, database record, environment setting, or legacy route is automatically migrated or removed.
 
 This is the detailed handoff for the FE's revision-2 product IDs/custom blocks requirements. Sections 9–17 include the change inventory, every editable field and new response field, a full eight-block example, the dependent lifecycle requests, product-detail dictionaries, retained state, error recovery, configuration and acceptance evidence. [The original integration guide](UI_BUILDER_FRONTEND_INTEGRATION_GUIDE.md) has also been updated in place and includes this detailed material in chapter 28. Existing lifecycle rules remain unchanged except for the explicitly described profile/compatibility behavior.
 
@@ -25,6 +25,7 @@ This is the detailed handoff for the FE's revision-2 product IDs/custom blocks r
 15. [Errors and the next request](#15-errors-edge-cases-and-which-request-comes-next)
 16. [Release configuration and verification](#16-release-configuration-verification-and-rollback-boundaries)
 17. [Backend source changes and FE acceptance](#17-backend-source-changes-and-fe-acceptance-checklist)
+18. [Subcategories and banner carousels](#18-subcategories-and-banner-carousels-october-production-handoff)
 
 ## 1. Current release boundary
 
@@ -498,9 +499,9 @@ Literal text and en/ar maps are supported only in the new profile's custom text 
 
 A new-profile product item has exactly `id` and `product_id`. No name, subtitle, image, price, rating, stock, variant, action or local editor metadata is allowed on that object.
 
-A manual/non-product item permits `id`, `name`, `subtitle`, `image_url`, `action`. FE creates UUID id; name is max 80 per language and required for preview/publication; subtitle is optional max 100 per language; image is optional approved public URL; action is optional brand/category/screen/url. An action of type product in this manual shape is rejected: use a product item instead. Mixed product/manual arrays preserve every placement and order.
+A manual/non-product item permits `id`, `name`, `subtitle`, `image_url`, `action`. FE creates UUID id; name is max 80 per language and required for preview/publication; subtitle is optional max 100 per language; image is optional approved public URL; action is optional brand/category/subcategory/screen/url. An action of type product in this manual shape is rejected: use a product item instead. Mixed product/manual arrays preserve every placement and order.
 
-Ordinary actions contain required `type` and `value`, no extra keys. Type product/category/brand uses a real 24-hex catalog ObjectId, checked for current availability at validation/release. Type screen supports only `add_pet_profile`. Type url accepts public HTTPS on petyardstores.com or its subdomains. Value must be nonblank and at most 2048 characters. Do not invent app routes or feed URLs.
+Ordinary actions contain required `type` and `value`, no extra keys. Type product/category/subcategory/brand uses a real 24-hex catalog ObjectId, checked for current availability at validation/release. Type screen supports only `add_pet_profile`. Type url accepts public HTTPS on petyardstores.com or its subdomains. Value must be nonblank and at most 2048 characters. Do not invent app routes or feed URLs.
 
 ### 11.2 Composed section and every block prop
 
@@ -1235,3 +1236,178 @@ Before marking FE integration complete, verify:
 - Supporting version is actually released, fallback exists and incompatible/missing-version clients never receive unsupported trees/maps.
 - New-profile now/schedule/rollback are blocked until approved compatibility; failed release preserves active content.
 - Deployed worker/cache/media and Android/iOS renderer behavior have explicit evidence before cutover.
+
+## 18. Subcategories and banner carousels: October production handoff
+
+Source: FE `PHASE_BACKEND_PRODUCTION_HANDOFF.md`, 2026-10-14. Implementation checked locally on 2026-10-15. These are additive changes to schema version 1, not new routes or a deployment announcement. The full acceptance response is [UI_BUILDER_PRODUCTION_HANDOFF_RESPONSE.md](UI_BUILDER_PRODUCTION_HANDOFF_RESPONSE.md).
+
+The human confirmed that no customer build supporting blocks, subcategories and carousels together is approved. Drafts and authorized previews can prepare the new content; publication remains blocked. Do not enable legacy Home cutover to use the dedicated customer route.
+
+### Change inventory
+
+| Area | Current addition | What stays unchanged |
+| --- | --- | --- |
+| Actions | Typed `subcategory` destination in promos, dynamic section actions, manual cards and buttons. | Fixed app navigation, product item shape and product action behavior. |
+| Image blocks | Optional ordered `image_urls` array, 1–10 distinct approved URLs. | Existing `image_url`, image ratios/fit/radius/alt text and image upload policy. |
+| References | Every slide and subcategory validated; registered subcategory artwork can be reused by its exact stored URL. | Existing ready-library/catalog checks; removing references never deletes assets. |
+| Catalog | New schemas, `max_banner_images`, draft/release capabilities and an extension renderer floor. | Existing core profile and release flags, schema version 1 and eight block types. |
+| Lifecycle | New fields retained through saves, previews, checksums, history, clones, schedules and rollback. | Whole-layout replacement, revision locks and operation-key behavior. |
+| Runtime | Extension compatibility is checked at validation, publication, worker execution, rollback and public resolution; floor is included in the server cache key. | Older layouts retain their existing compatibility rules and older clients retain matching fallback. |
+
+No per-slide action/timer, template service, product snapshot, automatic product expansion, new image provider or new route was added.
+
+### Every new field: origin, purpose and retained state
+
+| Field | Origin and type | Usage, dependencies and what to retain |
+| --- | --- | --- |
+| `action.type:"subcategory"` | Admin selects a browse destination advertised by catalog. | Same typed `action` object as other destinations; not a navigation item key or Product Video relationship. |
+| `action.value` | Real `id` from the existing subcategory picker; 24-hex ObjectId. | Backend checks existence under the normal catalog policy and canonicalizes the ID. Save it with that authored action. The subcategory model has no active flag; no new eligibility rule is invented. Missing destinations produce a finding at that action's field path. |
+| `image_url` | One exact ready asset/catalog URL. | Continue using this for a single-image block. Omit `image_urls` completely, not null. |
+| `image_urls` | Ordered URLs from individual completed uploads/library selections or approved exact catalog media. | Array of 1–10 distinct nonempty safe HTTPS strings. Preserve every slide and its order. Array form with one URL is accepted, though FE normally uses `image_url` for one. Omit `image_url` completely. Never send binary data, asset UUIDs, local paths or DTOs here. |
+| `alt_text` | Existing authored literal or EN/AR map, max 120 per language. | Describes the image block; no per-slide caption schema was added. Preserve the authored languages. |
+| `limits.max_banner_images` | Server catalog integer 10. | Editor array bound; does not change the 30-section, 50-product or overall UTF-8 payload bounds. |
+| `capabilities.banner_carousel_draft_storage` | Server capability true after deployment of this implementation. | Permit complete carousel draft synchronization; not permission to publish. |
+| `capabilities.banner_carousel` | Server release flag plus valid core and extension renderer floors. | Gate carousel release UI; not proof that physical-device acceptance passed. |
+| `capabilities.subcategory_actions_draft_storage` | Server capability true after deployment. | Permit the new action in saved drafts. |
+| `capabilities.subcategory_actions` | Server release flag plus valid extension renderer floor. | Gate release of any subcategory action, including legacy-shaped custom sections. |
+| `extensions_min_app_version` | Server catalog; strict x.y.z or null. | Minimum approved renderer for this extension. Do not PATCH this catalog field. A release owner's environment setting supplies it. Null blocks extension release, not ordinary legacy publication. |
+
+Both source keys together fail even in a draft. Omission of both can remain an incomplete draft; completed preview/publication requires one source. An explicit null, empty array, unknown property, unsafe URL or duplicate is not silently repaired.
+
+A subcategory browse action does not fetch/expand products into the layout. Keep `content.product_ids` for explicit product placements and product actions only. Category, brand, subcategory and node UUIDs never belong in it. Disabled content and items beyond a visual limit are still checked.
+
+### Existing picker routes and completeness
+
+1. GET `/api/v1/subcategories` supplies `data` as a complete nested tree, not an ordinary paginated product response. Traverse `children` recursively so nested choices are not missed.
+2. Optional `category=<ObjectId>` selects the category's tree. Optional `subcategory=<ObjectId>` returns that parent's children with descendants, excluding the parent itself. The existing service also supports `q` name search, retaining matching branches. Do not pretend `page/limit` paginate this tree.
+3. Picker entries include `id`, `category`, `slug`, localized `name/desc`, `image`, `parent`, `children`, `updatedAt` and `isSubscribed`. Appropriate authorized staff also receive existing EN/AR fields. Use the real `id` for actions, not a displayed slug or parent category ID. Subscription state is unrelated to builder eligibility.
+4. GET `/api/v1/products/admin?subcategory=<id>&page=1&limit=20&isActive=true` remains the existing authorized product picker. A single subcategory filter includes descendants. Category/brand filters remain available and combine with it.
+5. Its existing page result includes `totalResults`, `totalPages`, `page`, `results` and product `data` in the ordinary success envelope. Fetch subsequent pages until the picker selection is complete; do not assume 20 choices are the whole catalog.
+6. Image DTOs may contain transformed delivery URLs. Readiness validation recognizes exact stored/catalog URLs, not every arbitrary transform. Prefer ready UI Builder uploads if the selected URL is not the approved exact source. There is no permission to fetch/whitelist arbitrary external URLs.
+
+### Exact preparation sequence
+
+1. Authenticate as super-admin and GET the actual environment's catalog. Confirm both draft-storage capabilities and the new accepted schemas. An old deployed catalog cannot be upgraded by frontend flags.
+2. Select existing subcategory IDs. Select/upload each image before a completed preview, retaining its ready `id/url` locally. Each upload is existing multipart `image` + `usage`; JPEG/PNG/WebP, at most 5 MiB, with existing real-byte/dimension checks.
+3. Create/open a whole-layout draft. Retain `data.id`, latest `revision`, complete acknowledged targeting and content. Local section templates remain local; inserted copies receive independent UUIDs.
+4. Save the complete normalized snapshot using quoted `If-Match` and a stable `X-Client-Mutation-Id` for that exact logical save.
+5. Retain the successful server content/revision. Validate it. A release-floor error does not mean supported draft storage failed.
+6. Issue a saved-revision preview. Every slide/destination must currently be usable; new renderer release approval is not required for this authorized preparation path.
+7. Join the returned relative `preview_url` to the API origin. Keep token/preview ID privately for read/revoke. The response preserves the full image array and authored maps under flattened public-style `data`.
+8. On edit, send a new full save with a new logical mutation ID, then recreate the preview. Old previews stay immutable. Resolve uncertain outcomes with exact retries, not new keys.
+9. Stop before release until the supporting customer build and environment/actions are approved. No supporting version has been supplied now.
+
+Complete illustrative PATCH body below: replace URLs and the subcategory ID with real approved selections. It contains no explicit product references, so its manifest is exactly empty. The name is an editor label, not the customer heading.
+
+```http
+PATCH /api/v1/admin/home-layouts/drafts/<actual-draft-uuid>
+Authorization: Bearer <super-admin-token>
+Content-Type: application/json
+If-Match: "1"
+X-Client-Mutation-Id: 72296096-c6d1-43d3-bb70-c16505332b2d
+```
+
+```json
+{
+  "name": "Subcategory offers",
+  "change_note": "Prepare two slides and a browse button",
+  "targeting": {
+    "platforms": [], "locales": [], "country_codes": [], "location_ids": [],
+    "min_app_version": null, "max_app_version": null, "audience": "all", "priority": 0
+  },
+  "content": {
+    "product_reference_format": "id_only_v1",
+    "product_ids": [],
+    "sections": [
+      {
+        "id": "3ab92c12-414f-47bc-a801-ce63d77fe6e2",
+        "section_type": "composed_section",
+        "position": 0,
+        "data": {
+          "enabled": true,
+          "root": {
+            "id": "04f46e28-6720-4e10-9aa5-0a6af01ef90c",
+            "type": "column",
+            "props": {},
+            "children": [
+              {
+                "id": "0b924497-0954-475d-9d51-f0d33f13b604",
+                "type": "image",
+                "props": {
+                  "image_urls": [
+                    "https://media.petyardstores.com/ui-builder/offer-one.webp",
+                    "https://media.petyardstores.com/ui-builder/offer-two.webp"
+                  ],
+                  "aspect_ratio": "16:9",
+                  "fit": "cover",
+                  "border_radius": "md",
+                  "alt_text": {"en": "Pet offers", "ar": "عروض للحيوانات الأليفة"}
+                }
+              },
+              {
+                "id": "bc2183db-841d-4104-96c2-28c74a1b890b",
+                "type": "button",
+                "props": {
+                  "label": {"en": "Browse treats", "ar": "تصفح المكافآت"},
+                  "action": {"type": "subcategory", "value": "68cf1234567890abcdef1238"}
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "navigation": {
+      "items": [
+        {"key":"home","label_key":"home","icon_key":"home","destination":"home","order":0,"enabled":true}
+      ]
+    }
+  }
+}
+```
+
+PATCH still returns the full draft dictionary, now with these authored fields retained under `data.content`; it advances revision. Preview/public snapshots flatten that content as before. No new envelope, mutation header, ID type or child position field is introduced.
+
+### Release version policy and cache safety
+
+Existing controls keep their original roles. `UI_BUILDER_PUBLIC_CUTOVER_ENABLED` only changes the legacy Home GET selection; the dedicated `/ui-layouts/customer_home` route does not need it.
+
+The implementation adds one optional server policy input, `UI_BUILDER_EXTENSIONS_MIN_APP_VERSION`, exposed as catalog `extensions_min_app_version`. This is deliberately separate: a previously approved ID-only/eight-block version is not evidence that it can render subcategory destinations or array-based banners.
+
+- Leave the extension floor absent until an actual supporting build is approved. Missing/invalid means extension publication and selection are blocked.
+- A new-profile extended layout needs `targeting.min_app_version` at least both applicable floors: core `UI_BUILDER_ID_ONLY_MIN_APP_VERSION` and extension floor. A legacy-shaped subcategory action still needs the extension floor.
+- General publication also needs `UI_BUILDER_PUBLISH_ENABLED=true`; scheduling additionally needs existing queue configuration and worker acceptance.
+- Setting a catalog field in frontend JSON cannot approve a release. This implementation task does not set/decrypt/commit any environment value or guess a release version.
+- Validation/release/worker/rollback recheck references and the floor. An extension-disabled rollback fails without activating unsupported historical content.
+- Public selection skips incompatible extension snapshots and preserves a compatible fallback. Core layouts with no new action/array keep their prior compatibility.
+- The extension floor joins the server's existing cache selection key. Full ordered slide content participates in renderer checksums; changing a slide/order changes the validator without mutating old previews.
+- Existing customer ETag/context cache, product hydration identity/locale/warehouse scope and no-store preview rules still apply. Local mocked-cache tests are not deployed Redis acceptance.
+
+### Findings and recovery
+
+| Code/outcome | Meaning | Next action |
+| --- | --- | --- |
+| `IMAGE_SOURCE_CONFLICT` | Both source properties are present. | Normalize to exactly one, then send a new logical full save. |
+| `INVALID_IMAGE_URLS` | Array shape/count violates 1–10. | Correct selections; never truncate silently. |
+| `DUPLICATE_IMAGE_URL` | Repeated exact slide URL. | Remove the intended duplicate consciously; preserve remaining order. |
+| `INVALID_HTTPS_URL` | A slide is non-string/empty/unsafe. | Select the exact approved public URL; do not retry unchanged bad content. |
+| `IMAGE_REQUIRED` | No completed source for preview/release. | Complete the draft selection first. |
+| `ASSET_NOT_READY` | A specific URL is not ready registered/recognized catalog media. | Complete/select the asset, save, validate and recreate preview. Findings identify `image_urls[index]`. |
+| `INVALID_REFERENCE_ID` | Subcategory action does not contain an ObjectId. | Obtain the picker ID, not a node UUID or category label. |
+| `REFERENCE_NOT_PUBLIC` | Destination no longer exists/is unavailable under existing policy. | Re-select/remove it explicitly, save and retry validation. |
+| `CLIENT_VERSION_UNSUPPORTED` | One required renderer floor is absent/too low. | Continue draft/preview; wait for approved release policy. |
+| Existing revision/retry/state errors | Existing whole-layout protections still apply. | GET/reconcile the current draft and retain the original operation key for exact retries. |
+
+Removing an image reference does not remove the shared asset. A deleted linked product still becomes unavailable in the existing batch response; a subcategory action is not a commerce snapshot. Renderer swiping, pause/play, reduced motion, background lifecycle and RTL behavior require customer/admin implementation, not backend timers.
+
+### Acceptance boundary
+
+Locally tested: 1/2/10-image round-trips; 11/duplicate/unsafe/conflicting sources; each indexed slide's readiness; disabled content; subcategory action owners and malformed/unavailable references; exact manifests; picker tree/filter/pagination; separate storage/release gates; immutable previews/checksums; revisions/replays; versions/cloning/scheduled publication/rollback; compatible fallback and cache-key changes.
+
+Not established by this chapter: an approved release build, deployed catalog/worker/cache behavior, real current assets/accounts, production publishes, physical-device rendering or FCM delivery/sound. The combined response records Video CTA local implementation separately.
+
+## 19. Internal safety fixes and final phase response
+
+Existing builder requests/responses remain unchanged by the audit fixes. An uncertain UI asset save no longer triggers deletion of possibly committed media; reconcile the library before manually retrying a non-idempotent upload. The request ID header now also survives early parser errors. These do not add body fields or required headers.
+
+The [combined FE response](PHASE_BACKEND_PRODUCTION_RESPONSE_AND_INTEGRATION_GUIDE.md) replaces the oversized earlier report and describes the three agreed additions, every new field's origin/reuse, complete preparation flows, internal fixes and remaining release/device acceptance. Final combined local result: 877 passed, zero failed, five external skips.

@@ -1,12 +1,13 @@
 # Petyard Videos — complete frontend integration handoff
 
-Contract snapshot: **2026-10-10 (Africa/Cairo)**. Audience: customer/mobile/Flutter developers, admin frontend developers, and client QA. Scope: all **53 frontend-facing Videos routes**, plus the existing Product gallery and notification touchpoints used by these flows.
+Contract snapshot: **2026-10-15 (Africa/Cairo)**. Audience: customer/mobile/Flutter developers, admin frontend developers, and client QA. Scope: all **53 frontend-facing Videos routes**, plus the existing Product gallery and notification touchpoints used by these flows. The additive `videos-product-links-v1` contract below is local work after release `08ac5b9`; it is not claimed deployed.
 
 This is the implementation contract for the current local backend. It explains request and response fields, identity, retained client state, customer and staff workflows, generation changes, retries, concurrency, error handling, and acceptance cases. It does not claim that a frontend implementation or deployment has passed acceptance. Older contract plans contain historical proposals; use this document and current source when they differ.
 
 ## Contents
 
 - [Delivery state and integration boundaries](#delivery-state-and-integration-boundaries)
+  - [Linked products for general Videos](#linked-products-for-general-videos)
   - [Workflow map: use the right content family](#workflow-map-use-the-right-content-family)
   - [Editorial and upload state are independent](#editorial-and-upload-state-are-independent)
 - [Full frontend route index](#full-frontend-route-index)
@@ -60,7 +61,7 @@ This is the implementation contract for the current local backend. It explains r
 
 ## Delivery state and integration boundaries
 
-The selected local backend implementation and acceptance checkpoint is complete. No known unfinished local implementation remains in that accepted scope. On 2026-10-10 the user authorized the combined Videos/Prime GitHub release and chose to pull it on the VPS personally. The encrypted release environment enables public Videos, Product Videos, uploads, Reel/cover pipeline readiness and bounded orphan recovery. **A GitHub push does not deploy or activate the VPS.** See [VIDEOS_GITHUB_RELEASE.md](VIDEOS_GITHUB_RELEASE.md) for the server steps and release verification. An HTTP 404/503 from an old VPS build or closed feature is not evidence that the newly implemented route is broken.
+The pre-extension backend checkpoint was released as `08ac5b9`. The user subsequently reported the VPS at that revision with seven online PM2 processes, seven signed Bunny callbacks returning 202, test-video management GET 404 and an empty library. This is reported operational evidence, not a new live inspection or complete application/device acceptance. The linked-product extension is newer local work and requires separate release authorization. No deployment, feature switches, secrets or live media changed during this extension. See [VIDEOS_PRODUCTION_HANDOFF_RESPONSE.md](VIDEOS_PRODUCTION_HANDOFF_RESPONSE.md) for current evidence and remaining gates; earlier checkpoints retain their historical scope.
 
 | Gate | Meaning for frontend integration |
 |---|---|
@@ -76,6 +77,71 @@ The selected local backend implementation and acceptance checkpoint is complete.
 No API endpoint exposes feature configuration as a frontend capability registry. Use agreed release configuration and documented availability responses. Do not implement credential settings in the frontend. Stream management/read-only/token credentials, storage/CDN credentials, YouTube verification key, and webhook authentication belong to backend deployment.
 
 The provider webhook is **POST `/api/v1/integrations/bunny-stream/webhook`** (backend integration, excluded from the 53 client routes). The frontend never submits provider status hints, signatures, Ready events, or verification results. Status is established by backend reconciliation and provider reads. Missed webhooks do not authorize the client to mark media ready; poll the appropriate application status route.
+
+### Linked products for general Videos
+
+Additive contract label: **videos-product-links-v1**, approved 2026-10-15. This
+label identifies this documentation change; it is not a new response field or
+replacement for the existing numeric editorial `revision`.
+
+General YouTube Videos and Reels accept optional **`productIds`**, an ordered
+array of **0–50 unique catalog Product ObjectId strings**. Product Video's
+existing single `productId`/`productHref` flow is unchanged. Do not send
+`productIds` to Product Video upload, visibility or gallery endpoints.
+
+| Surface | Exact mapping |
+|---|---|
+| `POST /api/v1/videos/admin` (YouTube or Reel) | Optional `productIds`; omitted means `[]`. Existing required content fields, role policy and 201 response remain unchanged. |
+| `PATCH /api/v1/videos/admin/:id` | Optional `productIds` replaces the entire ordered selection. Omission preserves the current editable selection; `[]` clears; `null` is invalid. No revision field is added to this body. |
+| Admin create/edit/detail/list and review responses | Top-level `productIds` is active/current selection. `pendingChange.content.productIds` is the proposal selection, never a second public CTA. Legacy missing fields are presented as `[]`. |
+| Public YouTube list, Reel feed, editorial detail and saved lists | Editorial items add `productIds: string[]`, from active published content only. Legacy content returns `[]`. Product feed/gallery items retain their existing singular relationship and do not add this field. |
+| Submit/approve/publish, replacement and cover routes | No new request fields. Existing actions preserve the selected links; proposal application moves links with the rest of the content/media. |
+
+Field-only example; this is not a complete create body:
+
+```json
+{
+  "productIds": ["68cf1234567890abcdef1235", "68cf1234567890abcdef1234"]
+}
+```
+
+IDs must be exactly 24 hexadecimal characters. The backend lowercases them,
+retains selection order, and rejects duplicates case-insensitively; it never
+deduplicates, sorts or silently truncates this selection. Array/non-string,
+malformed, duplicate and over-limit errors return **422** with the existing
+envelope, code **`VIDEO_INVALID_PRODUCT_IDS`**, and safe `field` such as
+`productIds` or `productIds[1]`. A missing or inactive Product returns the same
+code and its submitted index. All submitted IDs must exist with `isActive:true`
+at metadata authoring and at submission/review/publication/application checks.
+Stock, price and warehouse availability are not snapshotted or used to invent
+a separate link-eligibility policy. Metadata limits remain trimmed JavaScript
+string lengths: title 160 and description 2000 UTF-16 code units, not graphemes.
+
+An admin's proposed links on approved/published/unpublished content remain
+private until approval applies that proposal. Rejection and cancellation keep
+active links unchanged. SuperAdmin direct edits retain the existing policy.
+Automatic initial Reel publication rechecks eligibility after its HLS probe and
+fences against a changed link selection. Replacement reservation copies the
+current selection; reviewed/automatic replacement application atomically moves
+the proposal selection with its media. Cover-only proposals preserve links.
+There is no new immutable editorial-history or product-snapshot endpoint;
+existing detail/proposal/review metadata remains the available history surface.
+
+The customer opens Product details, not direct Add to cart. One selected Product
+may be one card; multiple Products may use the client's “Shop this video” list.
+Hydrate the returned IDs through the existing **POST `/api/v1/products/batch`**
+body `{ "ids": [...] }`, at most 50, using normal identity/language/warehouse
+rules. Preserve authored order by mapping returned Products to the original
+ID list, and handle `unavailable_product_ids` without breaking video playback.
+Later Product deactivation/deletion does not delete or unpublish the Video;
+its IDs remain references and current batch eligibility determines the CTA.
+Use live price, stock and variants. No copied commerce, custom CTA marketing
+fields, new navigation endpoint or new player behavior is introduced.
+
+Client acceptance must cover omission, clear, order, all 50, duplicate/missing/
+inactive rejection, rejected/pending/automatic replacements, old missing-field
+decoding, variants and later unavailable Products. Local backend proof does not
+establish the admin picker, customer CTA, browser/device behavior or deployment.
 
 ### Workflow map: use the right content family
 
@@ -259,6 +325,7 @@ Registry navigation: [request inputs and headers](#request-inputs-and-headers); 
 | Body `kind` on editorial create | Staff's selected YouTube/Reel creation family | Immutable family on the created record. Keep with returned editorial ID; not editable through metadata PATCH. |
 | `title_en`, `title_ar`, `description_en`, `description_ar` | Staff's editor form; use active or own pending content as appropriate | Only documented editorial create/metadata edit bodies. Keep unsent form draft separately from server state. Do not resend the entire response object. |
 | `youtubeUrl` | Staff's submitted or reconstructed supported HTTPS YouTube URL | YouTube create/edit input only. The response supplies `youtubeId`, not the original URL. When prefilling an editor from `youtubeId`, use a supported URL such as https://youtu.be/{youtubeId}; submit `youtubeUrl`, not `youtubeId`. |
+| `productIds` | Staff's ordered catalog selection, maximum 50 | General Video create/edit only. Keep active and own pending selections separate. Omit on PATCH to preserve; send [] only for an intentional clear. |
 | `files`, `file` | Selected file manifest(s) | Initial batch versus single replacement/recovery request, as documented. Keep exact manifest and original byte access in operation state. |
 | `clientId` | Client-generated stable Product file correlation | Matches initial/replacement results and recovery manifest. Operation state; absent from Reel manifests and Product refresh responses. |
 | `filename`, `mimeType`, `sizeBytes` | Selected file's safe name, exact MIME, and actual byte length | Backend metadata validation and exact-file TUS/recovery. Operation state; not a path, estimated duration, or provider ID. |
@@ -271,7 +338,7 @@ Registry navigation: [request inputs and headers](#request-inputs-and-headers); 
 | Player-error `youtubeId`, `reason` | Attempted YouTube key and observed supported failure | Report current linked media through the narrow report route. Keep only bounded retry context; no raw diagnostic payload. |
 | Analytics `kind`, `contentId`, `events`, and event fields | Current content plus actual observed player actions | Session issuance/event submission only. Full event provenance and retention appear below. |
 
-For metadata PATCH, omitted keys leave their existing values. An explicit empty description string clears that description. Current edit normalization uses null-coalescing for supplied fields, so `null` does not reliably mean clear/reset and can retain the base value; do not use it as an edit command. Create normalizes omitted/null optional descriptions to empty strings, while required create titles must be nonempty strings. Position null has an explicitly different, documented clear-order meaning.
+For metadata PATCH, omitted keys leave their existing values. An explicit empty description string clears that description. Existing text edit normalization uses null-coalescing for supplied fields, so `null` does not reliably mean clear/reset and can retain the base value; do not use it as an edit command. Product links are stricter: `productIds:null` is invalid, and only `[]` clears links. Create normalizes omitted/null optional descriptions to empty strings, while required create titles must be nonempty strings. Position null has an explicitly different, documented clear-order meaning.
 
 ##### Public content, Product gallery, and mutation acknowledgements
 
@@ -282,6 +349,7 @@ For metadata PATCH, omitted keys leave their existing values. An explicit empty 
 | `coverUrl` | Backend resolves editorial cover, provider poster, or YouTube thumbnail fallback | Preview display only. Refetch after changes; never a storage/upload identifier. |
 | `youtubeId` | Backend extracts/verifies stored YouTube media key | YouTube player and matching player-error report. Keep with current editorial ID; a relink invalidates old report/session context. |
 | `embedUrl` | Backend builds YouTube embed URL from that key | YouTube player only. Screen state; not Bunny HLS, an application API path, or a canonical share link. |
+| `productIds` | Backend active editorial Product references | YouTube/Reel only. Hydrate using existing product batching; cache by identity/language/warehouse. Do not infer stock or expose pending proposals. |
 | `canSave` | Backend family capability, true for editorial and false for Product Video | Whether to offer save action. Screen state only; no authority to override rejected mutations. |
 | `isSaved` | Backend association for resolved identity; false without a matching association and always false for Product feed entries | Server-confirmed save display. Identity-scoped state; never migrate guest state to user implicitly. Gallery Video items omit this field. |
 | `publishedAt` | Editorial publication transition | Display/sort context. Screen state using the shared Cairo wire rule; never send as publication permission. |
@@ -320,6 +388,7 @@ For metadata PATCH, omitted keys leave their existing values. An explicit empty 
 | `pendingChange` | Backend one current proposal or null/absence | Separate pending UI from live/current content. Screen state; invalidation/cancellation/application must remove obsolete proposal state. |
 | `pendingChange.authorId`, `.status` | Backend proposal actor and review state | Ownership/action hints. Screen state; cannot be set by client metadata bodies. |
 | `pendingChange.content.kind`, localized titles/descriptions, `.youtubeId` | Backend complete proposal snapshot after normalized edit | Prefill correct pending editor/review comparison. Send only allowed edit keys; YouTube response key becomes a supported youtubeUrl input. |
+| `pendingChange.content.productIds` | Backend complete proposed ordered selection | Prefill/review this proposal; do not display it as the current public CTA before application. |
 | `pendingChange.content.coverId`, `pendingChange.coverUrl` | Backend proposed cover reference/removal and detail enrichment | Pending-cover preview/removal comparison. Screen state; never send coverId or returned URL as upload metadata. |
 | `pendingChange.uploadSessionId`, `.assetId` | Backend bound replacement generation | Use exact uploadSessionId in purpose-specific authorized routes; assetId is diagnostic only. Keep with Video and pending purpose in operation/screen state. |
 | `pendingChange.autoApplyWhenReady` | Backend role policy captured when replacement started | Explain auto-application versus manual review. Read-only screen state; not inferred from initial policy/current requester role. |
@@ -398,7 +467,7 @@ Notification-specific fields and their producers are detailed in **Notification 
 
 ## Customer and mobile contract: public Videos, Product gallery, and playback analytics
 
-Source-grounded contract, 2026-10-10. This chapter describes the current local backend implementation and its tests. The public flags are off in the current environment, and this code has not been deployed to the VPS. It does not claim that a mobile client, browser player, or physical device has implemented or accepted the flows.
+Source-grounded contract, updated 2026-10-15. The pre-extension deployment is reported at `08ac5b9`; the linked-product addition remains local. Feature availability depends on the deployed revision and operator configuration. This chapter does not claim that a mobile client, browser player, or physical device has implemented or accepted the flows.
 
 The older [Videos contract plan](D:/Projects/GitHub/petyard/VIDEOS_API_CONTRACT_PLAN.md) and [Product Media contract plan](D:/Projects/GitHub/petyard/PRODUCT_MEDIA_CONTRACT_PLAN.md) are background only. Where their proposed response examples differ from the implementation, current source and tests below take precedence.
 
@@ -499,8 +568,8 @@ These are the fields currently constructed by the backend. Within each row below
 
 | Kind | Exact fields and types |
 |---|---|
-| YouTube (`kind: "youtube"`) | `id: string`; `kind: "youtube"`; `title: string`; `description: string|null`; `canSave: true`; `isSaved: boolean`; `publishedAt: ISO date-time string`; `coverUrl: URL string`; `youtubeId: 11-character string`; `embedUrl: URL string`. `coverUrl` is editorial cover URL or `https://i.ytimg.com/vi/{youtubeId}/hqdefault.jpg`; all keys are emitted. |
-| Reel (`kind: "reel"`) | `id: string`; `kind: "reel"`; `title: string`; `description: string|null`; `canSave: true`; `isSaved: boolean`; `publishedAt: ISO date-time string`; `coverUrl: URL string|null`; `playbackHref: path string`; `durationSeconds: number`; `width: number`; `height: number`; `aspectRatio: number`. `coverUrl` uses editorial cover, then asset poster, then null. All keys are emitted. |
+| YouTube (`kind: "youtube"`) | `id: string`; `productIds: string[]`;  `kind: "youtube"`; `title: string`; `description: string|null`; `canSave: true`; `isSaved: boolean`; `publishedAt: ISO date-time string`; `coverUrl: URL string`; `youtubeId: 11-character string`; `embedUrl: URL string`. `coverUrl` is editorial cover URL or `https://i.ytimg.com/vi/{youtubeId}/hqdefault.jpg`; all keys are emitted. |
+| Reel (`kind: "reel"`) | `id: string`; `productIds: string[]`;  `kind: "reel"`; `title: string`; `description: string|null`; `canSave: true`; `isSaved: boolean`; `publishedAt: ISO date-time string`; `coverUrl: URL string|null`; `playbackHref: path string`; `durationSeconds: number`; `width: number`; `height: number`; `aspectRatio: number`. `coverUrl` uses editorial cover, then asset poster, then null. All keys are emitted. |
 | Product Video feed item (`kind: "product"`) | `id: string` (Product Video placement ID); `kind: "product"`; `title: string` (localized parent product name); `description: null`; `coverUrl: URL string|null`; `productId: string`; `productHref: path string`; `playbackHref: path string`; `canSave: false`; `isSaved: false`; `durationSeconds: number`; `width: number`; `height: number`; `aspectRatio: number`; `attachedAt: ISO date-time string`. All keys are emitted. It has no `publishedAt`. |
 
 `canSave` and `isSaved` are emitted for all list/detail DTOs, but product values are always false. Product Video gallery entries have their own smaller exact shape in [Product gallery use cases and field meanings](#product-gallery-use-cases-and-field-meanings) and do not include `isSaved`.
@@ -999,7 +1068,7 @@ Remaining uncertainty to resolve in client/deployment acceptance:
 
 * No mobile app source or client serialization/player integration was inspected or proven. This document cannot claim the Flutter/native player honors lifecycle, HLS, union decoding, or event queue behavior.
 * No physical-device/browser codec, HLS expiry, background playback, or network-retry acceptance was performed.
-* Public feature switches are off in the current environment, and local source has not been deployed to the VPS. The live route availability, production values, auth configuration, provider CDN signing, and deployed database/index state are not established here.
+* Pre-extension VPS revision, online processes and signed callbacks are supported by the user's report, not a new inspection in this task. The new linked-product extension is not deployed or device-accepted by this local proof.
 * Server acceptance does not determine product analytics policy for what counts as a displayed impression, nor does this source define client UI copy for null metrics or a particular background-playback product policy.
 
 
@@ -1055,13 +1124,13 @@ All paths below are relative to the editorial base path unless the provider-moni
 | GET /api/v1/videos/admin/provider-operations | superAdmin | 200, filtered provider-operation page |
 | POST /api/v1/videos/admin/provider-operations/:operationId/retry | superAdmin | 202, retry request accepted |
 
-The route table lists 27 editorial endpoints and 2 provider-operation endpoints. The upload and cover routes exist in the router even though current default wiring leaves their readiness gates disabled; see the relevant sections below.
+The route table lists 27 editorial endpoints and 2 provider-operation endpoints. Upload/cover availability depends on explicit release configuration, with fail-closed defaults; see the relevant sections below. The linked-product extension adds no route.
 
 ### Creating YouTube videos and Reel drafts
 
 #### Create request
 
-Send **POST /** with one of the following shapes. The request must contain only the listed fields.
+Send **POST /** with one of the following shapes. Both kinds additionally accept optional `productIds` as defined in the linked-products chapter. Other unknown fields remain invalid.
 
 YouTube:
 
@@ -1096,7 +1165,7 @@ Every Reel starts as **draft**, including a Reel created by a superAdmin. Creati
 
 #### Editing metadata and review proposals
 
-Use **PATCH /:id** for text edits. The request accepts the content fields relevant to the video kind and requires at least one editable field. The body must not include revision; the strict validator rejects it as an unknown field. For YouTube, the URL may be changed and is reverified. For Reel, only title and description fields are editable through this endpoint. Cover and media changes use their dedicated flows. Position fields are separate.
+Use **PATCH /:id** for content edits. The request accepts the content fields relevant to the video kind and requires at least one editable field. The body must not include revision; the strict validator rejects it as an unknown field. Both kinds accept optional ordered `productIds` with the omission/clear/validation rules above. For YouTube, the URL may be changed and is reverified. Reel accepts titles, descriptions and product links here; cover and media changes use their dedicated flows. Position fields are separate.
 
 When an unreviewed draft is edited, the current draft content changes. For a video already approved, published, or unpublished, an admin edit creates or updates one **pendingChange** proposal rather than changing the live content. The proposal records its author, status, content snapshot, and review timestamps/reason. A second proposal is not created in parallel. An admin cannot edit a proposal owned by a different admin. A superAdmin may make direct changes under the service’s review-state rules.
 
@@ -1119,7 +1188,7 @@ The detail representation may include **pendingChange**. This schema-backed obje
 | rejectedAssetExpiresAt | Optional Date; normally rejection time plus seven days for a rejected Reel replacement. Resubmission clears it. |
 | coverUrl | Detail-only enrichment, not stored in the proposal schema; usable pending-cover URL or null. |
 
-The nested **content** object has required **kind** (youtube or reel), required **title_en** and **title_ar** strings (maximum 160 characters), and **description_en** and **description_ar** strings (default empty, maximum 2,000 characters). YouTube content requires **youtubeId**, an 11-character ID. Reel content cannot reference a YouTube ID. **coverId** is an optional cover ObjectId and can be null to represent removal. A replacement Reel’s asset/session references are on pendingChange itself, not inside content.
+The nested **content** object has required **kind** (youtube or reel), required **title_en** and **title_ar** strings (maximum 160 characters), **description_en** and **description_ar** strings (default empty, maximum 2,000 characters), and **productIds** (ordered Product IDs, default empty, maximum 50). YouTube content requires **youtubeId**, an 11-character ID. Reel content cannot reference a YouTube ID. **coverId** is an optional cover ObjectId and can be null to represent removal. A replacement Reel’s asset/session references are on pendingChange itself, not inside content.
 
 The admin video response is currently based on the model representation. The repository removes internal **_id**, **__v**, and **associationRevision**, and presents **id** as a string. It otherwise returns model fields, including nullable or optional fields where present. Do not assume this is a narrowly allowlisted public DTO. Frontend code should read the documented fields and tolerate additional fields and absent optional values.
 
@@ -1131,6 +1200,7 @@ The principal video fields are:
 | kind | String enum; always present | youtube or reel; determines content and media rules. |
 | title_en, title_ar | Strings; required | Localized titles. |
 | description_en, description_ar | Strings; normally present, default empty | Localized descriptions. |
+| productIds | Array of strings, default empty | Active ordered Product references, maximum 50. The pending snapshot has its own content.productIds. Retain the correct editable selection; do not submit the whole response. |
 | youtubeId | String for YouTube; absent for Reel | YouTube video ID. |
 | activeAssetId | ObjectId serialized as string; optional | Current Reel media asset reference; absent/null when no media is attached. |
 | activeUploadSessionId | ObjectId serialized as string; optional | Upload session bound to the current active Reel generation. After replacement application, this can be the applied replacement session; it does not imply initial-upload route eligibility. |
@@ -1156,7 +1226,7 @@ The API may expose fields not listed in this table because of model pass-through
 
 #### Feature readiness and current behavior
 
-New initial/replacement Reel upload sessions require both `REEL_UPLOADS_ENABLED=true` and `REEL_UPLOAD_PIPELINE_READY=true`. Multipart cover upload requires `VIDEO_COVER_PIPELINE_READY=true`. The pipeline switches default to false when absent; the operator enables them after checking persistence, worker and provider prerequisites. They attest release activation and do not continuously measure worker health. The encrypted 2026-10-10 release environment enables these switches, but the VPS must still pull the release and restart its processes. Disabled Reel creation returns **503 VIDEO_UPLOAD_DISABLED**; disabled cover upload returns **503 VIDEO_COVER_DISABLED**. A client should treat these responses as temporarily unavailable and avoid tight retry loops. Status, authorization refresh, recovery, cancellation and cover removal remain available subject to their normal access and validation requirements.
+New initial/replacement Reel upload sessions require both `REEL_UPLOADS_ENABLED=true` and `REEL_UPLOAD_PIPELINE_READY=true`. Multipart cover upload requires `VIDEO_COVER_PIPELINE_READY=true`. The pipeline switches default to false when absent; the operator enables them after checking persistence, worker and provider prerequisites. They attest release activation and do not continuously measure worker health. The encrypted 2026-10-10 release environment enabled these switches; the user later reported VPS 08ac5b9 online with signed callbacks. No current live inspection or settings change is performed by this extension. Disabled Reel creation returns **503 VIDEO_UPLOAD_DISABLED**; disabled cover upload returns **503 VIDEO_COVER_DISABLED**. A client should treat these responses as temporarily unavailable and avoid tight retry loops. Status, authorization refresh, recovery, cancellation and cover removal remain available subject to their normal access and validation requirements.
 
 #### Starting an initial upload
 
@@ -1333,7 +1403,7 @@ Call **DELETE /:id/pending-change** to cancel the current proposal. An admin may
 
 #### Upload contract and current gate
 
-The upload route is **POST /:id/cover**, multipart form data with exactly one file field named **cover** and no text fields. The route accepts one file, with at most two multipart parts, and limits the upload to 5 MiB. Current default router wiring has the cover gate disabled, so the route returns **503 VIDEO_COVER_DISABLED** until that gate is deliberately enabled.
+The upload route is **POST /:id/cover**, multipart form data with exactly one file field named **cover** and no text fields. The route accepts one file, with at most two multipart parts, and limits the upload to 5 MiB. It requires the explicit cover pipeline release switch; absent/false configuration fails closed with **503 VIDEO_COVER_DISABLED**. This local extension does not change that configuration.
 
 When enabled, the server checks the actual image bytes rather than trusting the MIME header. Accepted source formats are JPEG, PNG, and WebP. Animated/multi-frame content is rejected. The image must be portrait after orientation is applied, must not exceed 16 million pixels, and must fit the 5 MiB limit. The server auto-orients and converts it to WebP quality 80 inside a maximum 1080×1920 box, preserving aspect ratio and without enlarging a smaller image. It does not require an exact 9:16 source or crop every portrait to 9:16. The backend generates the cover ID/object key. The client cannot choose a storage key, cover ID, or public URL.
 
@@ -1604,14 +1674,14 @@ This chapter was grounded in current route, controller, validator, service, mode
 - [reelPreview.test.js](D:/Projects/GitHub/petyard/test/domains/videos/reels/reelPreview.test.js)
 - [videoProviderAdmin.test.js](D:/Projects/GitHub/petyard/test/domains/videos/provider/videoProviderAdmin.test.js)
 
-Source and fake-adapter tests establish route behavior, validation, persistence/CAS logic, and worker scheduling as implemented. They do not prove live Bunny behavior, actual browser TUS interoperability, CDN eviction timing, or production feature readiness. Current default router wiring keeps Reel upload and cover upload disabled. This chapter does not enable flags, perform provider requests, or promise that old public cover URLs are immediately evicted.
+Source and fake-adapter tests establish route behavior, validation, persistence/CAS logic, and worker scheduling as implemented. They do not prove actual browser TUS interoperability, CDN eviction timing or production feature readiness. Upload gates are explicit operator switches with fail-closed defaults; this chapter does not enable them, perform provider requests or promise that old public cover URLs are immediately evicted.
 
 #### Points to confirm before frontend integration
 
 1. The route and controller source was used for all listed HTTP status codes. Some service errors are mapped by shared middleware; this chapter lists stable codes only where the source establishes them clearly.
 2. The admin video response is model-backed and passes through most schema fields. Optional Mongoose fields may be missing rather than explicitly null. The client should tolerate both and avoid treating unlisted fields as a stable contract.
 3. Initial and replacement upload status response shapes are described from current service code. The exact set of optional recovery fields can vary with state.
-4. Upload and cover routes are intentionally documented even though their default gates are off. A frontend should show unavailable state until a separately approved deployment enables them.
+4. Upload and cover routes depend on the operator's explicit pipeline settings. Their absent-setting defaults fail closed; actual deployed availability must be checked rather than inferred from a default or a historical report.
 5. Public cover URLs may remain cached after detachment or deletion. The API does not establish CDN purge completion as part of the local editorial mutation response.
 
 
@@ -1938,7 +2008,7 @@ The detailed customer, analytics, editorial, Product, and provider-operation cha
 
 ### Evidence already available
 
-The backend checkpoint records **703 passed, 0 failed, 5 opt-in external skips** in the latest normal regression. Separate bounded provider/Mongo/Redis acceptance verified the documented selected upload/resume/recovery, duration, HLS expiry, replacement/cancellation/deletion races, editorial review/private preview/publish/cutover, durable cleanup, and exact orphan adoption paths. The final editorial/cover/orphan run passed four tests including its parent in 159.2 seconds and verified four Stream management objects, two cover origins, and twelve marked collections absent. Completed TUS metadata can remain readable while fresh uploads are denied. Public cover CDN URLs were still cached 200 after origin deletion; immediate eviction was not claimed.
+The historical 2026-10-10 backend checkpoint recorded **703 passed, 0 failed, 5 opt-in external skips**. The newer extension's combined Videos/notification results are in `VIDEOS_PRODUCTION_HANDOFF_RESPONSE.md`; these are different scopes. Separate earlier bounded provider/Mongo/Redis acceptance verified the documented selected upload/resume/recovery, duration, HLS expiry, replacement/cancellation/deletion races, editorial review/private preview/publish/cutover, durable cleanup, and exact orphan adoption paths. The final editorial/cover/orphan run passed four tests including its parent in 159.2 seconds and verified four Stream management objects, two cover origins, and twelve marked collections absent. Completed TUS metadata can remain readable while fresh uploads are denied. Public cover CDN URLs were still cached 200 after origin deletion; immediate eviction was not claimed.
 
 Live and simulated proof are distinguished in [VIDEOS_BACKEND_ACCEPTANCE.md](D:/Projects/GitHub/petyard/VIDEOS_BACKEND_ACCEPTANCE.md). In particular, signed local webhook replay is not actual provider-origin delivery to deployed HTTPS; local worker interruption/restart with simulated provider work is not VPS supervision proof; live orphan adoption covered the selected Reel-initial case, not every five-path permutation. Actual notification receipt on the user's Android phone does not prove all devices. This handoff was verified against current source, validators, controllers, DTOs, and focused test cases; no provider allocations or notification sends are required to verify documentation.
 
@@ -1946,7 +2016,7 @@ Live and simulated proof are distinguished in [VIDEOS_BACKEND_ACCEPTANCE.md](D:/
 
 1. Implement the agreed customer and admin screens/HTTP decoders/upload-player adapters/event queues from this contract in their actual frontend repositories.
 2. Run the above client acceptance on a deliberately configured integration environment, including actual browser/device player and background/retry behavior.
-3. Obtain separate release authorization for commits/push/deployment, securely supply already-existing backend credentials, deploy webhook/worker/indexes, prove provider-origin HTTPS callbacks and deployed supervision, then deliberately open relevant guards/flags in the agreed sequence.
+3. Obtain separate release authorization for the new extension's commits/push/deployment and approved acceptance. The prior 08ac5b9 deployment/callback report does not authorize another rollout or fresh test resources; securely retain the existing backend credentials and operator settings.
 4. Record actual release/device results and remaining issues. Do not mark broad release gates complete from this document alone.
 
 No frontend framework/package, component structure, exact polling interval/chunk size, app screen name, share domain, background-play product policy, or displayed-impression visibility threshold is invented here. Use the existing frontend architecture and confirmed product choices. Backend validation/security/duration/timing limits are mandatory; suggested client retry/lifecycle behavior is identified as guidance. New business/UI decisions must not be smuggled into the API as undocumented fields.
@@ -1956,3 +2026,13 @@ No frontend framework/package, component structure, exact polling interval/chunk
 Use current mounted route/controller/service/validator behavior as authority. Field dictionaries describe current returned shapes, including model-backed administrative optional fields; client writes remain strictly endpoint-specific. If a backend contract changes, update the relevant field dictionary, flow, error/action matrix, persistence map, examples, and client acceptance case together. Historical plans and acceptance checkpoints remain supporting records with their original proof boundaries.
 
 Supporting project documents: [VIDEOS_TODO.md](D:/Projects/GitHub/petyard/VIDEOS_TODO.md), [VIDEOS_SESSION_HANDOFF.md](D:/Projects/GitHub/petyard/VIDEOS_SESSION_HANDOFF.md), [VIDEOS_IMPLEMENTATION_PLAN.md](D:/Projects/GitHub/petyard/VIDEOS_IMPLEMENTATION_PLAN.md), and [VIDEOS_BACKEND_ACCEPTANCE.md](D:/Projects/GitHub/petyard/VIDEOS_BACKEND_ACCEPTANCE.md).
+
+## Internal audit corrections — 2026-10-15
+
+Request-driven editorial metadata writes now recheck persisted account/role/literal Videos control through a real User write inside the same transaction as the Video mutation. This covers create/edit/review/publication, cover attachment, positions, removal and manual replacement/pending cancellation; automatic worker policy is unchanged. No new client actor/revision field or mandatory header is needed. Existing authorization errors apply when access is revoked while a request is in flight. Upload reservation/grant/recovery and cover staging were not redesigned by this targeted fix.
+
+Known Video/order staff alerts now recheck recipient eligibility before outbox dispatch. Existing order sound/action contracts remain. The request ID header is set before body parsing. These internal fixes do not change the existing Video request/response envelopes or `productIds` integration.
+
+The owner chose to keep direct Bunny uploads and explicitly accept the original-container inspection limitation: manifest/length/processing checks remain, but backend-independent MP4/MOV source-byte inspection is not claimed. Real provider and physical-device acceptance remain required.
+
+Current combined response and final evidence: [FE production handoff response](PHASE_BACKEND_PRODUCTION_RESPONSE_AND_INTEGRATION_GUIDE.md). Combined local run: 877 passed, zero failed, five external skips. Earlier per-phase counts above remain historical, not fresh live proof.

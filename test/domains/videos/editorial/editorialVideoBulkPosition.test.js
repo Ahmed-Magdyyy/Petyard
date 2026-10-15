@@ -21,7 +21,7 @@ function fixture(rows = ids.map((_id, index) => ({ _id, revision: 3,
 }))) {
   const db = replacementDatabase({ placements: rows });
   const service = createEditorialVideoService({
-    repository: createEditorialVideoRepository({ videos: db.placements, connection: db.connection, reelLifecycle: {} }),
+    repository: createEditorialVideoRepository({ videos: db.placements, connection: db.connection, reelLifecycle: {}, assertAuthority: async () => {} }),
     verifyYouTube: async () => assert.fail("ordering must not call YouTube"),
     enqueue: async () => assert.fail("ordering must not enqueue provider work"),
   });

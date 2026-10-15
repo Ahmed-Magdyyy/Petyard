@@ -2,7 +2,6 @@ import "@dotenvx/dotenvx/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { randomUUID } from "crypto";
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy so rate limiters use real client IPs
 const PORT = process.env.PORT || 3000;
@@ -32,6 +31,7 @@ import { validateMediaConfiguration } from "../shared/utils/mediaConfig.js";
 import { validateVideosStreamConfiguration } from "../domains/videos/provider/streamConfig.js";
 import { bunnyStreamWebhookBody, BUNNY_STREAM_WEBHOOK_PATH } from "../domains/videos/provider/bunnyStreamWebhook.middleware.js";
 import { productBatchBodyParser } from "../domains/product/productBatch.middleware.js";
+import { requestIdMiddleware } from "../shared/middlewares/requestIdMiddleware.js";
 
 validateMediaConfiguration();
 validateVideosStreamConfiguration();
@@ -40,6 +40,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // middlewares
 app.set("json replacer", egyptTimezoneReplacer);
+app.use(requestIdMiddleware);
 app.use(BUNNY_STREAM_WEBHOOK_PATH, bunnyStreamWebhookBody);
 app.use("/api/v1/products/batch", productBatchBodyParser);
 app.use(express.urlencoded({ extended: false, limit: "5mb" }));
@@ -48,14 +49,6 @@ app.use(express.static(path.join(__dirname, "uploads")));
 app.use(cookieParser());
 app.use(compression());
 app.use(i18nMiddleware);
-
-// Keep the request and any error raised while handling it tied together in
-// production logs, even when both events happen in the same second.
-app.use((req, res, next) => {
-  req.requestId = randomUUID();
-  res.setHeader("X-Request-Id", req.requestId);
-  next();
-});
 
 // Security middleware
 app.use(mongoSanitize());

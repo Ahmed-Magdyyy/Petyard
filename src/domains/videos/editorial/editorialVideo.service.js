@@ -65,6 +65,7 @@ function editMode(current, actor) {
 
 function currentContent(video) {
   return { kind: video.kind, title_en: video.title_en, title_ar: video.title_ar,
+    productIds: video.productIds ?? [],
     description_en: video.description_en, description_ar: video.description_ar,
     ...(video.kind === editorialVideoKindEnum.YOUTUBE ? { youtubeId: video.youtubeId } : {}),
     ...(video.activeCoverId !== undefined ? { coverId: video.activeCoverId } : {}) };
@@ -85,6 +86,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
   }
 
   async function verifyEditorialMedia(video) {
+    if (video.productIds?.length) await repository.assertProductLinksEligible(video.productIds);
     if (video.kind === editorialVideoKindEnum.YOUTUBE) return verifyYouTube(video.youtubeId);
     if (video.kind === editorialVideoKindEnum.REEL && video.activeAssetId && await verifyReelReady(video)) return;
     throw videoError("Reel is not ready for review or publication", 409, "VIDEO_ASSET_NOT_READY");
@@ -95,7 +97,10 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
       return verifyEditorialMedia({ ...video, ...pending.content, kind: video.kind });
     }
     if (video.kind === editorialVideoKindEnum.REEL && pending.uploadSessionId && pending.assetId &&
-        await verifyReelReplacementReady(video)) return;
+        await verifyReelReplacementReady(video)) {
+      if (pending.content.productIds?.length) await repository.assertProductLinksEligible(pending.content.productIds);
+      return;
+    }
     throw videoError("Reel replacement is not ready for review", 409, "VIDEO_ASSET_NOT_READY");
   }
 
@@ -124,6 +129,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
       }
       const content = normalizedYouTubeInput(input);
       await verifyYouTube(content.youtubeId);
+      if (content.productIds.length) await repository.assertProductLinksEligible(content.productIds);
       const published = actor.role === roles.SUPER_ADMIN;
       return repository.create({
         kind: editorialVideoKindEnum.YOUTUBE,
@@ -132,18 +138,19 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         authorId: actor.id,
         publishedAt: published ? now() : null,
         pendingChange: null,
-      });
+      }, actor);
     },
     async createReelDraft({ actor, input }) {
       if (![roles.ADMIN, roles.SUPER_ADMIN].includes(actor?.role) || !actor?.id) {
         throw videoError("Not allowed to create a Reel", 403, "VIDEO_FORBIDDEN");
       }
       const content = normalizedReelInput(input);
+      if (content.productIds.length) await repository.assertProductLinksEligible(content.productIds);
       return repository.create({
         kind: editorialVideoKindEnum.REEL, ...content, status: editorialVideoStatusEnum.DRAFT, authorId: actor.id,
         autoPublishWhenReady: actor.role === roles.SUPER_ADMIN,
         publishedAt: null, pendingChange: null,
-      });
+      }, actor);
     },
     async editVideo({ id, actor, input }) {
       if (![roles.ADMIN, roles.SUPER_ADMIN].includes(actor?.role) || !actor?.id) {
@@ -172,7 +179,9 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         if (mode.ownAutomatic) next.pendingChange = { ...current.pendingChange,
           content: { ...current.pendingChange.content, kind: current.kind, ...content }, updatedAt: now() };
       }
-      const updated = await repository.replace(id, current.revision, next);
+      const authored = mode.reviewed ? next.pendingChange.content : next;
+      if (authored.productIds?.length) await repository.assertProductLinksEligible(authored.productIds);
+      const updated = await repository.replace(id, current.revision, next, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return updated;
     },
@@ -197,7 +206,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         ...(mode.ownAutomatic ? { pendingChange: { ...current.pendingChange,
           content: { ...current.pendingChange.content, coverId }, updatedAt: now() } } : {}) };
       try {
-        const updated = await finishCommit(repository.replaceWithCovers(id, current.revision, next, { actorId: actor.id, now: now() }));
+        const updated = await finishCommit(repository.replaceWithCovers(id, current.revision, next, { actor, actorId: actor.id, now: now() }));
         if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
         return covers.describe(updated);
       } catch (error) {
@@ -232,8 +241,8 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         return updated;
       }
       const updated = current.pendingChange.content?.coverId
-        ? await finishCommit(repository.replaceWithCovers(id, current.revision, { ...current, pendingChange: null }, { now: now() }))
-        : await repository.replace(id, current.revision, { ...current, pendingChange: null });
+        ? await finishCommit(repository.replaceWithCovers(id, current.revision, { ...current, pendingChange: null }, { actor, now: now() }))
+        : await repository.replace(id, current.revision, { ...current, pendingChange: null }, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return updated;
     },
@@ -259,7 +268,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
           pendingChange: { ...current.pendingChange, status: editorialReviewStatusEnum.IN_REVIEW, reviewReason: null,
             submittedAt: now(),
             ...(current.kind === editorialVideoKindEnum.REEL ? { rejectedAssetExpiresAt: null } : {}) },
-        });
+        }, actor);
         if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
         return updated;
       }
@@ -273,7 +282,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
       const updated = await repository.replace(id, current.revision, {
         ...current,
         status: editorialVideoStatusEnum.IN_REVIEW,
-      });
+      }, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return updated;
     },
@@ -289,7 +298,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         if (current.pendingChange.uploadSessionId || current.pendingChange.assetId) {
           const updated = await finishCommit(repository.applyReelReplacement({ videoId: id,
             expectedRevision: current.revision, sessionId: current.pendingChange.uploadSessionId,
-            assetId: current.pendingChange.assetId, reviewerId: actor.id, now: now() }));
+            assetId: current.pendingChange.assetId, reviewerId: actor.id, actor, now: now() }));
           if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
           return updated;
         }
@@ -303,8 +312,8 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
           reviewedAt: now(),
         };
         const updated = Object.hasOwn(current.pendingChange.content, "coverId")
-          ? await finishCommit(repository.replaceWithCovers(id, current.revision, next, { now: now() }))
-          : await repository.replace(id, current.revision, next);
+          ? await finishCommit(repository.replaceWithCovers(id, current.revision, next, { actor, now: now() }))
+          : await repository.replace(id, current.revision, next, actor);
         if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
         return updated;
       }
@@ -317,7 +326,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         status: editorialVideoStatusEnum.APPROVED,
         reviewerId: actor.id,
         reviewedAt: now(),
-      });
+      }, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return updated;
     },
@@ -337,7 +346,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
             reviewedAt,
             ...(current.kind === editorialVideoKindEnum.REEL && current.pendingChange.assetId && current.pendingChange.uploadSessionId
               ? { rejectedAssetExpiresAt: new Date(reviewedAt.getTime() + 7 * 24 * 60 * 60_000) } : {}) },
-        });
+        }, actor);
         if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
         return updated;
       }
@@ -350,7 +359,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         reviewReason: safeReason,
         reviewerId: actor.id,
         reviewedAt: now(),
-      });
+      }, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return updated;
     },
@@ -369,7 +378,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         ...current,
         status: editorialVideoStatusEnum.PUBLISHED,
         publishedAt: now(),
-      });
+      }, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return updated;
     },
@@ -386,7 +395,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         ...current,
         status: editorialVideoStatusEnum.UNPUBLISHED,
         unpublishedAt: now(),
-      });
+      }, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return updated;
     },
@@ -395,7 +404,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         throw videoError("Not allowed to delete Videos", 403, "VIDEO_FORBIDDEN");
       }
       validatePermanentDeletion(id, input);
-      const result = await repository.deletePermanently({ id: id.toLowerCase(), revision: input.revision, now: now() });
+      const result = await repository.deletePermanently({ id: id.toLowerCase(), revision: input.revision, actor, now: now() });
       await enqueueVideoProviderOperations(result.operationIds, enqueue);
       return { videoId: id.toLowerCase(), status: "removed" };
     },
@@ -409,7 +418,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
       if (current.status !== editorialVideoStatusEnum.DRAFT) throw videoError("Video is not a draft", 409, "VIDEO_STATE_CONFLICT");
       editMode(current, actor);
       if (current.revision !== input.revision) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
-      const updated = await repository.setDraftPosition(id, input.revision, input.draftPosition);
+      const updated = await repository.setDraftPosition(id, input.revision, input.draftPosition, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return { videoId: updated.id, draftPosition: updated.draftPosition, revision: updated.revision };
     },
@@ -418,7 +427,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         throw videoError("Not allowed to order Videos", 403, "VIDEO_FORBIDDEN");
       }
       const positions = validatePublicPositions(input);
-      return repository.setPublicPositions(positions);
+      return repository.setPublicPositions(positions, actor);
     },
     async setPublicPosition({ id, actor, input }) {
       if (actor?.role !== roles.SUPER_ADMIN || !actor.id) {
@@ -431,7 +440,7 @@ export function createEditorialVideoService({ repository, verifyYouTube, covers,
         throw videoError("Video cannot be ordered now", 409, "VIDEO_STATE_CONFLICT");
       }
       const updated = await repository.replace(id, current.revision,
-        { ...current, position: input.position });
+        { ...current, position: input.position }, actor);
       if (!updated) throw videoError("Video changed concurrently", 409, "VIDEO_STATE_CONFLICT");
       return updated;
     },

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { ProductModel } from "../product/product.model.js";
 import { CategoryModel } from "../category/category.model.js";
 import { BrandModel } from "../brand/brand.model.js";
+import { SubcategoryModel } from "../subcategory/subcategory.model.js";
 import { UiLayoutAssetModel } from "./uiLayout.model.js";
 import { collectLayoutReferences } from "./uiLayout.productReferences.js";
 import { UI_LAYOUT_PRODUCT_REFERENCE_FORMAT } from "./uiLayout.constants.js";
@@ -11,6 +12,7 @@ export async function inspectLayoutReferences(content, {
   productModel = ProductModel,
   categoryModel = CategoryModel,
   brandModel = BrandModel,
+  subcategoryModel = SubcategoryModel,
   assetModel = UiLayoutAssetModel,
   session,
 } = {}) {
@@ -24,7 +26,8 @@ export async function inspectLayoutReferences(content, {
     const find = (model, filter, selection) => model.find(filter).select(selection)
       .session(session ?? null).maxTimeMS(PRODUCT_BATCH_QUERY_TIMEOUT_MS).lean();
     // Use bounded set queries, sequentially within the transaction, rather than one lookup per block.
-    for (const [type, model] of [["product", productModel], ["category", categoryModel], ["brand", brandModel]]) {
+    for (const [type, model] of [["product", productModel], ["category", categoryModel],
+      ["brand", brandModel], ["subcategory", subcategoryModel]]) {
       const ids = values(type);
       if (!ids.length) continue;
       const rows = await find(model, { _id: { $in: ids }, ...(type === "product" ? { isActive: true } : {}) }, "_id");
@@ -43,7 +46,7 @@ export async function inspectLayoutReferences(content, {
         for (const product of products) {
           for (const image of [...(product.images ?? []), ...(product.variants ?? []).flatMap((variant) => variant.images ?? [])]) ready.add(image.url);
         }
-        for (const model of [categoryModel, brandModel]) {
+        for (const model of [categoryModel, brandModel, subcategoryModel]) {
           const rows = await find(model, { "image.url": { $in: pending } }, "image.url");
           rows.forEach((row) => ready.add(row.image?.url));
         }
@@ -68,6 +71,7 @@ export async function inspectLayoutReferences(content, {
       filter.isActive = true;
     } else if (entry.type === "category") model = categoryModel;
     else if (entry.type === "brand") model = brandModel;
+    else if (entry.type === "subcategory") model = subcategoryModel;
     else if (entry.type === "asset") {
       model = assetModel;
       delete filter._id;
@@ -91,7 +95,9 @@ export async function inspectLayoutReferences(content, {
       await categoryModel.exists({ "image.url": entry.value }).session(session ?? null);
     const brandImage = productImage || categoryImage ? null :
       await brandModel.exists({ "image.url": entry.value }).session(session ?? null);
-    existence.set(key, Boolean(productImage || categoryImage || brandImage));
+    const subcategoryImage = productImage || categoryImage || brandImage ? null :
+      await subcategoryModel.exists({ "image.url": entry.value }).session(session ?? null);
+    existence.set(key, Boolean(productImage || categoryImage || brandImage || subcategoryImage));
   }
   for (const entry of references) {
     if (!existence.get(`${entry.type}:${entry.value}`)) {

@@ -54,7 +54,8 @@ test("Reel publication and recovery claims use owner, generation, and state CAS"
   await repository.publishIfCurrent({ asset, sessionId: "session-1", now: claimedAt });
   assert.deepEqual(calls[0], ["update", { _id: "reel-1", kind: "reel",
     activeAssetId: "asset-1", activeUploadSessionId: "session-1", status: "draft",
-    autoPublishWhenReady: true }, { $set: { status: "published", publishedAt: claimedAt },
+    autoPublishWhenReady: true, $or: [{ productIds: [] }, { productIds: { $exists: false } }] },
+    { $set: { status: "published", publishedAt: claimedAt },
     $unset: { nextPreviewProbeAt: "" }, $inc: { revision: 1 } }]);
   await repository.deferPreviewProbe({ asset, sessionId: "session-1", nextProbeAt });
   assert.deepEqual(calls[1], ["defer", { _id: "reel-1", kind: "reel",
@@ -68,7 +69,7 @@ test("Reel publication and recovery claims use owner, generation, and state CAS"
     { nextPreviewProbeAt: { $lte: claimedAt } },
   ]);
   assert.deepEqual(await repository.claimDuePreviewProbe({ candidate, claimedAt, nextProbeAt }), asset);
-  const claim = calls.find(([name, filter]) => name === "update" && filter.$or);
+  const claim = calls.find(([name, filter]) => name === "update" && filter.$or?.[0].nextPreviewProbeAt);
   assert.equal(claim[1].activeAssetId, "asset-1");
   assert.equal(claim[1].activeUploadSessionId, "session-1");
   assert.deepEqual(claim[1].$or, [

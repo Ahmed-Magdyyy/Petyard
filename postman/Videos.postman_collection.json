@@ -3842,10 +3842,10 @@
                     "admin"
                   ]
                 },
-                "description": "Titles required trimmed ≤160 chars; descriptions optional default empty ≤2000. Exact listed fields only. YouTube kind can be omitted; verified supported HTTPS watch/shorts/youtu.be URL, public/processed/embeddable/nonlive. No create idempotency guarantee: after lost acknowledgement inspect list before creating again. Admin begins draft. SuperAdmin YouTube immediately publishes; Reel stays draft with immutable autoPublishWhenReady=true when created by superAdmin.",
+                "description": "Titles required trimmed ≤160 chars; descriptions optional default empty ≤2000. Exact listed fields only. YouTube kind can be omitted; verified supported HTTPS watch/shorts/youtu.be URL, public/processed/embeddable/nonlive. No create idempotency guarantee: after lost acknowledgement inspect list before creating again. Admin begins draft. SuperAdmin YouTube immediately publishes; Reel stays draft with immutable autoPublishWhenReady=true when created by superAdmin. Local additive contract videos-product-links-v1 (not in deployed 08ac5b9): productIds is an optional ordered array of 0-50 unique active Product ObjectId strings. Create omission means []; PATCH omission preserves and [] clears. Null, invalid, duplicate, inactive and missing IDs fail with 422 VIDEO_INVALID_PRODUCT_IDS and field path. Proposals keep public active links unchanged until application. Hydrate through existing /api/v1/products/batch. Product Video is unchanged.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"kind\": \"youtube\",\n  \"youtubeUrl\": \"https://www.youtube.com/watch?v=abcdefghijk\",\n  \"title_en\": \"Pet care\",\n  \"title_ar\": \"العناية بالحيوانات\",\n  \"description_en\": \"An editorial example.\",\n  \"description_ar\": \"مثال توضيحي.\"\n}",
+                  "raw": "{\n  \"kind\": \"youtube\",\n  \"youtubeUrl\": \"https://www.youtube.com/watch?v=abcdefghijk\",\n  \"title_en\": \"Pet care\",\n  \"title_ar\": \"العناية بالحيوانات\",\n  \"description_en\": \"An editorial example.\",\n  \"description_ar\": \"مثال توضيحي.\",\n  \"productIds\": []\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -4402,10 +4402,10 @@
                     "{{video_id}}"
                   ]
                 },
-                "description": "Send at least one editable field. Full editable field set shown; partial edits allowed. Do not send kind, revision, positions, coverId, sessionId or assetId. Reviewed admin edits become one pendingChange and current public content remains unchanged; superAdmin direct edits follow state rules. Reel does not accept youtubeUrl.",
+                "description": "Send at least one editable field. Full editable field set shown; partial edits allowed. Do not send kind, revision, positions, coverId, sessionId or assetId. Reviewed admin edits become one pendingChange and current public content remains unchanged; superAdmin direct edits follow state rules. Reel does not accept youtubeUrl. Local additive contract videos-product-links-v1 (not in deployed 08ac5b9): productIds is an optional ordered array of 0-50 unique active Product ObjectId strings. Create omission means []; PATCH omission preserves and [] clears. Null, invalid, duplicate, inactive and missing IDs fail with 422 VIDEO_INVALID_PRODUCT_IDS and field path. Proposals keep public active links unchanged until application. Hydrate through existing /api/v1/products/batch. Product Video is unchanged.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"title_en\": \"Pet care\",\n  \"title_ar\": \"العناية بالحيوانات\",\n  \"description_en\": \"An editorial example.\",\n  \"description_ar\": \"مثال توضيحي.\",\n  \"youtubeUrl\": \"https://youtu.be/abcdefghijk\"\n}",
+                  "raw": "{\n  \"title_en\": \"Pet care\",\n  \"title_ar\": \"العناية بالحيوانات\",\n  \"description_en\": \"An editorial example.\",\n  \"description_ar\": \"مثال توضيحي.\",\n  \"youtubeUrl\": \"https://youtu.be/abcdefghijk\",\n  \"productIds\": []\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -5033,10 +5033,10 @@
                     "admin"
                   ]
                 },
-                "description": "Titles required trimmed ≤160 chars; descriptions optional default empty ≤2000. Exact listed fields only. YouTube kind can be omitted; verified supported HTTPS watch/shorts/youtu.be URL, public/processed/embeddable/nonlive. No create idempotency guarantee: after lost acknowledgement inspect list before creating again. Admin begins draft. SuperAdmin YouTube immediately publishes; Reel stays draft with immutable autoPublishWhenReady=true when created by superAdmin.",
+                "description": "Titles required trimmed ≤160 chars; descriptions optional default empty ≤2000. Exact listed fields only. YouTube kind can be omitted; verified supported HTTPS watch/shorts/youtu.be URL, public/processed/embeddable/nonlive. No create idempotency guarantee: after lost acknowledgement inspect list before creating again. Admin begins draft. SuperAdmin YouTube immediately publishes; Reel stays draft with immutable autoPublishWhenReady=true when created by superAdmin. Local additive contract videos-product-links-v1 (not in deployed 08ac5b9): productIds is an optional ordered array of 0-50 unique active Product ObjectId strings. Create omission means []; PATCH omission preserves and [] clears. Null, invalid, duplicate, inactive and missing IDs fail with 422 VIDEO_INVALID_PRODUCT_IDS and field path. Proposals keep public active links unchanged until application. Hydrate through existing /api/v1/products/batch. Product Video is unchanged.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"kind\": \"reel\",\n  \"title_en\": \"Pet care\",\n  \"title_ar\": \"العناية بالحيوانات\",\n  \"description_en\": \"An editorial example.\",\n  \"description_ar\": \"مثال توضيحي.\"\n}",
+                  "raw": "{\n  \"kind\": \"reel\",\n  \"title_en\": \"Pet care\",\n  \"title_ar\": \"العناية بالحيوانات\",\n  \"description_en\": \"An editorial example.\",\n  \"description_ar\": \"مثال توضيحي.\",\n  \"productIds\": []\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -5404,10 +5404,10 @@
                     "{{video_id}}"
                   ]
                 },
-                "description": "Send at least one editable field. Full editable field set shown; partial edits allowed. Do not send kind, revision, positions, coverId, sessionId or assetId. Reviewed admin edits become one pendingChange and current public content remains unchanged; superAdmin direct edits follow state rules. Reel does not accept youtubeUrl.",
+                "description": "Send at least one editable field. Full editable field set shown; partial edits allowed. Do not send kind, revision, positions, coverId, sessionId or assetId. Reviewed admin edits become one pendingChange and current public content remains unchanged; superAdmin direct edits follow state rules. Reel does not accept youtubeUrl. Local additive contract videos-product-links-v1 (not in deployed 08ac5b9): productIds is an optional ordered array of 0-50 unique active Product ObjectId strings. Create omission means []; PATCH omission preserves and [] clears. Null, invalid, duplicate, inactive and missing IDs fail with 422 VIDEO_INVALID_PRODUCT_IDS and field path. Proposals keep public active links unchanged until application. Hydrate through existing /api/v1/products/batch. Product Video is unchanged.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"title_en\": \"Pet care\",\n  \"title_ar\": \"العناية بالحيوانات\",\n  \"description_en\": \"An editorial example.\",\n  \"description_ar\": \"مثال توضيحي.\"\n}",
+                  "raw": "{\n  \"title_en\": \"Pet care\",\n  \"title_ar\": \"العناية بالحيوانات\",\n  \"description_en\": \"An editorial example.\",\n  \"description_ar\": \"مثال توضيحي.\",\n  \"productIds\": []\n}",
                   "options": {
                     "raw": {
                       "language": "json"

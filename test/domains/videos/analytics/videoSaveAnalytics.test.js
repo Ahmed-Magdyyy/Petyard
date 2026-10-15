@@ -162,6 +162,7 @@ test("permanent editorial deletion cleans saves without recording a customer rem
   // Remove unused synthetic Reel media from this YouTube-only fixture.
   await db.assets.deleteMany({ ownerId: id });
   const editorial = createEditorialVideoService({ repository: createEditorialVideoRepository({
+    assertAuthority: async () => {},
     videos, connection: db.connection, reelLifecycle: {}, deletion: { saves: db.saves,
       assets: db.assets, sessions: db.operations, covers: db.covers, placements: db.replacements } }),
     verifyYouTube: async () => assert.fail("deletion does not verify YouTube"),

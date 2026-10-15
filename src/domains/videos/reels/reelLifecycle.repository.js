@@ -21,12 +21,16 @@ import { recordVideoProviderOperation } from "../provider/videoProviderOperation
 import { createEditorialCoverReferencePersistence } from "../editorial/editorialCover.repository.js";
 
 import { isVerifiedReelAssetReady } from "./reelAsset.policy.js";
+import { ProductModel } from "../../product/product.model.js";
+import { assertVideoProductsEligible } from "../editorial/editorialProductLinks.repository.js";
+import { createEditorialVideoAuthorityFence } from "../editorial/editorialVideoAuthority.repository.js";
 
 const conflict = () => new ApiError("Reel replacement changed", 409, [{ code: "VIDEO_STATE_CONFLICT" }]);
 const replacementStates = [editorialVideoStatusEnum.APPROVED, editorialVideoStatusEnum.PUBLISHED, editorialVideoStatusEnum.UNPUBLISHED];
 
 export function createReelLifecycleRepository({ videos = EditorialVideoModel,
-  sessions = ReelUploadSessionModel, assets = VideoAssetModel, libraryId,
+  assertAuthority = createEditorialVideoAuthorityFence(),
+  sessions = ReelUploadSessionModel, assets = VideoAssetModel, libraryId, products = ProductModel,
   connection = mongoose, attempts = VideoUploadAttemptModel,
   recordOperation = recordVideoProviderOperation,
   coverReferences = createEditorialCoverReferencePersistence({ videos, recordOperation }) } = {}) {
@@ -34,7 +38,7 @@ export function createReelLifecycleRepository({ videos = EditorialVideoModel,
     throw new TypeError("libraryId must be numeric");
   }
   return Object.freeze({
-    async applyReplacement({ videoId, expectedRevision, sessionId, assetId, reviewerId,
+    async applyReplacement({ videoId, expectedRevision, sessionId, assetId, reviewerId, actor,
       automatic = false, now }) {
       if (!libraryId || !(now instanceof Date) || !Number.isFinite(now.getTime()) ||
           (!automatic && !reviewerId)) throw new TypeError("Replacement cutover requires library, time and authority");
@@ -42,6 +46,7 @@ export function createReelLifecycleRepository({ videos = EditorialVideoModel,
       let result;
       try {
         await transaction.withTransaction(async () => {
+          if (actor) await assertAuthority(actor, transaction);
           const video = await videos.findOne({ _id: videoId, kind: editorialVideoKindEnum.REEL, revision: expectedRevision,
             status: { $in: replacementStates }, "pendingChange.assetId": assetId,
             "pendingChange.uploadSessionId": sessionId,
@@ -60,11 +65,13 @@ export function createReelLifecycleRepository({ videos = EditorialVideoModel,
             libraryId, deletionRequestedAt: { $exists: false } }).session(transaction);
           if (!old) throw conflict();
           const content = video.pendingChange.content.toObject?.() ?? video.pendingChange.content;
+          await assertVideoProductsEligible(content.productIds, { products, session: transaction });
           const switched = await videos.findOneAndUpdate({ _id: videoId, kind: editorialVideoKindEnum.REEL, revision: expectedRevision,
             status: video.status, activeAssetId: old._id, "pendingChange.assetId": assetId,
             "pendingChange.uploadSessionId": sessionId, "pendingChange.authorId": row.actorId,
             "pendingChange.status": automatic ? editorialReviewStatusEnum.DRAFT : editorialReviewStatusEnum.IN_REVIEW },
           { $set: { title_en: content.title_en, title_ar: content.title_ar,
+            productIds: content.productIds ?? [],
             description_en: content.description_en, description_ar: content.description_ar,
             activeAssetId: asset._id, activeUploadSessionId: row._id, pendingChange: null,
             ...(Object.hasOwn(content, "coverId") ? { activeCoverId: content.coverId } : {}),
@@ -129,10 +136,14 @@ export function createReelLifecycleRepository({ videos = EditorialVideoModel,
         activeAssetId: asset._id, activeUploadSessionId: session._id });
       return video ? { video, session } : null;
     },
-    async publishIfCurrent({ asset, sessionId, now }) {
-      return videos.findOneAndUpdate({ _id: asset.ownerId, kind: editorialVideoKindEnum.REEL,
+    async publishIfCurrent({ asset, sessionId, expectedProductIds = [], now }) {
+      const filter = { _id: asset.ownerId, kind: editorialVideoKindEnum.REEL,
         activeAssetId: asset._id, activeUploadSessionId: sessionId,
-        status: editorialVideoStatusEnum.DRAFT, autoPublishWhenReady: true },
+        status: editorialVideoStatusEnum.DRAFT, autoPublishWhenReady: true,
+        ...(expectedProductIds.length ? { productIds: expectedProductIds } : {
+          $or: [{ productIds: [] }, { productIds: { $exists: false } }] }) };
+      await assertVideoProductsEligible(expectedProductIds, { products });
+      return videos.findOneAndUpdate(filter,
       { $set: { status: editorialVideoStatusEnum.PUBLISHED, publishedAt: now },
         $unset: { nextPreviewProbeAt: "" }, $inc: { revision: 1 } },
       { new: true });

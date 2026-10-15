@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { getFirebaseMessaging } from "../../config/firebase.js";
 import { NotificationDeviceModel } from "./notification.model.js";
@@ -9,6 +8,9 @@ import {
 import { subscribeDeviceToBroadcastTopicInBackground } from "./notificationTopics.service.js";
 import { UserModel } from "../user/user.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
+import { NotificationOutboxModel } from "./notificationOutbox.model.js";
+import { enqueueNotificationOutbox } from "./notificationOutbox.service.js";
+import { buildStaffAlertPushOptions } from "./notificationPushOptions.js";
 import {
   toCairoDateISO,
   toCairoHour24,
@@ -19,29 +21,8 @@ import {
   enabledControls,
   paymentMethodEnum,
   orderStatusEnum,
+  accountStatus,
 } from "../../shared/constants/enums.js";
-
-// Built per dispatch so the android tag is unique per notification.
-// TODO: replace the random tag id with the real reservation/order id.
-function buildStaffAlertPushOptions() {
-  return {
-    android: {
-      channelId: "petyard_notification_channel_v7",
-      sound: "petyard_songe",
-      priority: "max",
-      defaultVibrateTimings: true,
-      visibility: "public",
-      tag: `reservation_${crypto.randomUUID()}`,
-    },
-    apns: {
-      sound: "petyardSonge.caf",
-      headers: {
-        "apns-priority": "10",
-        "apns-push-type": "alert",
-      },
-    },
-  };
-}
 
 function normalizePlatform(value) {
   const v = typeof value === "string" ? value.toLowerCase().trim() : "";
@@ -571,51 +552,46 @@ export async function sendBroadcastNotificationToAllDevices({
  *
  * @param {Object} order - The order document (must have orderNumber, warehouse, _id)
  */
-export async function sendNewOrderNotificationToAdminsAndModerators(order) {
+export async function sendNewOrderNotificationToAdminsAndModerators(order, {
+  userModel = UserModel,
+  warehouseModel = WarehouseModel,
+  outboxModel = NotificationOutboxModel,
+} = {}) {
   if (!order) return { skipped: true };
 
   try {
     const orderNumber = order.orderNumber || "";
 
-    // 1. Find all superAdmins + admins with "orders" control — fetch name & role too
-    const admins = await UserModel.find({
+    const activeStaff = {
       active: true,
+      deletedAt: null,
+      account_status: { $nin: [accountStatus.BANNED, accountStatus.DELETED] },
+    };
+    const admins = await userModel.find({
+      ...activeStaff,
       $or: [
         { role: roles.SUPER_ADMIN },
         { role: roles.ADMIN, enabledControls: enabledControls.ORDERS },
       ],
-    }).select("_id name email role");
-
-    // Build userId → { name, role } map from admins
-    const userDetailsMap = new Map(
-      admins.map((a) => [String(a._id), { name: a.name, role: a.role }]),
-    );
-
-    const adminIds = admins.map((a) => String(a._id));
+    }).select("_id");
+    const adminIds = admins.map((user) => String(user._id));
 
     // 2. Find moderators for the order's warehouse (if any)
     let moderatorIds = [];
     if (order.warehouse) {
-      const warehouse = await WarehouseModel.findById(order.warehouse).select(
+      const warehouse = await warehouseModel.findById(order.warehouse).select(
         "moderators",
       );
       if (warehouse && Array.isArray(warehouse.moderators)) {
-        moderatorIds = warehouse.moderators
+        const candidates = warehouse.moderators
           .filter(Boolean)
           .map((id) => String(id));
-
-        // Fetch name & role for moderators not already in the map
-        const unknownModIds = moderatorIds.filter(
-          (id) => !userDetailsMap.has(id),
-        );
-        if (unknownModIds.length) {
-          const mods = await UserModel.find({
-            _id: { $in: unknownModIds },
-          }).select("_id email name role");
-          mods.forEach((m) =>
-            userDetailsMap.set(String(m._id), { name: m.name, role: m.role }),
-          );
-        }
+        const moderators = await userModel.find({
+          ...activeStaff,
+          _id: { $in: candidates },
+          role: roles.MODERATOR,
+        }).select("_id");
+        moderatorIds = moderators.map((user) => String(user._id));
       }
     }
 
@@ -626,31 +602,26 @@ export async function sendNewOrderNotificationToAdminsAndModerators(order) {
       return { skipped: true, reason: "no_recipients" };
     }
 
-    // 4. Dispatch notification
-    const result = await dispatchNotificationToUsers({
-      userIds: allRecipientIds,
-      notification: {
-        title_en: "New Order Placed",
-        title_ar: "طلب جديد",
-        body_en: `Order ${orderNumber} has been placed and is awaiting processing.`,
-        body_ar: `تم تقديم الطلب ${orderNumber} وينتظر المعالجة.`,
-      },
+    const orderId = String(order._id);
+    const source = { domain: "order", event: "new_order_placed", referenceId: orderId };
+    await Promise.all(allRecipientIds.map((recipientUser) => enqueueNotificationOutbox({
+      recipientUser,
+      dedupeKey: `order:new_order_placed:${orderId}:${recipientUser}`,
+      title_en: "New Order Placed",
+      title_ar: "طلب جديد",
+      body_en: `Order ${orderNumber} has been placed and is awaiting processing.`,
+      body_ar: `تم تقديم الطلب ${orderNumber} وينتظر المعالجة.`,
       icon: "order",
       action: {
         type: "order_detail",
         screen: "OrderDetailScreen",
-        params: { orderId: String(order._id) },
+        params: { orderId },
       },
-      source: {
-        domain: "order",
-        event: "new_order_placed",
-        referenceId: String(order._id),
-      },
-      channels: { push: true, inApp: true },
-      pushOptions: buildStaffAlertPushOptions(),
-    });
+      source,
+      model: outboxModel,
+    })));
 
-    return result;
+    return { queuedCount: allRecipientIds.length };
   } catch (err) {
     console.error(
       "[Notification] Failed to send new order notification to admins/moderators:",

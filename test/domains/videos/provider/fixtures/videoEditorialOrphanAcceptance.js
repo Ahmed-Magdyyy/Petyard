@@ -47,7 +47,7 @@ export async function verifyVideoEditorialOrphanAcceptance(t, { models, connecti
   if (!coverStore) ({ store: coverStore, verifyCover, verifyCoverAbsent } = simulatedCoverStore());
   const admin = { id: String(new mongoose.Types.ObjectId()), role: "admin" };
   const superAdmin = { id: String(new mongoose.Types.ObjectId()), role: "superAdmin" };
-  const dependencies = { ...models, connection, libraryId, recordOperation };
+  const dependencies = { ...models, connection, libraryId, recordOperation, assertAuthority: async () => {} };
   const enqueue = async () => {}; // Durable rows, rather than queue success, drive this fixture's runtime.
   const coverReferences = createEditorialCoverReferencePersistence(dependencies);
   const coverRepository = createEditorialCoverRepository(dependencies);

@@ -18,7 +18,8 @@ import {
 import { inspectLayoutReferences } from "./uiLayout.references.js";
 import { beforePageFilter, encodePageCursor } from "./uiLayout.pagination.js";
 import { iso, draftData, versionData, publicData } from "./uiLayout.serialization.js";
-import { inspectClientCompatibility, getIdOnlyMinimumAppVersion } from "./uiLayout.compatibility.js";
+import { inspectClientCompatibility, getIdOnlyMinimumAppVersion, getExtensionsMinimumAppVersion,
+  usesUiLayoutExtensions } from "./uiLayout.compatibility.js";
 
 const MAX_CHANGE_NOTE = 500;
 
@@ -68,6 +69,7 @@ export function createUiLayoutService({
   uuid = randomUUID,
   randomToken = () => randomBytes(32).toString("base64url"),
   getMinimumAppVersion = getIdOnlyMinimumAppVersion,
+  getExtensionsMinimumVersion = getExtensionsMinimumAppVersion,
 } = {}) {
   let storageReady;
   async function ensureStorageReady() {
@@ -256,7 +258,7 @@ export function createUiLayoutService({
     if (errors.length) return { valid: false, errors, warnings: [], content: null };
     const content = contentResult.content;
     if (checkClientCompatibility) {
-      errors.push(...inspectClientCompatibility(content, draft.targeting, getMinimumAppVersion()));
+      errors.push(...inspectClientCompatibility(content, draft.targeting, getMinimumAppVersion(), getExtensionsMinimumVersion()));
     }
     errors.push(...await inspectReferences(content, { session }));
     if (checkOverlap) {
@@ -291,7 +293,8 @@ export function createUiLayoutService({
     const draft = await draftModel.findOne({ id, layoutKey: CUSTOMER_HOME_LAYOUT_ID, revision });
     if (!draft) fail("UI_DRAFT_REVISION_CONFLICT", "Draft revision is not current.", 409);
     // An authorized preview can test the prepared format before a customer release exists.
-    const preparedProfile = draft.content?.product_reference_format === UI_LAYOUT_PRODUCT_REFERENCE_FORMAT;
+    const preparedProfile = draft.content?.product_reference_format === UI_LAYOUT_PRODUCT_REFERENCE_FORMAT ||
+      usesUiLayoutExtensions(draft.content);
     const validation = await inspectDraft(draft, {
       checkClientCompatibility: !preparedProfile, checkOverlap: !preparedProfile,
     });
@@ -588,6 +591,7 @@ export function createUiLayoutService({
       locale: request.locale ?? null, countryCode: request.countryCode ?? null,
       locationId: request.locationId ?? null, audience: request.audience ?? "guest",
       idOnlyMinimumAppVersion: getMinimumAppVersion(),
+      extensionsMinimumAppVersion: getExtensionsMinimumVersion(),
     });
     return getOrSet(`ui-layout:${layout.id}:epoch:${layout.publishedEpoch ?? 0}:${targetKey}`,
       300, async () => {
@@ -598,7 +602,8 @@ export function createUiLayoutService({
           if (!selected) break;
           const version = await versionModel.findOne({ id: selected.versionId });
           if (!version) fail("UI_LAYOUT_PUBLICATION_MISSING", "Published layout is unavailable.", 503);
-          if (!inspectClientCompatibility(version.content, version.targeting, getMinimumAppVersion()).length) return publicData(version);
+          if (!inspectClientCompatibility(version.content, version.targeting, getMinimumAppVersion(),
+            getExtensionsMinimumVersion()).length) return publicData(version);
           candidates = candidates.filter((row) => row.versionId !== selected.versionId);
         }
         fail("UI_LAYOUT_NOT_PUBLISHED", "No compatible published layout is available.", 404);

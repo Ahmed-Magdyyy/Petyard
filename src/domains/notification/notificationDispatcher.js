@@ -169,9 +169,10 @@ async function sendPushToTokens({
   notification,
   data,
   pushOptions,
+  messagingProvider = getFirebaseMessaging,
   batchDelayMs = 0,
 }) {
-  const messaging = getFirebaseMessaging();
+  const messaging = messagingProvider();
   if (!messaging) {
     return { skipped: true, successCount: 0, failureCount: 0 };
   }
@@ -287,6 +288,7 @@ export async function dispatchNotification({
   expiresAt,
   pushOptions,
   dedupeKey,
+  messagingProvider = getFirebaseMessaging,
 }) {
   const normalizedGuestId =
     typeof guestId === "string" ? guestId.trim() : "";
@@ -343,6 +345,7 @@ export async function dispatchNotification({
           ...(source?.referenceId ? { referenceId: source.referenceId } : {}),
         },
         pushOptions,
+        messagingProvider,
       });
 
       results.push = {

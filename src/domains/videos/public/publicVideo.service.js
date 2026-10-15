@@ -53,6 +53,7 @@ function publicVideo(video, lang, isSaved) {
   const common = {
     id: video.id,
     kind: video.kind,
+    productIds: (video.productIds ?? []).map(String),
     title: pickLocalizedField(video, "title", lang),
     description: pickLocalizedField(video, "description", lang) || null,
     canSave: true,

@@ -36,25 +36,29 @@ export async function createUiBuilderAsset({ file, usage, actorId, assetModel = 
     folder: "petyard/ui-builder", publicId: id,
     visibility: IMAGE_VISIBILITY.PUBLIC, profile: IMAGE_UPLOAD_PROFILES.STANDARD,
   });
-  try {
-    if (typeof uploaded?.public_id !== "string" || !uploaded.public_id ||
-      !isPublicHttpsUrl(uploaded.url)) {
-      throw new UiLayoutError("UI_ASSET_STORAGE_INVALID", "Image storage returned an invalid public asset.", 502);
+  const cleanup = async () => {
+    if (!uploaded?.public_id) return;
+    try { await remove(uploaded); } catch (cleanupError) {
+      console.error("[UI Layout Asset] Could not remove orphaned upload", cleanupError?.message);
     }
-    const asset = await assetModel.create({
+  };
+  if (typeof uploaded?.public_id !== "string" || !uploaded.public_id ||
+    !isPublicHttpsUrl(uploaded.url)) {
+    await cleanup();
+    throw new UiLayoutError("UI_ASSET_STORAGE_INVALID", "Image storage returned an invalid public asset.", 502);
+  }
+  let asset;
+  try {
+    asset = await assetModel.create({
       id, status: "ready", usage, url: uploaded.url, publicId: uploaded.public_id,
       mimeType: file.mimetype, width: metadata.width, height: metadata.height,
       byteSize: file.size, createdBy: actorId,
     });
-    return assetData(asset);
   } catch (error) {
-    if (uploaded?.public_id) {
-      try { await remove(uploaded); } catch (cleanupError) {
-        console.error("[UI Layout Asset] Could not remove orphaned upload", cleanupError?.message);
-      }
-    }
+    if (["ValidationError", "CastError"].includes(error?.name)) await cleanup();
     throw error;
   }
+  return assetData(asset);
 }
 
 export async function listUiBuilderAssets({ limit = 30, before, assetModel = UiLayoutAssetModel } = {}) {

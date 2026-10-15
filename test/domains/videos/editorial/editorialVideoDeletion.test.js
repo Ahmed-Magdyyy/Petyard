@@ -38,6 +38,7 @@ function fixture(seed = {}, serviceOptions = {}) {
     return recordVideoProviderOperation({ now: new Date(control.now), ...input, model: db.operations });
   };
   const service = createEditorialVideoService({ repository: createEditorialVideoRepository({ videos: db.placements,
+    assertAuthority: async () => {},
     connection: db.connection, reelLifecycle: {}, deletion: { saves: db.saves, assets: db.assets,
       sessions: db.sessions, covers: db.covers, placements: db.products, recordOperation } }),
     verifyYouTube: async () => assert.fail("deletion must not call YouTube"),

@@ -1,6 +1,7 @@
 import {
   UI_LAYOUT_MAX_ITEMS, UI_LAYOUT_MAX_BLOCK_DEPTH, UI_LAYOUT_MAX_BLOCK_NODES,
   UI_LAYOUT_MAX_BLOCK_CHILDREN, DISPLAY_TYPES, CARD_STYLES, OBJECT_ID,
+  UI_LAYOUT_MAX_BANNER_IMAGES, UI_LAYOUT_ACTION_TYPES,
 } from "./uiLayout.constants.js";
 import {
   add, keys, uuid, bool, integer, localizedText, safeHttpsUrl, action,
@@ -17,7 +18,7 @@ export const localizedTextSchema = (maxLength) => ({ oneOf: [
 ] });
 export const ACTION_SCHEMA = { type: "object", additionalProperties: false,
   required: ["type", "value"], properties: {
-    type: enumSchema(["product", "category", "brand", "screen", "url"]),
+    type: enumSchema(UI_LAYOUT_ACTION_TYPES),
     value: { type: "string", minLength: 1, maxLength: 2048 },
   } };
 export const ID_ONLY_ITEM_SCHEMA = { oneOf: [
@@ -28,7 +29,7 @@ export const ID_ONLY_ITEM_SCHEMA = { oneOf: [
     id: { type: "string", format: "uuid" }, name: localizedTextSchema(80),
     subtitle: localizedTextSchema(100), image_url: { type: "string", format: "uri" },
     action: { ...ACTION_SCHEMA, properties: {
-      ...ACTION_SCHEMA.properties, type: enumSchema(["category", "brand", "screen", "url"]),
+      ...ACTION_SCHEMA.properties, type: enumSchema(UI_LAYOUT_ACTION_TYPES.filter((type) => type !== "product")),
     } },
   } },
 ] };
@@ -37,6 +38,8 @@ const itemsSchema = { type: "array", maxItems: UI_LAYOUT_MAX_ITEMS, items: ID_ON
 // These owned schemas also supply the catalog; no renderer defaults are injected into content.
 export const BLOCK_PROP_SCHEMAS = Object.freeze({
   image: { image_url: { type: "string", format: "uri" },
+    image_urls: { type: "array", minItems: 1, maxItems: UI_LAYOUT_MAX_BANNER_IMAGES,
+      uniqueItems: true, items: { type: "string", format: "uri" } },
     aspect_ratio: enumSchema(["16:9", "4:3", "1:1"]), fit: enumSchema(["cover", "contain"]),
     border_radius: enumSchema(spacing), alt_text: localizedTextSchema(120) },
   text: { value: localizedTextSchema(1000),
@@ -53,6 +56,23 @@ export const BLOCK_PROP_SCHEMAS = Object.freeze({
   column: { gap: enumSchema(spacing), padding: enumSchema(spacing) },
   spacer: { size: enumSchema(spacing) }, divider: { color: enumSchema(colors) },
 });
+
+function inspectImageSources(props, path, errors, publish) {
+  const single = Object.hasOwn(props, "image_url");
+  const multiple = Object.hasOwn(props, "image_urls");
+  if (single && multiple) add(errors, path, "IMAGE_SOURCE_CONFLICT", "Use image_url or image_urls, not both.");
+  if (publish && !single && !multiple) add(errors, path, "IMAGE_REQUIRED", "Select an image source.");
+  if (single) safeHttpsUrl(props.image_url, `${path}.image_url`, errors, true);
+  if (!multiple) return;
+  const urls = props.image_urls;
+  if (!Array.isArray(urls) || !urls.length || urls.length > UI_LAYOUT_MAX_BANNER_IMAGES) {
+    add(errors, `${path}.image_urls`, "INVALID_IMAGE_URLS", "Use 1 to 10 distinct image URLs."); return;
+  }
+  if (new Set(urls).size !== urls.length) {
+    add(errors, `${path}.image_urls`, "DUPLICATE_IMAGE_URL", "Each banner image URL must be distinct.");
+  }
+  urls.forEach((url, index) => safeHttpsUrl(url, `${path}.image_urls[${index}]`, errors, true));
+}
 
 function identity(value, path, errors, seen) {
   uuid(value, path, errors);
@@ -111,9 +131,11 @@ export function inspectComposedSection(data, path, errors, { publish = false } =
     const propPath = `${nodePath}.props`;
     const schemas = BLOCK_PROP_SCHEMAS[value.type];
     if (!keys(value.props, Object.keys(schemas), propPath, errors)) return;
+    if (value.type === "image") inspectImageSources(value.props, propPath, errors, publish);
     for (const [key, schema] of Object.entries(schemas)) {
       const fieldPath = `${propPath}.${key}`;
       const field = value.props[key];
+      if (value.type === "image" && ["image_url", "image_urls"].includes(key)) continue;
       if (schema.enum && field !== undefined && !schema.enum.includes(field)) {
         add(errors, fieldPath, "BLOCK_PROP_INVALID", `Use one of: ${schema.enum.join(", ")}.`);
       } else if (schema.type === "integer") integer(field, fieldPath, errors, schema.minimum, schema.maximum);

@@ -125,7 +125,7 @@ test("Bunny selects public and private zones independently and returns unchanged
   assert.deepEqual(await sharp(uploads[1].buffer).metadata().then(({ width, height }) => ({ width, height })), { width: 1000, height: 750 });
 });
 
-test("SVG and GIF pass through without conversion", async () => {
+test("SVG is rasterized before public storage", async () => {
   const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>');
   let request;
   await withEnvironment({ ...bunnyEnvironment, PUBLIC_MEDIA_STORAGE_PROVIDER: "bunny" }, async () => {
@@ -136,11 +136,11 @@ test("SVG and GIF pass through without conversion", async () => {
     });
     assert.deepEqual(result, {
       public_id: "petyard/users/avatar",
-      url: "https://media.petyardstores.com/petyard/users/avatar.svg",
+      url: "https://media.petyardstores.com/petyard/users/avatar.webp",
     });
   });
-  assert.equal(request.buffer, svg);
-  assert.equal(request.contentType, "image/svg+xml");
+  assert.equal((await sharp(request.buffer).metadata()).format, "webp");
+  assert.equal(request.contentType, "image/webp");
 });
 
 test("deletion is routed by its stored URL and remains best effort", async (t) => {

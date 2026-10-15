@@ -1,9 +1,12 @@
 import { editorialVideoKindEnum, editorialVideoStatusEnum, editorialReviewStatusEnum } from "../../../shared/constants/enums.js";
 import mongoose from "mongoose";
+import { MAX_VIDEO_PRODUCT_LINKS } from "./editorialProductLinks.validators.js";
 
 const { Schema, model } = mongoose;
 
 const commonContentFields = {
+  productIds: { type: [{ type: Schema.Types.ObjectId, ref: "Product" }], default: () => [], required: true,
+    validate: value => value.length <= MAX_VIDEO_PRODUCT_LINKS && new Set(value.map(String)).size === value.length },
   title_en: { type: String, required: true, trim: true, maxlength: 160 },
   title_ar: { type: String, required: true, trim: true, maxlength: 160 },
   description_en: { type: String, default: "", trim: true, maxlength: 2000 },

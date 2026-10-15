@@ -12,6 +12,7 @@ function matches(row, filter) {
   return Object.entries(filter).every(([key, expected]) => {
     if (key === "$or") return expected.some((part) => matches(row, part));
     const value = key.split(".").reduce((part, field) => part?.[field], row);
+    if (Array.isArray(expected)) return Array.isArray(value) && JSON.stringify(value) === JSON.stringify(expected);
     if (expected && typeof expected === "object" && !expected.toHexString && !(expected instanceof Date)) {
       return Object.entries(expected).every(([op, operand]) => {
         if (op === "$exists") return (value !== undefined) === operand;

@@ -1,6 +1,32 @@
 # PetYard Videos progress checklist
 
-Last reconciled: 2026-10-10, in `D:\Projects\GitHub\petyard`.
+Last reconciled: 2026-10-15, in `D:\Projects\GitHub\petyard`.
+
+## Additive production-handoff extension — 2026-10-15
+
+- [x] Add ordered optional `productIds` (0–50) to existing general YouTube/Reel
+  create/edit/admin/public contracts. Preserve omission versus clear, strict
+  duplicate/invalid/ineligible rejection, active/proposal separation, automatic
+  and reviewed cutovers, legacy empty values and Product Video's singular owner.
+- [x] Reuse existing active Product eligibility and `/products/batch`; no copied
+  commerce, snapshot endpoint, new route, shared Product/config/notification
+  changes or environment/deployment action.
+- [x] Verify through existing service/HTTP/worker seams, including hydrated
+  Mongoose ObjectIds. Final combined Videos plus two notification regressions:
+  **729 passed, 0 failed, 5 external opt-in skips** (734 tests); documentation
+  and self-contained Postman checkers pass. Independent review issue resolved.
+- [x] Update `VIDEOS_FRONTEND_HANDOFF.md`, four existing collection requests and
+  `VIDEOS_PRODUCTION_HANDOFF_RESPONSE.md` with exact contract and proof limits.
+- [ ] Release the new extension only after separate authorization; `08ac5b9`
+  remains the reported deployed baseline, not this uncommitted extension.
+- [ ] Complete actual admin/customer CTA, variants/unavailable Products, physical
+  notifications and new controlled upload/playback acceptance on approved builds
+  and records. Callback delivery and local fixtures are not full app acceptance.
+
+The earlier checkpoints below retain their original dated scopes. The new
+response report distinguishes verified source/local behavior, reported VPS
+evidence and not-run provider/device gates; unchecked acceptance boxes in the
+incoming handoff were not treated as missing implementations.
 
 Latest live acceptance, 2026-10-10: after the user's `next`, actual Bunny and the
 approved Mongo copy passed Reel review/separate Publish, reviewed media/cover

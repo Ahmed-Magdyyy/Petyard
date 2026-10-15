@@ -56,6 +56,52 @@ test("rejects and cleans up a non-public provider URL without registering an ass
   assert.equal(registered, false);
 });
 
+test("retains provider media when asset creation has an uncertain outcome", async () => {
+  const buffer = await sharp({ create: { width: 1, height: 1, channels: 3,
+    background: "#ffffff" } }).png().toBuffer();
+  const error = new Error("database acknowledgement lost");
+  let removed = false;
+  await assert.rejects(createUiBuilderAsset({
+    file: { buffer, mimetype: "image/png", size: buffer.length }, usage: "promo",
+    actorId: ACTOR,
+    upload: async () => ({ public_id: "petyard/ui-builder/test", url: "https://cdn.petyardstores.com/test.webp" }),
+    remove: async () => { removed = true; },
+    assetModel: { create: async () => { throw error; } },
+  }), (actual) => actual === error);
+  assert.equal(removed, false);
+});
+
+test("retains provider media when response serialization fails after asset creation", async () => {
+  const buffer = await sharp({ create: { width: 1, height: 1, channels: 3,
+    background: "#ffffff" } }).png().toBuffer();
+  let removed = false;
+  await assert.rejects(createUiBuilderAsset({
+    file: { buffer, mimetype: "image/png", size: buffer.length }, usage: "promo",
+    actorId: ACTOR,
+    upload: async () => ({ public_id: "petyard/ui-builder/test", url: "https://cdn.petyardstores.com/test.webp" }),
+    remove: async () => { removed = true; },
+    assetModel: { create: async (asset) => ({ ...asset, createdAt: "invalid date" }) },
+  }), TypeError);
+  assert.equal(removed, false);
+});
+
+test("cleans provider media after definite Mongoose validation or cast rejection", async () => {
+  const buffer = await sharp({ create: { width: 1, height: 1, channels: 3,
+    background: "#ffffff" } }).png().toBuffer();
+  for (const name of ["ValidationError", "CastError"]) {
+    const error = Object.assign(new Error(name), { name });
+    let removed = false;
+    await assert.rejects(createUiBuilderAsset({
+      file: { buffer, mimetype: "image/png", size: buffer.length }, usage: "promo",
+      actorId: ACTOR,
+      upload: async () => ({ public_id: "petyard/ui-builder/test", url: "https://cdn.petyardstores.com/test.webp" }),
+      remove: async () => { removed = true; },
+      assetModel: { create: async () => { throw error; } },
+    }), (actual) => actual === error);
+    assert.equal(removed, true);
+  }
+});
+
 test("asset library pages through same-timestamp images without losing older assets", async () => {
   const createdAt = new Date("2026-09-24T00:00:00.123Z");
   const assets = [1, 2, 3].map((number) => ({

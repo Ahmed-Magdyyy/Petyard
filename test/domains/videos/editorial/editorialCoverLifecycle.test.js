@@ -147,7 +147,7 @@ function fixture() {
     },
   });
   const application = createEditorialCoverService({ repository, store, enqueue, now: () => new Date(control.now) });
-  const videoRepository = createEditorialVideoRepository({ videos, connection, coverReferences, enqueue, reelLifecycle: {} });
+  const videoRepository = createEditorialVideoRepository({ videos, connection, coverReferences, enqueue, reelLifecycle: {}, assertAuthority: async () => {} });
   const editorial = createEditorialVideoService({ repository: videoRepository, covers: application, enqueue,
     verifyYouTube: async () => {}, now: () => new Date(control.now) });
   const runtime = createVideoProviderRuntime({ provider: { async deleteVideo() { assert.fail("not Stream media"); },

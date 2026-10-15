@@ -4,20 +4,19 @@ import {
   PROMO_VISIBILITY, PROMO_LAYOUTS, DISPLAY_TYPES, CARD_STYLES,
   UI_ASSET_MIME, UI_ASSET_MAX_BYTES, UI_ASSET_USAGES,
   UI_LAYOUT_MAX_BLOCK_DEPTH, UI_LAYOUT_MAX_BLOCK_NODES, UI_LAYOUT_MAX_BLOCK_CHILDREN,
+  UI_LAYOUT_MAX_BANNER_IMAGES, UI_LAYOUT_ACTION_TYPES,
 } from "./uiLayout.constants.js";
 import { isUiLayoutSchedulingConfigured } from "./uiLayout.queue.js";
-import { BLOCK_PROP_SCHEMAS, ID_ONLY_ITEM_SCHEMA, localizedTextSchema } from "./uiLayout.blocks.js";
-import { getIdOnlyMinimumAppVersion } from "./uiLayout.compatibility.js";
+import { BLOCK_PROP_SCHEMAS, ID_ONLY_ITEM_SCHEMA, localizedTextSchema, ACTION_SCHEMA } from "./uiLayout.blocks.js";
+import { getIdOnlyMinimumAppVersion, getExtensionsMinimumAppVersion } from "./uiLayout.compatibility.js";
 import { PRODUCT_BATCH_MAX_IDS, PRODUCT_BATCH_MAX_REQUEST_BYTES,
   PRODUCT_BATCH_MAX_RESPONSE_BYTES, PRODUCT_BATCH_QUERY_TIMEOUT_MS } from "../product/productBatch.constants.js";
 
-const ACTION_CONFIG_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["type", "value"],
-  properties: {
-    type: { enum: ["product", "category", "brand", "screen", "url"] },
-    value: { type: "string", minLength: 1, maxLength: 2048 },
-  },
-};
+const ACTION_CONFIG_SCHEMA = ACTION_SCHEMA;
+const blockPropsSchema = (type, properties) => ({
+  type: "object", additionalProperties: false, properties,
+  ...(type === "image" ? { not: { required: ["image_url", "image_urls"] } } : {}),
+});
 const COLOR_CONFIG_SCHEMA = { type: "string", pattern: "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$" };
 const IMAGE_CONFIG_SCHEMA = { type: "string", format: "uri" };
 
@@ -32,6 +31,10 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
     component_tree_draft_storage: true,
     product_id_references: false,
     product_id_draft_storage: true,
+    banner_carousel_draft_storage: true,
+    banner_carousel: false,
+    subcategory_actions_draft_storage: true,
+    subcategory_actions: false,
     chatbot_fab_config: false,
     chatbot_fab_draft_storage: true,
   },
@@ -44,6 +47,7 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
     max_block_depth: UI_LAYOUT_MAX_BLOCK_DEPTH,
     max_block_nodes: UI_LAYOUT_MAX_BLOCK_NODES,
     max_block_children: UI_LAYOUT_MAX_BLOCK_CHILDREN,
+    max_banner_images: UI_LAYOUT_MAX_BANNER_IMAGES,
   },
   asset_upload: {
     mode: "multipart",
@@ -105,7 +109,7 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
           type: "object", additionalProperties: false,
           required: ["id", "type", "props", ...(["row", "column"].includes(type) ? ["children"] : [])],
           properties: { id: { type: "string", format: "uuid" }, type: { const: type },
-            props: { type: "object", additionalProperties: false, properties },
+            props: blockPropsSchema(type, properties),
             ...(["row", "column"].includes(type) ? { children: { type: "array",
               maxItems: UI_LAYOUT_MAX_BLOCK_CHILDREN, items: { $ref: "#/$defs/node" } } } : {}),
           },
@@ -114,7 +118,7 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
     },
   }],
   block_types: Object.entries(BLOCK_PROP_SCHEMAS).map(([key, properties]) => ({ key,
-    config_schema: { type: "object", additionalProperties: false, properties },
+    config_schema: blockPropsSchema(key, properties),
   })),
   block_renderer_tokens: { unit: "logical_pixels", spacing: { none: 0, sm: 8, md: 16, lg: 24 } },
   block_renderer_defaults: {
@@ -133,11 +137,12 @@ export const UI_LAYOUT_CATALOG = Object.freeze({
   navigation_destinations: Object.entries(NAVIGATION_ITEMS).map(([key, value]) => ({
     key, ...value, required: key === "home",
   })),
-  actions: ["product", "category", "brand", "screen", "url"],
+  actions: UI_LAYOUT_ACTION_TYPES,
 });
 
 export function getUiLayoutCatalog() {
   const minimum = getIdOnlyMinimumAppVersion();
+  const extensionsMinimum = getExtensionsMinimumAppVersion();
   return {
     ...UI_LAYOUT_CATALOG,
     section_types: [...UI_LAYOUT_CATALOG.section_types, { key: "composed_section", repeatable: true,
@@ -159,9 +164,13 @@ export function getUiLayoutCatalog() {
       // These remain false during FE preparation; draft storage is advertised independently.
       component_tree: process.env.UI_BUILDER_PUBLISH_ENABLED === "true" && minimum !== null,
       product_id_references: process.env.UI_BUILDER_PUBLISH_ENABLED === "true" && minimum !== null,
+      banner_carousel: process.env.UI_BUILDER_PUBLISH_ENABLED === "true" &&
+        minimum !== null && extensionsMinimum !== null,
+      subcategory_actions: process.env.UI_BUILDER_PUBLISH_ENABLED === "true" && extensionsMinimum !== null,
       scheduled_publish: process.env.UI_BUILDER_PUBLISH_ENABLED === "true" &&
         isUiLayoutSchedulingConfigured(),
     },
     id_only_min_app_version: minimum,
+    extensions_min_app_version: extensionsMinimum,
   };
 }

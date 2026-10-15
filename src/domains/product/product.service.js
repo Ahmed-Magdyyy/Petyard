@@ -10,6 +10,7 @@ import {
 } from "./product.repository.js";
 import { findCollectionById } from "../collection/collection.repository.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
+import { randomUUID } from "node:crypto";
 import {
   normalizeTag,
   normalizeTagsInput,
@@ -72,6 +73,7 @@ import {
   processRestockSubscriptionsForProduct,
 } from "../restockSubscription/restockSubscription.service.js";
 import { completeWarehouseStocks } from "./productWarehouseStocks.js";
+import { imageIndex, validateGalleryEdit, selectMainImage } from "./productImages.js";
 import { deleteProductWithVideoCleanup } from "../videos/productVideos/productVideoProductDeletion.service.js";
 import { projectProductMedia } from "../videos/public/productMedia.service.js";
 import {
@@ -1698,16 +1700,11 @@ function mapVariantPayloads(
       }
     }
 
-    if (hasProductImages && v.imageIndex != null) {
-      const idx = Number(v.imageIndex);
-      if (!Number.isNaN(idx) && idx >= 0 && idx < productImages.length) {
-        const baseImage = productImages[idx];
-        if (baseImage) {
-          // Attach a single image to this variant by reusing the
-          // already-uploaded product image metadata (no extra upload).
-          doc.images = [baseImage];
-        }
-      }
+    const idx = imageIndex(v.imageIndex, productImages?.length ?? 0, "variants.imageIndex");
+    if (hasProductImages && idx !== null) doc.images = [productImages[idx]];
+    else if (v.imageIndex === undefined && existingVariantsById && v._id) {
+      const existing = existingVariantsById.get(String(v._id));
+      doc.images = (existing?.images ?? []).filter((image) => productImages.some((candidate) => candidate.public_id === image.public_id));
     }
 
     return doc;
@@ -1716,16 +1713,18 @@ function mapVariantPayloads(
 
 async function uploadProductImages(files, slug, mainImageIndex) {
   if (!Array.isArray(files) || files.length === 0) {
+    imageIndex(mainImageIndex, 0);
     return { images: [], uploadedImages: [] };
   }
+  imageIndex(mainImageIndex, files.length);
+  files.forEach((file) => validateImageFile(file));
 
   const shortSlug = slug.length > 60 ? slug.slice(0, 60) : slug;
 
   const uploadPromises = files.map((file, index) => {
-    validateImageFile(file);
     return uploadImage(file, {
       folder: `petyard/products/${shortSlug}`,
-      publicId: `product_${shortSlug}_${index}_${Date.now()}`,
+      publicId: `product_${shortSlug}_${index}_${randomUUID()}`,
       visibility: IMAGE_VISIBILITY.PUBLIC,
       profile: IMAGE_UPLOAD_PROFILES.STANDARD,
     });
@@ -1755,18 +1754,7 @@ async function uploadProductImages(files, slug, mainImageIndex) {
       : new ApiError("Failed to upload images", 500);
   }
 
-  if (images.length > 0) {
-    let mainIndex = 0;
-    if (mainImageIndex != null) {
-      const parsed = Number(mainImageIndex);
-      if (!Number.isNaN(parsed)) {
-        mainIndex = Math.min(Math.max(parsed, 0), images.length - 1);
-      }
-    }
-    images[mainIndex].isMain = true;
-  }
-
-  return { images, uploadedImages };
+  return { images: selectMainImage(images, mainImageIndex), uploadedImages };
 }
 
 function mediaDescriptorKey(image) {
@@ -1792,6 +1780,16 @@ function cloneProductImage(image) {
   return { ...descriptor, isMain: !!image.isMain };
 }
 
+async function cleanupFailedProductImages(images, error) {
+  if (!images.length) return;
+  if (!["ValidationError", "VersionError", "CastError"].includes(error?.name)) {
+    // A lost acknowledgement can precede a late commit; a single read cannot disprove it.
+    console.warn("[Product] Retaining upload media pending save-outcome reconciliation.");
+    return;
+  }
+  for (const image of images) await deleteImage(image);
+}
+
 function mergeProductImages(
   existingImages,
   uploadedImages,
@@ -1804,33 +1802,7 @@ function mergeProductImages(
   );
   const mergedImages = [...keptImages, ...uploadedImages];
 
-  if (mergedImages.length === 0) return [];
-
-  let selectedMainIndex = mergedImages.findIndex((image) => image.isMain);
-  const hasRequestedNewMain =
-    mainImageIndex !== undefined &&
-    mainImageIndex !== null &&
-    String(mainImageIndex).trim() !== "";
-
-  // In merge mode, mainImageIndex remains relative to the newly uploaded
-  // files. When it is omitted, preserve the existing main image if possible.
-  if (hasRequestedNewMain && uploadedImages.length > 0) {
-    const parsed = Number(mainImageIndex);
-    if (Number.isFinite(parsed)) {
-      const uploadIndex = Math.min(
-        Math.max(Math.trunc(parsed), 0),
-        uploadedImages.length - 1,
-      );
-      selectedMainIndex = keptImages.length + uploadIndex;
-    }
-  }
-
-  if (selectedMainIndex < 0) selectedMainIndex = 0;
-
-  return mergedImages.map((image, index) => ({
-    ...image,
-    isMain: index === selectedMainIndex,
-  }));
+  return selectMainImage(mergedImages, mainImageIndex);
 }
 
 async function createProductService(payload, files = []) {
@@ -1954,6 +1926,7 @@ async function createProductService(payload, files = []) {
     allWarehouseIds = await getAllWarehouseIds();
   }
 
+  validateGalleryEdit([], files, { useImageMerge: false, publicIds: [] }, mainImageIndex, variants);
   const { images, uploadedImages } = await uploadProductImages(
     files,
     normalizedSlug,
@@ -1972,8 +1945,9 @@ async function createProductService(payload, files = []) {
     );
   }
 
+  let product;
   try {
-    const product = await createProduct({
+    product = await createProduct({
       slug: normalizedSlug,
       type: normalizedType,
       subcategory: subcategoryId || undefined,
@@ -2000,22 +1974,14 @@ async function createProductService(payload, files = []) {
       isFeatured: typeof isFeatured === "boolean" ? isFeatured : undefined,
     });
 
-    await invalidateProductCaches(product._id);
-
-    queueProductForSubcategoryDigest({ product }).catch((error) =>
-      console.error(
-        "[Product] Failed to queue subcategory digest:",
-        error?.message || error,
-      ),
-    );
-
-    return product;
   } catch (err) {
-    for (const uploadedImage of uploadedImages) {
-      await deleteImage(uploadedImage);
-    }
+    await cleanupFailedProductImages(uploadedImages, err);
     throw err;
   }
+  await invalidateProductCaches(product._id);
+  queueProductForSubcategoryDigest({ product }).catch((error) =>
+    console.error("[Product] Failed to queue subcategory digest:", error?.message || error));
+  return product;
 }
 
 async function updateProductService(id, payload, files = []) {
@@ -2234,12 +2200,13 @@ async function updateProductService(id, payload, files = []) {
     : [];
   const oldImages = existingImages.map(cloneMediaDescriptor).filter(Boolean);
   let imagesWereUpdated = false;
+  validateGalleryEdit(existingImages, files, { useImageMerge, publicIds: removedPublicIds }, mainImageIndex, variants);
 
   if (Array.isArray(files) && files.length > 0) {
     const uploadResult = await uploadProductImages(
       files,
       product.slug,
-      mainImageIndex,
+      useImageMerge ? undefined : mainImageIndex,
     );
     newUploadedImages = uploadResult.uploadedImages;
     product.images = useImageMerge
@@ -2251,7 +2218,7 @@ async function updateProductService(id, payload, files = []) {
         )
       : uploadResult.images;
     imagesWereUpdated = true;
-  } else if (useImageMerge && removedPublicIds.length > 0) {
+  } else if (useImageMerge || mainImageIndex !== undefined) {
     product.images = mergeProductImages(
       existingImages,
       [],
@@ -2259,6 +2226,13 @@ async function updateProductService(id, payload, files = []) {
       mainImageIndex,
     );
     imagesWereUpdated = true;
+  }
+
+  if (imagesWereUpdated && !shouldRemapVariantsFromPayload) {
+    const retainedIds = new Set(product.images.map((image) => image.public_id));
+    for (const variant of product.variants ?? []) {
+      variant.images = (variant.images ?? []).filter((image) => retainedIds.has(image.public_id));
+    }
   }
 
   const finalImageKeys = new Set(
@@ -2291,25 +2265,18 @@ async function updateProductService(id, payload, files = []) {
     );
   }
 
+  let updated;
   try {
-    const updated = await product.save();
-
-    // Only remove replaced or explicitly removed media after a successful save.
-    for (const oldImage of imagesToDeleteAfterSave) {
-      await deleteImage(oldImage);
-    }
-
-    await invalidateProductCaches(id);
-
-    processRestockSubscriptionsBestEffort(id);
-
-    return updated;
+    updated = await product.save();
   } catch (err) {
-    for (const newUploadedImage of newUploadedImages) {
-      await deleteImage(newUploadedImage);
-    }
+    await cleanupFailedProductImages(newUploadedImages, err);
     translateStockRevisionSaveError(err, stockRevisionExpectations);
   }
+  // Cleanup/cache failures after commit must never trigger rollback deletion of new media.
+  for (const oldImage of imagesToDeleteAfterSave) await deleteImage(oldImage);
+  await invalidateProductCaches(id);
+  processRestockSubscriptionsBestEffort(id);
+  return updated;
 }
 
 /**

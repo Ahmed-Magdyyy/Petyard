@@ -16,10 +16,12 @@ import {
   videoUploadAttemptOutcomeEnum,
 } from "../../../shared/constants/enums.js";
 import { reelUploadBinding, isCurrentReelUpload } from "./reelUploadBinding.js";
+import { createEditorialVideoAuthorityFence } from "../editorial/editorialVideoAuthority.repository.js";
 
 export function createReelUploadRecoveryPersistence({
   libraryId, videos, sessions, recoveries, assets, attempts, withTransaction,
   recordOperation, now, coverReferences,
+  assertAuthority = createEditorialVideoAuthorityFence(),
 }) {
   async function failCurrent({ row, asset, failureCode, stage, session, finishedAt, outcome = videoUploadAttemptOutcomeEnum.FAILED,
     removeProposal = false, expectedRevision }) {
@@ -94,6 +96,7 @@ export function createReelUploadRecoveryPersistence({
         throw new ApiError("Not allowed to cancel this change", 403, [{ code: "VIDEO_FORBIDDEN" }]);
       }
       const result = await withTransaction(async (session) => {
+        await assertAuthority(actor, session);
         const video = await videos.findOne({ _id: videoId, kind: editorialVideoKindEnum.REEL, revision: expectedRevision,
           status: { $in: [editorialVideoStatusEnum.APPROVED, editorialVideoStatusEnum.PUBLISHED, editorialVideoStatusEnum.UNPUBLISHED] },
           "pendingChange.uploadSessionId": sessionId,

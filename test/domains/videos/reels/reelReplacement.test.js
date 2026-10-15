@@ -104,7 +104,7 @@ function fixture({ automatic = false, status = "published" } = {}) {
     const row = state.covers.find((entry) => matches(entry, filter));
     return { modifiedCount: row ? (update(row, changes), 1) : 0 };
   } };
-  const persistence = { videos, sessions, assets, libraryId: "754739", connection,
+  const persistence = { videos, sessions, assets, libraryId: "754739", connection, assertAuthority: async () => {},
     attempts: { async create(rows) { assert.equal(inTransaction, true); state.attempts.push(...rows); } },
     async recordOperation(spec) { assert.equal(inTransaction, true);
       if (controls.failOperation) throw new Error("operation unavailable");
@@ -122,7 +122,7 @@ function fixture({ automatic = false, status = "published" } = {}) {
       controls.duringProbe?.(); return controls.preview ? { href: "https://signed.example/hls", expiresAt: 1790813700 } : null; },
   } });
   const application = createEditorialVideoService({ enqueue: persistence.enqueue, repository: createEditorialVideoRepository({ videos,
-    reelLifecycle: repository, reelUploads: uploads }),
+    connection, assertAuthority: async () => {}, reelLifecycle: repository, reelUploads: uploads }),
     verifyYouTube: async () => { throw new Error("wrong provider"); },
     verifyReelReady: async () => { throw new Error("must verify the replacement, not the old video"); },
     verifyReelReplacementReady: (video) => preview.verifyReady(video, "pending"), now: () => new Date(controls.nowMs) });
@@ -258,6 +258,7 @@ test("reviewed and automatic replacement cutovers preserve a newer super-admin p
     const f = fixture({ automatic });
     if (!automatic) await f.application.submit({ id, actor: admin });
     const pending = structuredClone(f.state().video.pendingChange);
+    pending.content.productIds ??= [];
     await f.application.setPublicPosition({ id, actor: superAdmin, input: { position: 9 } });
     assert.deepEqual(f.state().video.pendingChange, pending);
     assert.equal(f.state().video.activeAssetId, oldId);

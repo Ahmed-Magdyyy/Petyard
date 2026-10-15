@@ -5,6 +5,11 @@ import {
   markNotificationOutboxSent,
 } from "./notificationOutbox.service.js";
 import { dispatchNotification } from "./notificationDispatcher.js";
+import { UserModel } from "../user/user.model.js";
+import { OrderModel } from "../order/order.model.js";
+import { WarehouseModel } from "../warehouse/warehouse.model.js";
+import { accountStatus, enabledControls, roles } from "../../shared/constants/enums.js";
+import { buildStaffAlertPushOptions } from "./notificationPushOptions.js";
 
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_BASE_RETRY_DELAY_MS = 30_000;
@@ -55,6 +60,44 @@ function isPermanentFailure(error) {
   );
 }
 
+function isKnownStaffAlert(source) {
+  return (source?.domain === "videos" && source?.event === "youtube_player_error") ||
+    (source?.domain === "order" && source?.event === "new_order_placed");
+}
+
+function invalidRecipient() {
+  return deliveryError("Notification recipient is no longer eligible", "RECIPIENT_INVALID", true);
+}
+
+async function requireCurrentStaffRecipient(outbox, { userModel, orderModel, warehouseModel }) {
+  const source = outbox.source;
+  if (!isKnownStaffAlert(source)) return;
+  if (!outbox.recipientUser) throw invalidRecipient();
+
+  const user = await userModel.findById(outbox.recipientUser)
+    .select("_id role active deletedAt account_status enabledControls").lean();
+  if (!user || user.active !== true || user.deletedAt ||
+    [accountStatus.BANNED, accountStatus.DELETED].includes(user.account_status)) {
+    throw invalidRecipient();
+  }
+
+  if (user.role === roles.SUPER_ADMIN) return;
+  if (user.role === roles.ADMIN && (
+    (source.domain === "videos" && user.enabledControls?.includes(enabledControls.VIDEOS)) ||
+    (source.domain === "order" && user.enabledControls?.includes(enabledControls.ORDERS))
+  )) return;
+
+  if (source.domain === "order" && user.role === roles.MODERATOR && source.referenceId) {
+    const order = await orderModel.findById(source.referenceId).select("warehouse").lean();
+    if (order?.warehouse) {
+      const warehouse = await warehouseModel.findById(order.warehouse).select("moderators").lean();
+      if (warehouse?.moderators?.some((id) => String(id) === String(user._id))) return;
+    }
+  }
+
+  throw invalidRecipient();
+}
+
 /** Deliver a previously claimed record. The outbox dedupe key is passed to
  * in-app storage, so retrying a failed push never creates a second record. */
 export async function deliverClaimedNotificationOutbox({
@@ -63,6 +106,9 @@ export async function deliverClaimedNotificationOutbox({
   markSent = markNotificationOutboxSent,
   markRetryable = markNotificationOutboxRetryable,
   markDeadLetter = markNotificationOutboxDeadLetter,
+  userModel = UserModel,
+  orderModel = OrderModel,
+  warehouseModel = WarehouseModel,
   now = new Date(),
   maxAttempts = DEFAULT_MAX_ATTEMPTS,
   baseRetryDelayMs = DEFAULT_BASE_RETRY_DELAY_MS,
@@ -79,6 +125,7 @@ export async function deliverClaimedNotificationOutbox({
     });
 
   try {
+    await requireCurrentStaffRecipient(outbox, { userModel, orderModel, warehouseModel });
     const result = await dispatch({
       userId: outbox.recipientUser || undefined,
       guestId: outbox.recipientGuestId || undefined,
@@ -93,6 +140,9 @@ export async function deliverClaimedNotificationOutbox({
       source: outbox.source,
       dedupeKey: outbox.dedupeKey,
       channels: { push: true, inApp: true },
+      ...(outbox.source?.domain === "order" && outbox.source?.event === "new_order_placed"
+        ? { pushOptions: buildStaffAlertPushOptions() }
+        : {}),
     });
 
     if (resultRequiresRetry(result)) {

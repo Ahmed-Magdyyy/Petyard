@@ -52,6 +52,7 @@ async function fixture({ purpose = "initial", automatic = false } = {}) {
     return operationWrite(...args);
   };
   const repository = createReelUploadRepository({ libraryId: "754739", connection: db.connection,
+    assertAuthority: async () => {},
     videos: db.placements, assets: db.assets, sessions: db.sessions, recoveries: db.recoveries,
     attempts: db.attempts, operations: db.operations, recordOperation, now: () => control.now });
   const provider = {
@@ -88,6 +89,7 @@ async function fixture({ purpose = "initial", automatic = false } = {}) {
   const sweep = createReelUploadRecovery({ repository, now: () => control.now,
     enqueue: async id => control.jobs.push(id) });
   const editorial = createEditorialVideoService({ repository: createEditorialVideoRepository({
+    assertAuthority: async () => {},
     videos: db.placements, connection: db.connection, libraryId: "754739", reelUploads: repository,
     coverReferences: createEditorialCoverReferencePersistence({ videos: db.placements, covers: db.covers, recordOperation }),
     deletion: { assets: db.assets, sessions: db.sessions, covers: db.covers, saves: db.saves,

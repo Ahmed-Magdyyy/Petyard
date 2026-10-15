@@ -7,6 +7,9 @@ export const UI_LAYOUT_PRODUCT_REFERENCE_FORMAT = "id_only_v1";
 export const UI_LAYOUT_MAX_BLOCK_DEPTH = 6;
 export const UI_LAYOUT_MAX_BLOCK_NODES = 50;
 export const UI_LAYOUT_MAX_BLOCK_CHILDREN = 12;
+export const UI_LAYOUT_MAX_BANNER_IMAGES = 10;
+export const UI_LAYOUT_ACTION_TYPES = Object.freeze(["product", "category", "subcategory", "brand", "screen", "url"]);
+export const UI_LAYOUT_ENTITY_ACTION_TYPES = Object.freeze(["product", "category", "subcategory", "brand"]);
 
 export const NAVIGATION_ITEMS = Object.freeze({
   home: { label_key: "home", icon_key: "home" },

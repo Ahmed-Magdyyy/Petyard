@@ -59,7 +59,7 @@ function fixture(rows = [draft(0)], { verifyYouTube = async () => assert.fail("a
   }, rows);
   db.placements.aggregate = async (stages) => pipeline(await db.placements.find({}).lean(), stages);
   return createEditorialVideoService({
-    repository: createEditorialVideoRepository({ videos: db.placements, connection: db.connection, reelLifecycle: {} }),
+    repository: createEditorialVideoRepository({ videos: db.placements, connection: db.connection, reelLifecycle: {}, assertAuthority: async () => {} }),
     verifyYouTube, verifyReelReady, enqueue: async () => assert.fail("arranging must not enqueue provider work"),
   });
 }

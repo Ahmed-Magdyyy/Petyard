@@ -119,7 +119,8 @@ test("editorial position schema permits clearing and rejects invalid numeric pos
 test("position writes retain the existing repository revision filter and update validators", async () => {
   const id = "507f1f77bcf86cd799439011";
   const app = createEditorialVideoService({ verifyYouTube: async () => assert.fail("no provider call"),
-    repository: createEditorialVideoRepository({ videos: {
+    repository: createEditorialVideoRepository({ assertAuthority: async () => {},
+      connection: { async startSession() { return { async withTransaction(work) { await work(); }, async endSession() {} }; } }, videos: {
       findById(value) { assert.equal(value, id); return { async lean() {
         return { _id: id, kind: "reel", status: "published", revision: 7, position: 2 };
       } }; },

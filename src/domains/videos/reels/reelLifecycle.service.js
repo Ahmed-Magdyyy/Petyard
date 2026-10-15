@@ -53,7 +53,7 @@ export function createReelLifecycle({ repository = createReelLifecycleRepository
         return { status: videoAssetApplicationResultEnum.PREVIEW_PENDING };
       }
       const published = await repository.publishIfCurrent({ asset,
-        sessionId: current.session._id, now: now() });
+        sessionId: current.session._id, expectedProductIds: (current.video.productIds ?? []).map(String), now: now() });
       return { status: published ? videoAssetApplicationResultEnum.PUBLISHED : videoAssetApplicationResultEnum.STALE };
     },
     async recoverPreviewPending({ limit = 100 } = {}) {

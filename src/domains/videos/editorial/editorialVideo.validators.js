@@ -1,5 +1,6 @@
 import { editorialVideoKindEnum, editorialVideoStatusEnum } from "../../../shared/constants/enums.js";
 import { ApiError } from "../../../shared/utils/ApiError.js";
+import { normalizedVideoProductIds } from "./editorialProductLinks.validators.js";
 
 function videoError(message, statusCode, code) {
   return new ApiError(message, statusCode, [{ code }]);
@@ -46,13 +47,14 @@ export function normalizedYouTubeInput(input) {
     throw videoError("Invalid Video", 422, "VIDEO_INVALID_METADATA");
   }
   const allowed = new Set(["kind", "youtubeUrl", "title_en", "title_ar",
-    "description_en", "description_ar"]);
+    "description_en", "description_ar", "productIds"]);
   if (Object.keys(input).some((key) => !allowed.has(key)) ||
       (input.kind !== undefined && input.kind !== editorialVideoKindEnum.YOUTUBE)) {
     throw videoError("Invalid Video", 422, "VIDEO_INVALID_METADATA");
   }
   return {
     youtubeId: youtubeIdFromUrl(input.youtubeUrl),
+    productIds: normalizedVideoProductIds(input.productIds),
     title_en: normalizedText(input.title_en, "title_en", { required: true }),
     title_ar: normalizedText(input.title_ar, "title_ar", { required: true }),
     description_en: normalizedText(input.description_en, "description_en", { maxLength: 2000 }),
@@ -64,11 +66,12 @@ export function normalizedReelInput(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw videoError("Invalid Reel", 422, "VIDEO_INVALID_METADATA");
   }
-  const allowed = new Set(["kind", "title_en", "title_ar", "description_en", "description_ar"]);
+  const allowed = new Set(["kind", "title_en", "title_ar", "description_en", "description_ar", "productIds"]);
   if (input.kind !== editorialVideoKindEnum.REEL || Object.keys(input).some((key) => !allowed.has(key))) {
     throw videoError("Invalid Reel", 422, "VIDEO_INVALID_METADATA");
   }
   return {
+    productIds: normalizedVideoProductIds(input.productIds),
     title_en: normalizedText(input.title_en, "title_en", { required: true }),
     title_ar: normalizedText(input.title_ar, "title_ar", { required: true }),
     description_en: normalizedText(input.description_en, "description_en", { maxLength: 2000 }),
@@ -78,15 +81,17 @@ export function normalizedReelInput(input) {
 
 export function editedContent(kind, base, input) {
   const allowed = new Set(["title_en", "title_ar", "description_en", "description_ar",
-    ...(kind === editorialVideoKindEnum.YOUTUBE ? ["youtubeUrl"] : [])]);
+    "productIds", ...(kind === editorialVideoKindEnum.YOUTUBE ? ["youtubeUrl"] : [])]);
   if (!input || typeof input !== "object" || Array.isArray(input) ||
       !Object.keys(input).length || Object.keys(input).some((key) => !allowed.has(key))) {
     throw videoError("Invalid Video edit", 422, "VIDEO_INVALID_METADATA");
   }
   if (kind === editorialVideoKindEnum.REEL) return normalizedReelInput({ kind,
     title_en: base.title_en, title_ar: base.title_ar,
-    description_en: base.description_en, description_ar: base.description_ar, ...input });
+    description_en: base.description_en, description_ar: base.description_ar,
+    productIds: base.productIds ?? [], ...input });
   return normalizedYouTubeInput({
+    productIds: Object.hasOwn(input, "productIds") ? input.productIds : base.productIds ?? [],
     youtubeUrl: input.youtubeUrl ?? `https://youtu.be/${base.youtubeId}`,
     title_en: input.title_en ?? base.title_en,
     title_ar: input.title_ar ?? base.title_ar,

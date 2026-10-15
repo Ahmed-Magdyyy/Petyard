@@ -27,8 +27,9 @@ export async function verifyVideoDatabaseFlows(t, { models, connection, libraryI
     isEnabled: () => true, isProductEnabled: () => true, now: () => clock.time });
   const coverReferences = createEditorialCoverReferencePersistence({ ...models, recordOperation });
   const covers = createEditorialCoverRepository({ ...models, connection, recordOperation });
-  const reelLifecycle = createReelLifecycleRepository({ ...models, connection, libraryId, coverReferences, recordOperation });
+  const reelLifecycle = createReelLifecycleRepository({ ...models, connection, libraryId, coverReferences, recordOperation, assertAuthority: async () => {} });
   const editorialRepository = createEditorialVideoRepository({ ...models, connection, libraryId,
+    assertAuthority: async () => {},
     coverReferences, reelLifecycle, deletion: { ...models, recordOperation } });
   const editorial = createEditorialVideoService({ repository: editorialRepository,
     verifyYouTube: async () => {}, enqueue: async () => {}, now: () => new Date(clock.time) });

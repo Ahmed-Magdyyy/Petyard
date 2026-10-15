@@ -2,6 +2,7 @@ import crypto from "crypto";
 import sharp from "sharp";
 import cloudinary from "./cloudinary.js";
 import { ApiError } from "./ApiError.js";
+import { inspectImageBytes } from "./imageValidation.js";
 import {
   MEDIA_STORAGE_PROVIDERS,
   getMediaConfiguration,
@@ -46,15 +47,15 @@ export function validateImageFile(
   if (!file) return;
 
   if (!allowedMimeTypes.includes(file.mimetype)) {
-    throw new ApiError(
-      `Invalid image type. Allowed types: ${allowedMimeTypes.join(", ")}`,
-      400,
-    );
+    const message = `Invalid image type. Allowed types: ${allowedMimeTypes.join(", ")}`;
+    throw new ApiError(message, 400, [{ path: "images", msg: message, code: "IMAGE_FILE_INVALID" }]);
   }
 
-  if (typeof file.size === "number" && file.size > maxSizeBytes) {
+  if ((typeof file.size === "number" && file.size > maxSizeBytes) ||
+    (Buffer.isBuffer(file.buffer) && file.buffer.length > maxSizeBytes)) {
     const maxMb = (maxSizeBytes / (1024 * 1024)).toFixed(1);
-    throw new ApiError(`Image is too large. Maximum size is ${maxMb} MB`, 400);
+    const message = `Image is too large. Maximum size is ${maxMb} MB`;
+    throw new ApiError(message, 400, [{ path: "images", msg: message, code: "IMAGE_FILE_INVALID" }]);
   }
 }
 
@@ -89,13 +90,7 @@ function validateFolder(folder, visibility) {
 }
 
 async function processImage(file, profile) {
-  if (file.mimetype === "image/svg+xml") {
-    return {
-      buffer: file.buffer,
-      contentType: file.mimetype,
-      extension: "svg",
-    };
-  }
+  await inspectImageBytes(file);
   if (file.mimetype === "image/gif") {
     return {
       buffer: file.buffer,
@@ -121,10 +116,9 @@ async function processImage(file, profile) {
 
   const image = sharp(file.buffer);
   if (portrait) image.autoOrient();
-  const buffer = await image
-    .resize(resizeOptions)
-    .webp({ quality: 80 })
-    .toBuffer();
+  let buffer;
+  try { buffer = await image.resize(resizeOptions).webp({ quality: 80 }).toBuffer(); }
+  catch { throw new ApiError("Image could not be decoded and processed.", 400); }
 
   return {
     buffer,

@@ -7,6 +7,7 @@ import {
   videoProviderOperationTypeEnum,
 } from "../../../shared/constants/enums.js";
 import mongoose from "mongoose";
+import { createEditorialVideoAuthorityFence } from "./editorialVideoAuthority.repository.js";
 import { ApiError } from "../../../shared/utils/ApiError.js";
 import { VideoAssetModel } from "../provider/videoAsset.model.js";
 import { ReelUploadSessionModel } from "../reels/reelUploadSession.model.js";
@@ -20,15 +21,17 @@ const conflict = () => new ApiError("Video or its media changed", 409, [{ code: 
 // Retain assets, covers and failed sessions as independent cleanup obligations.
 // Queue dispatch and provider calls belong to the service/worker, after commit.
 export function createEditorialVideoDeletionRepository({ videos, connection = mongoose,
+  assertAuthority = createEditorialVideoAuthorityFence(),
   assets = VideoAssetModel, sessions = ReelUploadSessionModel, covers = EditorialCoverModel,
   saves = VideoSaveModel, placements = ProductVideoModel, recordOperation = recordVideoProviderOperation } = {}) {
   return Object.freeze({
-    async deletePermanently({ id, revision, now }) {
+    async deletePermanently({ id, revision, actor, now }) {
       const session = await connection.startSession();
       let operationIds;
       try {
         await session.withTransaction(async () => {
           operationIds = [];
+          if (actor) await assertAuthority(actor, session);
           const removed = await videos.findOneAndDelete({ _id: id, revision,
             kind: { $in: Object.values(editorialVideoKindEnum) } }, { session });
           if (!removed) {

@@ -55,10 +55,10 @@ import reviewRoutes from "../review/review.routes.js";
 import { exportProductsForSuperAdmin } from "./productExport.controller.js";
 import { productBatchLimiter } from "./product.limiters.js";
 import { productBatchBodyParser } from "./productBatch.middleware.js";
+import { PRODUCT_MAX_IMAGES, PRODUCT_IMAGE_UPLOAD_LIMITS } from "./productImages.js";
 import productVideoRoutes from "../videos/productVideos/productVideo.routes.js";
 
 const router = Router();
-const PRODUCT_IMAGE_UPLOAD_MAX_COUNT = 10;
 
 // ─── Public routes ───────────────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ router.post(
   protect,
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN),
   enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
-  uploadMultipleImages("images", PRODUCT_IMAGE_UPLOAD_MAX_COUNT),
+  uploadMultipleImages("images", PRODUCT_MAX_IMAGES, PRODUCT_IMAGE_UPLOAD_LIMITS),
   createProductValidator,
   createProduct,
 );
@@ -174,7 +174,7 @@ router.patch(
   allowedTo(roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR),
   enabledControlsMiddleware(enabledControlsEnum.PRODUCTS),
   scopeProductsToModeratorWarehouses,
-  uploadMultipleImages("images", PRODUCT_IMAGE_UPLOAD_MAX_COUNT),
+  uploadMultipleImages("images", PRODUCT_MAX_IMAGES, PRODUCT_IMAGE_UPLOAD_LIMITS),
   restrictModeratorProductUpdate,
   updateProductValidator,
   updateProduct,

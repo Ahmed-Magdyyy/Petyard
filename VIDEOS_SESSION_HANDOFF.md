@@ -1,5 +1,21 @@
 # PetYard Videos — session #2 handoff
 
+Current local extension, 2026-10-15: the human explicitly resumed the original
+chat for the Videos portion of the new production handoff. Continuation chat
+01a11c64-2337-7f23-8cda-8d104c7937ec is completed, not editing concurrently.
+The user-reported VPS baseline is 08ac5b9, seven online PM2 processes, seven
+signed Bunny callbacks returning 202 and completed test-video absence/cleanup.
+The newly approved ordered `productIds` extension (maximum 50) is implemented
+locally for general YouTube/Reel only, with active/pending separation and
+authoring/publication eligibility. Final combined Videos plus two notification
+files: 729 passed, 0 failed, 5 opt-in external skips. Collection and detailed
+handoff checkers pass; independent review's Mongoose ObjectId issue is fixed.
+See `VIDEOS_PRODUCTION_HANDOFF_RESPONSE.md` for exact evidence and remaining
+client/release gates. Other conversation's UI/Product edits are preserved.
+No new live calls, .env/flag changes, packages, commits/pushes or deployment were
+authorized or performed. This update supersedes old “pause original chat” and
+old unfinished-cleanup instructions below, not the existing safety boundaries.
+
 Release preparation, 2026-10-10: the user authorized committing/pushing all
 current Videos and Prime/warehouse changes to GitHub and will pull the VPS
 personally. Public/upload flags, Reel/cover pipeline readiness and bounded

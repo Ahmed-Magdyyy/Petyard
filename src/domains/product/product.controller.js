@@ -172,14 +172,11 @@ export const createProduct = asyncHandler(async (req, res) => {
 });
 
 export const updateProduct = asyncHandler(async (req, res) => {
-  console.log("updateProduct req.files:", req.files);
-  console.log("updateProduct req.body:", JSON.stringify(req.body, null, 2));
   const updated = await updateProductService(
     req.params.id,
     req.body,
     req.files || [],
   );
-  console.log("user updated this: " , req.user._id);
 
   res.status(200).json({ data: updated });
 });

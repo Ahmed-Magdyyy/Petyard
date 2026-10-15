@@ -1,5 +1,5 @@
 import { PRODUCT_BATCH_MAX_IDS } from "../product/productBatch.constants.js";
-import { OBJECT_ID } from "./uiLayout.constants.js";
+import { OBJECT_ID, UI_LAYOUT_ENTITY_ACTION_TYPES } from "./uiLayout.constants.js";
 import { add } from "./uiLayout.fields.js";
 
 // Call only after structural validation. Action precedes items/children at each owner.
@@ -10,6 +10,8 @@ export function collectLayoutReferences(content) {
     if (value.product_id) references.push({ type: "product", value: value.product_id,
       path: `${path}.product_id`, owner: value, key: "product_id" });
     if (value.image_url) references.push({ type: "asset", value: value.image_url, path: `${path}.image_url` });
+    value.image_urls?.forEach((url, index) => references.push({ type: "asset", value: url,
+      path: `${path}.image_urls[${index}]` }));
     if (value.action) references.push({ ...value.action, path: `${path}.action.value`, owner: value.action, key: "value" });
     value.items?.forEach((item, index) => owned(item, `${path}.items[${index}]`));
   }
@@ -50,7 +52,7 @@ export function inspectProductManifest(content, errors) {
 export function canonicalizeProductReferences(content) {
   const ids = new Set();
   for (const entry of collectLayoutReferences(content)) {
-    if (["product", "brand", "category"].includes(entry.type)) entry.owner[entry.key] = entry.value.toLowerCase();
+    if (UI_LAYOUT_ENTITY_ACTION_TYPES.includes(entry.type)) entry.owner[entry.key] = entry.value.toLowerCase();
     if (entry.type === "product") ids.add(entry.value.toLowerCase());
   }
   content.product_ids = [...ids];

@@ -108,7 +108,7 @@ function content() {
   };
 }
 
-function fixture({ getOrSet, getMinimumAppVersion, inspectReferences = async () => [] } = {}) {
+function fixture({ getOrSet, getMinimumAppVersion, getExtensionsMinimumVersion, inspectReferences = async () => [] } = {}) {
   sequence = 0;
   objectSequence = 0;
   const models = {
@@ -119,7 +119,7 @@ function fixture({ getOrSet, getMinimumAppVersion, inspectReferences = async () 
   };
   let clock = new Date("2026-09-24T00:00:00Z");
   const service = createUiLayoutService({
-    ...models, inspectReferences, getMinimumAppVersion, uuid, now: () => clock,
+    ...models, inspectReferences, getMinimumAppVersion, getExtensionsMinimumVersion, uuid, now: () => clock,
     getOrSet: getOrSet ?? (async (_key, _ttl, fetchFresh) => fetchFresh()),
     startSession: async () => ({ withTransaction: async (fn) => fn(), endSession: async () => {} }),
   });
@@ -127,6 +127,77 @@ function fixture({ getOrSet, getMinimumAppVersion, inspectReferences = async () 
 }
 
 const idOnlyContent = () => JSON.parse(readFileSync(new URL("../../fixtures/uiLayout.idOnly.json", import.meta.url), "utf8")).content;
+
+test("carousel/subcategory snapshots survive the lifecycle, with separate renderer gates and cache identity", async () => {
+  let extensionMinimum = null;
+  const keys = [];
+  const { service, models, setTime } = fixture({ getMinimumAppVersion: () => "2.0.0",
+    getExtensionsMinimumVersion: () => extensionMinimum,
+    getOrSet: async (key, _ttl, fresh) => { keys.push(key); return fresh(); } });
+  const global = await service.createDraft({ name: "Fallback", source: { type: "blank" }, actorId: ACTOR });
+  await service.saveDraft({ id: global.id, revision: 1, body: { name: "Fallback", targeting: global.targeting, content: content() }, actorId: ACTOR });
+  const fallback = await service.publish({ id: global.id, revision: 2, changeNote: "Fallback", idempotencyKey: uuid(), actorId: ACTOR });
+  const draft = await service.createDraft({ name: "Carousel", source: { type: "blank" }, actorId: ACTOR });
+  const authored = idOnlyContent();
+  const props = authored.sections[1].data.root.children[0].props;
+  delete props.image_url;
+  props.image_urls = ["https://media.petyardstores.com/ui-builder/one.webp", "https://media.petyardstores.com/ui-builder/two.webp"];
+  authored.sections[0].data.action = { type: "subcategory", value: "68cf1234567890abcdef1239" };
+  authored.sections[0].data.show_see_all = true;
+  const body = { name: "Carousel", targeting: { ...draft.targeting, min_app_version: "3.0.0", priority: 100 }, content: authored };
+  const saved = await service.saveDraft({ id: draft.id, revision: 1, body, mutationId: KEY, actorId: ACTOR });
+  assert.deepEqual(saved.content, authored);
+  assert.deepEqual(await service.saveDraft({ id: draft.id, revision: 1, body, mutationId: KEY, actorId: ACTOR }), saved);
+  const preview = await service.createPreview({ id: draft.id, revision: 2, actorId: ACTOR });
+  assert.deepEqual((await service.getPreview(preview.token)).data.sections, authored.sections);
+  assert.equal((await service.validateDraft({ id: draft.id, actorId: ACTOR })).valid, false);
+  for (const operation of [
+    () => service.publish({ id: draft.id, revision: 2, changeNote: "Blocked", idempotencyKey: uuid(), actorId: ACTOR }),
+    () => service.schedule({ id: draft.id, revision: 2, changeNote: "Blocked", scheduledFor: "2026-09-24T00:03:00Z", idempotencyKey: uuid(), actorId: ACTOR }),
+  ]) await assert.rejects(operation(), (error) => error.code === "UI_LAYOUT_VALIDATION_FAILED" &&
+    error.details.some((finding) => finding.code === "CLIENT_VERSION_UNSUPPORTED"));
+  assert.equal(models.versionModel.rows.length, 1);
+  extensionMinimum = "3.0.0";
+  const published = await service.publish({ id: draft.id, revision: 2, changeNote: "Approved fixture", idempotencyKey: uuid(), actorId: ACTOR });
+  assert.deepEqual((await service.getVersion(published.version_id)).content, authored);
+  assert.equal((await service.history({})).items[0].version_id, published.version_id);
+  assert.equal((await service.getPublic({ appVersion: "2.0.0" })).version_id, fallback.version_id);
+  const publicSnapshot = await service.getPublic({ appVersion: "3.0.0" });
+  assert.deepEqual(publicSnapshot.sections, authored.sections);
+  assert.equal(publicSnapshot.checksum, published.checksum);
+  const oldKey = keys.at(-1);
+  const clone = await service.createDraft({ name: "Next", source: { type: "published", version_id: published.version_id }, actorId: ACTOR });
+  assert.deepEqual(clone.content, authored);
+  await service.schedule({ id: clone.id, revision: 1, changeNote: "Schedule", scheduledFor: "2026-09-24T00:03:00Z", idempotencyKey: uuid(), actorId: ACTOR });
+  setTime("2026-09-24T00:03:01Z");
+  const [due] = await service.dueSchedules(); await service.publishScheduledDraft(due);
+  const rollback = await service.rollback({ versionId: published.version_id, changeNote: "Restore", idempotencyKey: uuid(), actorId: ACTOR });
+  assert.deepEqual((await service.getVersion(rollback.version_id)).content, authored);
+  extensionMinimum = null;
+  assert.equal((await service.getPublic({ appVersion: "3.0.0" })).version_id, fallback.version_id);
+  assert.notEqual(keys.at(-1), oldKey);
+  const count = models.versionModel.rows.length;
+  await assert.rejects(service.rollback({ versionId: published.version_id, changeNote: "Now blocked", idempotencyKey: uuid(), actorId: ACTOR }),
+    (error) => error.code === "UI_LAYOUT_VALIDATION_FAILED");
+  assert.equal(models.versionModel.rows.length, count);
+});
+
+test("carousel slide changes affect preview checksums without mutating the previous preview", async () => {
+  const { service } = fixture({ getMinimumAppVersion: () => null, getExtensionsMinimumVersion: () => null });
+  const draft = await service.createDraft({ name: "Slides", source: { type: "blank" }, actorId: ACTOR });
+  const authored = idOnlyContent();
+  const props = authored.sections[1].data.root.children[0].props;
+  delete props.image_url; props.image_urls = ["https://media.petyardstores.com/one.webp", "https://media.petyardstores.com/two.webp"];
+  const body = { name: "Slides", targeting: draft.targeting, content: authored };
+  await service.saveDraft({ id: draft.id, revision: 1, body, actorId: ACTOR });
+  const first = await service.createPreview({ id: draft.id, revision: 2, actorId: ACTOR });
+  const firstData = (await service.getPreview(first.token)).data;
+  props.image_urls.reverse();
+  await service.saveDraft({ id: draft.id, revision: 2, body, actorId: ACTOR });
+  const second = await service.createPreview({ id: draft.id, revision: 3, actorId: ACTOR });
+  assert.notEqual((await service.getPreview(second.token)).data.checksum, firstData.checksum);
+  assert.deepEqual((await service.getPreview(first.token)).data, firstData);
+});
 
 test("prepared ID-only drafts and immutable previews work while new-format publication remains disabled", async () => {
   const { service, models } = fixture({ getMinimumAppVersion: () => null });

@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import { OBJECT_ID, UUID } from "./uiLayout.constants.js";
+import { OBJECT_ID, UUID, UI_LAYOUT_ACTION_TYPES, UI_LAYOUT_ENTITY_ACTION_TYPES } from "./uiLayout.constants.js";
 
 export function object(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) &&
@@ -83,9 +83,9 @@ export function safeHttpsUrl(value, path, errors, required = false) {
 export function action(value, path, errors, required = false) {
   if (value === undefined && !required) return;
   if (!keys(value, ["type", "value"], path, errors, ["type", "value"])) return;
-  oneOf(value.type, new Set(["product", "category", "brand", "screen", "url"]), `${path}.type`, errors, true);
+  oneOf(value.type, new Set(UI_LAYOUT_ACTION_TYPES), `${path}.type`, errors, true);
   string(value.value, `${path}.value`, errors, { max: 2048, required: true });
-  if (["product", "category", "brand"].includes(value.type) &&
+  if (UI_LAYOUT_ENTITY_ACTION_TYPES.includes(value.type) &&
     typeof value.value === "string" && !OBJECT_ID.test(value.value)) {
     add(errors, `${path}.value`, "INVALID_REFERENCE_ID", "Must be a MongoDB ObjectId.");
   }

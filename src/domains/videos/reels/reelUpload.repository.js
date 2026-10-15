@@ -27,6 +27,7 @@ import { createEditorialCoverReferencePersistence } from "../editorial/editorial
 import { ReelResourceRecoveryModel } from "./reelResourceRecovery.model.js";
 import { VideoProviderOperationModel } from "../provider/videoProviderOperation.model.js";
 import { createReelResourceRecoveryPersistence } from "./reelResourceRecovery.repository.js";
+import { createEditorialVideoAuthorityFence } from "../editorial/editorialVideoAuthority.repository.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -40,6 +41,7 @@ function fingerprint(actorId, file) {
 }
 
 export function createReelUploadRepository({ libraryId, connection = mongoose,
+  assertAuthority = createEditorialVideoAuthorityFence(),
   videos = EditorialVideoModel, assets = VideoAssetModel,
   sessions = ReelUploadSessionModel, attempts = VideoUploadAttemptModel,
   recoveries = ReelResourceRecoveryModel, operations = VideoProviderOperationModel,
@@ -94,7 +96,7 @@ export function createReelUploadRepository({ libraryId, connection = mongoose,
 
   return Object.freeze({
     ...createReelUploadRecoveryPersistence({ libraryId, videos, sessions, recoveries, assets,
-      attempts, withTransaction, recordOperation, now, coverReferences }),
+      attempts, withTransaction, recordOperation, now, coverReferences, assertAuthority }),
     ...createReelResourceRecoveryPersistence({ libraryId, videos, sessions, assets, recoveries,
       operations, attempts, withTransaction, recordOperation, now, loadSessionContext }),
     async getSessionContext(input) {
@@ -145,6 +147,7 @@ export function createReelUploadRepository({ libraryId, connection = mongoose,
               if (!previousAsset) throw conflict();
               const pending = current.pendingChange?.toObject?.() ?? current.pendingChange;
               const content = pending?.content ?? { kind: editorialVideoKindEnum.REEL, title_en: current.title_en,
+                productIds: current.productIds ?? [],
                 title_ar: current.title_ar, description_en: current.description_en, description_ar: current.description_ar,
                 ...(current.activeCoverId !== undefined ? { coverId: current.activeCoverId } : {}) };
               const updated = await videos.findOneAndUpdate({ _id: videoId, revision: current.revision,
