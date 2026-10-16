@@ -1411,3 +1411,7 @@ Not established by this chapter: an approved release build, deployed catalog/wor
 Existing builder requests/responses remain unchanged by the audit fixes. An uncertain UI asset save no longer triggers deletion of possibly committed media; reconcile the library before manually retrying a non-idempotent upload. The request ID header now also survives early parser errors. These do not add body fields or required headers.
 
 The [combined FE response](PHASE_BACKEND_PRODUCTION_RESPONSE_AND_INTEGRATION_GUIDE.md) replaces the oversized earlier report and describes the three agreed additions, every new field's origin/reuse, complete preparation flows, internal fixes and remaining release/device acceptance. Final combined local result: 877 passed, zero failed, five external skips.
+
+### 2026-10-16 customer-version configuration
+
+Customer **5.1.9** is owner-confirmed as the first compatible block/carousel/subcategory version; live **5.1.8** lacks support. Both encrypted backend floors are now 5.1.9 on the inspected server. Use a minimum of at least 5.1.9 for extended layouts; the previous unset-floor preparation decision is superseded. Legacy cutover remains false, and no layout was published. See [the publish-blocker response](UI_BUILDER_PUBLISH_BLOCKERS_RESPONSE.md) before reopening/saving the affected draft.

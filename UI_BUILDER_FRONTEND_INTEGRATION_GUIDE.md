@@ -4109,3 +4109,7 @@ The existing `X-Request-Id` header is now set before body parsers, including mal
 No new builder request fields, required headers, routes or response envelopes were added by these fixes. Subcategory actions/carousel additions remain those in chapter 29. The final combined local gate passed 877 tests, with zero failures and five external skips. Deployed/mobile acceptance remains separate.
 
 Read the focused [combined FE response](PHASE_BACKEND_PRODUCTION_RESPONSE_AND_INTEGRATION_GUIDE.md) for the exact additions, retained values, notification/editorial fixes, accepted direct-upload container limitation and release checklist.
+
+### 2026-10-16 customer-version configuration
+
+The owner confirmed customer version **5.1.9** first supports blocks, carousels and subcategory actions; live **5.1.8** does not. Both encrypted backend floors are now 5.1.9 on the inspected server, replacing the previous unset-version preparation policy. Extended layouts must target at least 5.1.9. Legacy Home cutover remains false. No layout was published by this configuration correction. Read [the publish-blocker response](UI_BUILDER_PUBLISH_BLOCKERS_RESPONSE.md) for the archived test draft, actual evidence boundaries and required fresh FE save/validation/preview.

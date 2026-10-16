@@ -1,5 +1,7 @@
 # PetYard — Response to the frontend production handoff
 
+**Update 2026-10-16:** the owner confirmed customer 5.1.9 is the first compatible block/carousel/subcategory version and live 5.1.8 lacks support. Both encrypted server version floors are now 5.1.9; legacy Home cutover remains false. This supersedes the earlier unset-version preparation policy below, not the remaining device/publication acceptance requirements. See [the publish-blocker response](UI_BUILDER_PUBLISH_BLOCKERS_RESPONSE.md) for actual draft/runtime evidence and operator steps. No layout was published by that correction.
+
 Date: 2026-10-15. Input: `PHASE_BACKEND_PRODUCTION_HANDOFF.md`, dated 2026-10-14.
 
 This is the combined backend response for Products, UI Builder, Videos and notifications. It replaces the oversized earlier report at this path. It explains the changes and integration steps without copying the existing API manuals, complete catalog or source patches.
