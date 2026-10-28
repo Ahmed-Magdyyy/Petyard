@@ -96,6 +96,8 @@ export async function reserveCost(owner, config, session, now = new Date()) {
   const entries = [
     { id: `global:${period.month}`, limit: config.monthlyBudgetMicroUsd, end: period.monthReset, code: "monthly_budget_limit",
       opening: DateTime.fromISO(period.month).setZone(config.timezone).toFormat("yyyy-MM") === opening.month ? opening.microUsd : 0 },
+    ...(config.globalDailyBudgetMicroUsd === undefined ? [] : [{ id: `global-day:${period.day}`,
+      limit: config.globalDailyBudgetMicroUsd, end: period.dayReset, code: "daily_spending_limit" }]),
     { id: `user:${owner}:${period.day}`, limit: config.dailyBudgetMicroUsd, end: period.dayReset, code: "daily_spending_limit" },
   ];
   for (const entry of entries) {

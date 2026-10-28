@@ -13,6 +13,7 @@ export function embeddingBillingSnapshot(shared, price, input, now = new Date())
   const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
   if (!(now instanceof Date) || !Number.isFinite(now.getTime()) || !shared || !integer(shared.monthlyBudgetMicroUsd, 1, MONTHLY_CEILING_MICRO_USD) ||
       !integer(shared.dailyBudgetMicroUsd, 1, shared.monthlyBudgetMicroUsd) ||
+      (shared.globalDailyBudgetMicroUsd !== undefined && !integer(shared.globalDailyBudgetMicroUsd, 1, shared.monthlyBudgetMicroUsd)) ||
       !integer(shared.costMultiplierBasisPoints, 10000, 100000) || shared.timezone !== "Africa/Cairo" ||
       !shared.openingExposure || !/^\d{4}-(0[1-9]|1[0-2])$/.test(shared.openingExposure.month ?? "") ||
       !integer(shared.openingExposure.microUsd, 0, shared.monthlyBudgetMicroUsd) ||
@@ -24,13 +25,15 @@ export function embeddingBillingSnapshot(shared, price, input, now = new Date())
       new Date(price.validFrom) > now || new Date(price.validUntil) <= now) reject("embedding_billing_configuration_required", 503);
   const snapshot = {
     timezone: shared.timezone, monthlyBudgetMicroUsd: shared.monthlyBudgetMicroUsd, dailyBudgetMicroUsd: shared.dailyBudgetMicroUsd,
+    ...(shared.globalDailyBudgetMicroUsd === undefined ? {} : { globalDailyBudgetMicroUsd: shared.globalDailyBudgetMicroUsd }),
     costMultiplierBasisPoints: shared.costMultiplierBasisPoints, openingExposure: { ...shared.openingExposure }, maxOutputTokens: 0,
     price: { version: price.version, contextWindowTokens: maximumTokens, inputMicroUsdPerMillion: price.inputMicroUsdPerMillion,
       cachedInputMicroUsdPerMillion: price.inputMicroUsdPerMillion, cacheWriteInputMicroUsdPerMillion: price.inputMicroUsdPerMillion,
       outputMicroUsdPerMillion: 0, validFrom: price.validFrom, validUntil: price.validUntil },
   };
   const amount = reservationMicroUsd(snapshot);
-  if (amount > snapshot.dailyBudgetMicroUsd) reject("embedding_billing_configuration_required", 503);
+  if (amount > snapshot.dailyBudgetMicroUsd ||
+      snapshot.globalDailyBudgetMicroUsd !== undefined && amount > snapshot.globalDailyBudgetMicroUsd) reject("embedding_billing_configuration_required", 503);
   return { model: embeddingProfile.model, dimensions: embeddingProfile.dimensions,
     batchHash: embeddingInputHash(input),
     maximumTokens, reservationMicroUsd: amount, config: snapshot };

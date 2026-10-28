@@ -55,7 +55,7 @@ export function loadAssistantConfig(env = process.env, now = new Date()) {
   };
   const allowed = [...Object.keys(bounds), "version", "provider", "model", "timezone", "blockedHistoryAllowed", "failureMessagePolicy",
     "clinicalMode", "maxToolRounds", "automaticRestrictions", "reasoningEffort", "openingExposure", "price", "reviewPolicy", "catalogClassification", "productSearchEnabled", "cartPolicy",
-    "catalogSemanticEnabled", "catalogSemanticMinimumScore"];
+    "catalogSemanticEnabled", "catalogSemanticMinimumScore", "globalDailyBudgetMicroUsd"];
   if (!policy || Object.keys(policy).some((key) => !allowed.includes(key)) || Object.entries(bounds).some(([key, range]) => !integer(policy[key], ...range)) ||
       typeof policy.version !== "string" || !/^[a-zA-Z0-9._-]{1,80}$/.test(policy.version) ||
       !DateTime.now().setZone(policy.timezone).isValid || typeof policy.timezone !== "string" ||
@@ -66,6 +66,7 @@ export function loadAssistantConfig(env = process.env, now = new Date()) {
       (policy.cartPolicy !== undefined && !validCartPolicy(policy.cartPolicy)) ||
       (env.ASSISTANT_CART_ENABLED === "true" && (!validCartPolicy(policy.cartPolicy) || policy.productSearchEnabled !== true)) ||
       !validCatalogClassification(policy.catalogClassification) ||
+      (policy.globalDailyBudgetMicroUsd !== undefined && !integer(policy.globalDailyBudgetMicroUsd, 1, policy.monthlyBudgetMicroUsd)) ||
       (policy.productSearchEnabled !== undefined && typeof policy.productSearchEnabled !== "boolean") ||
       (policy.catalogSemanticEnabled !== undefined && typeof policy.catalogSemanticEnabled !== "boolean") ||
       (policy.catalogSemanticMinimumScore !== undefined && (!Number.isFinite(policy.catalogSemanticMinimumScore) || policy.catalogSemanticMinimumScore < 0 || policy.catalogSemanticMinimumScore > 1)) ||
@@ -89,7 +90,8 @@ export function loadAssistantConfig(env = process.env, now = new Date()) {
       new Date(price.validFrom) > now || new Date(price.validUntil) <= now ||
       !hasAssistantCredentials(policy, env)) reject("assistant_configuration_required", 503);
   const signature = createHash("sha256").update(JSON.stringify({ policy, promptVersion: PROMPT_VERSION })).digest("hex");
-  if (reservationMicroUsd(policy) > policy.dailyBudgetMicroUsd) {
+  if (reservationMicroUsd(policy) > policy.dailyBudgetMicroUsd ||
+      policy.globalDailyBudgetMicroUsd !== undefined && reservationMicroUsd(policy) > policy.globalDailyBudgetMicroUsd) {
     reject("assistant_configuration_required", 503);
   }
   if (policy.catalogClassification) {
