@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy so rate limiters use real client IPs
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || undefined;
 import morgan from "morgan";
 import helmet from "helmet";
 import compression from "compression";
@@ -115,10 +116,12 @@ app.use("/api/", createGlobalApiLimiter(assistantAwareApiLimit));
 mountRoutes(app);
 
 // Background jobs
-startAbandonedCartsJob();
-startNotificationJobs();
-startAbandonedPaymentsJob();
-startAppDownloadsJob();
+if (process.env.BACKGROUND_JOBS_ENABLED !== "false") {
+  startAbandonedCartsJob();
+  startNotificationJobs();
+  startAbandonedPaymentsJob();
+  startAppDownloadsJob();
+}
 
 app.get("/", (req, res) => {
   res.send("Petyard API is running.");
@@ -129,7 +132,7 @@ app.all("*", unmatchedRouteHandler);
 // Global error handling middleware
 app.use(globalError);
 
-const server = app.listen(PORT, () =>
+const server = app.listen(PORT, HOST, () =>
   console.log(`Example app listening on port ${PORT}!`),
 );
 
