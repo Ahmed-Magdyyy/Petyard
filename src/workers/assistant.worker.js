@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+import "../domains/brand/brand.model.js";
+import "../domains/category/category.model.js";
+import "../domains/subcategory/subcategory.model.js";
 import { loadAssistantConfig } from "../domains/assistant/shared/assistant.config.js";
 import { initializeAssistantStore } from "../domains/assistant/shared/assistant.store.js";
 import { drainAssistantWork } from "../domains/assistant/assistant.runtime.js";
