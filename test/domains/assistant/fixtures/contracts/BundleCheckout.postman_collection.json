@@ -1,0 +1,44 @@
+{
+  "info": {
+    "name": "Petyard retired bundle order entry - historical only",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Historical template retained after the 2026-10-23 approved recovery. The mounted order route now rejects bundleCheckout with HTTP 400. This request ALWAYS skips, regardless of allowBundleOrderRequest. Do not implement its bundle-specific headers, body or old success assertions in the frontend. Ordinary requests retain the existing order flow. Bundle integration through shared commerce owners remains unfinished. No collection was executed or published. Read AI_ASSISTANT_BUNDLE_ORDER_ENTRY_CONTRACT.md and AI_ASSISTANT_BUNDLE_RECOVERY_AUDIT.md."
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:5000", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "allowBundleOrderRequest", "value": "false", "type": "string" },
+    { "key": "cartId", "value": "", "type": "string" },
+    { "key": "cartVersion", "value": "", "type": "string" },
+    { "key": "warehouseId", "value": "", "type": "string" },
+    { "key": "checkoutKey", "value": "", "type": "string" },
+    { "key": "paymentMethod", "value": "cod", "type": "string" },
+    { "key": "language", "value": "en", "type": "string" }
+  ],
+  "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+    "pm.execution.skipRequest(); // Retired request: retained for historical review only."
+  ] } }],
+  "item": [{
+    "name": "Place or recover the same reviewed bundle order",
+    "request": {
+      "method": "POST",
+      "url": "{{baseUrl}}/api/v1/orders/me",
+      "header": [
+        { "key": "Content-Type", "value": "application/json", "type": "text" },
+        { "key": "Accept-Language", "value": "{{language}}", "type": "text" },
+        { "key": "X-Petyard-Bundle-Cart-Version", "value": "1", "type": "text" },
+        { "key": "Idempotency-Key", "value": "{{checkoutKey}}", "type": "text" }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"bundleCheckout\": {\n    \"cartId\": \"{{cartId}}\",\n    \"expectedCartVersion\": {{cartVersion}},\n    \"warehouseId\": \"{{warehouseId}}\"\n  },\n  \"paymentMethod\": \"{{paymentMethod}}\"\n}",
+        "options": { "raw": { "language": "json" } }
+      }
+    },
+    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+      "pm.test('Existing order success envelope', function () { pm.response.to.have.status(201); pm.expect(Object.keys(pm.response.json())).to.eql(['data']); });",
+      "pm.test('Grouped display and no internal metadata', function () { const order = pm.response.json().data; pm.expect(order._id).to.match(/^[a-f0-9]{24}$/); pm.expect(order.bundles).to.be.an('array').that.is.not.empty; ['bundleGroups', 'bundleCheckout', 'bundleCardInitialization'].forEach(key => pm.expect(order).not.to.have.property(key)); });"
+    ] } }]
+  }]
+}

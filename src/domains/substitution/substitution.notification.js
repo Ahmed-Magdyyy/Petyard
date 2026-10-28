@@ -186,7 +186,11 @@ export async function enqueueSubstitutionCustomerNotification({
 }) {
   const recipient = ownerRecipient(order);
   const requestId = identifier(request?._id, "request._id");
-  const message = messageFor(CUSTOMER_MESSAGES, event);
+  const message = event === "cancelled" && order.status === "cancelled" ? {
+    title_en: "Your order was cancelled", title_ar: "تم إلغاء طلبك",
+    body_en: "Your order was cancelled. This substitute offer is now closed.",
+    body_ar: "تم إلغاء طلبك وإغلاق عرض البدائل.",
+  } : messageFor(CUSTOMER_MESSAGES, event);
 
   return enqueue({
     ...recipient,

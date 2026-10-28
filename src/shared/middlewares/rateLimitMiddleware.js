@@ -50,7 +50,7 @@ export const guestLimiter = rateLimit({
 
 // ── Global API limiter — catch-all for all routes ────────────────────────
 // Keyed by req.ip which uses the real client IP via X-Forwarded-For + trust proxy
-export const globalApiLimiter = rateLimit({
+export const createGlobalApiLimiter = (handler) => rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 2000,
   message: {
@@ -59,4 +59,5 @@ export const globalApiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  ...(handler ? { handler } : {}),
 });

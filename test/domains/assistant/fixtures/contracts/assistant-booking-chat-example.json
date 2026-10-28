@@ -1,0 +1,200 @@
+{
+  "notice": "Fictional examples, not captured traffic. Local scripted tests do not prove live language quality or mobile integration.",
+  "messageRequest": {
+    "text": "Show me clinic services",
+    "bookingContext": {
+      "location": {
+        "governorateCode": "alexandria",
+        "areaCode": "smouha"
+      }
+    }
+  },
+  "arabiziMessageRequest": {
+    "text": "3ayez a7gez grooming",
+    "bookingContext": {
+      "location": {
+        "governorateCode": "alexandria",
+        "areaCode": "smouha"
+      }
+    }
+  },
+  "gpsContext": {
+    "location": {
+      "lat": 31.2,
+      "lng": 29.9
+    }
+  },
+  "missingLocationContext": {
+    "location": null
+  },
+  "completedRunResponse": {
+    "data": {
+      "run": {
+        "id": "777777777777777777777777",
+        "status": "completed",
+        "responseMessageId": "666666666666666666666666"
+      },
+      "message": {
+        "id": "666666666666666666666666",
+        "runId": "777777777777777777777777",
+        "sequence": 2,
+        "role": "assistant",
+        "text": "These are Petyard's catalog services and Alexandria branches. Select the service, branch, time and pet, then review the details and prices before confirming yourself. This list does not confirm appointment availability; no booking has been made.",
+        "subjectId": null,
+        "createdAt": "2026-10-22T09:00:00.000Z",
+        "expiresAt": "2026-10-29T09:00:00.000Z",
+        "booking": {
+          "status": "ready",
+          "reason": null,
+          "generatedAt": "2026-10-22T09:00:00.000Z",
+          "dataMode": "catalog_snapshot",
+          "estimateOnly": true,
+          "slotReserved": false,
+          "requiresRefreshBeforeConfirmation": true,
+          "requiresExplicitConfirmation": true,
+          "services": [
+            {
+              "type": "CLINIC",
+              "name": "Clinic",
+              "options": [
+                {
+                  "key": "checkup",
+                  "name": "Check Up",
+                  "price": 75,
+                  "currency": "EGP"
+                }
+              ]
+            }
+          ],
+          "locations": [
+            {
+              "id": "222222222222222222222222",
+              "name": "Example branch",
+              "city": "Alexandria",
+              "slug": "example",
+              "timezone": "Africa/Cairo"
+            }
+          ],
+          "action": {
+            "type": "review_booking_options",
+            "requiresFreshLocation": true
+          }
+        }
+      }
+    }
+  },
+  "historyMessage": {
+    "id": "666666666666666666666666",
+    "runId": "777777777777777777777777",
+    "sequence": 2,
+    "role": "assistant",
+    "text": "These are Petyard's catalog services and Alexandria branches. Select the service, branch, time and pet, then review the details and prices before confirming yourself. This list does not confirm appointment availability; no booking has been made.",
+    "subjectId": null,
+    "createdAt": "2026-10-22T09:00:00.000Z",
+    "expiresAt": "2026-10-29T09:00:00.000Z",
+    "booking": {
+      "status": "ready",
+      "reason": null,
+      "generatedAt": "2026-10-22T09:00:00.000Z",
+      "dataMode": "catalog_snapshot",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresExplicitConfirmation": true,
+      "services": [
+        {
+          "type": "CLINIC",
+          "name": "Clinic",
+          "options": [
+            {
+              "key": "checkup",
+              "name": "Check Up",
+              "price": 75,
+              "currency": "EGP"
+            }
+          ]
+        }
+      ],
+      "locations": [
+        {
+          "id": "222222222222222222222222",
+          "name": "Example branch",
+          "city": "Alexandria",
+          "slug": "example",
+          "timezone": "Africa/Cairo"
+        }
+      ],
+      "action": {
+        "type": "review_booking_options",
+        "requiresFreshLocation": true
+      }
+    }
+  },
+  "states": {
+    "needs_location": {
+      "status": "needs_location",
+      "reason": "booking_location_required",
+      "generatedAt": "2026-10-22T09:00:00.000Z",
+      "dataMode": "catalog_snapshot",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresExplicitConfirmation": true,
+      "services": [],
+      "locations": [],
+      "action": null
+    },
+    "unavailable": {
+      "status": "unavailable",
+      "reason": null,
+      "generatedAt": "2026-10-22T09:00:00.000Z",
+      "dataMode": "catalog_snapshot",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresExplicitConfirmation": true,
+      "services": [],
+      "locations": [],
+      "action": null
+    },
+    "ineligible": {
+      "status": "ineligible",
+      "reason": "booking_region_unavailable",
+      "generatedAt": "2026-10-22T09:00:00.000Z",
+      "dataMode": "catalog_snapshot",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresExplicitConfirmation": true,
+      "services": [],
+      "locations": [],
+      "action": null
+    },
+    "empty": {
+      "status": "empty",
+      "reason": null,
+      "generatedAt": "2026-10-22T09:00:00.000Z",
+      "dataMode": "catalog_snapshot",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresExplicitConfirmation": true,
+      "services": [
+        {
+          "type": "CLINIC",
+          "name": "Clinic",
+          "options": [
+            {
+              "key": "checkup",
+              "name": "Check Up",
+              "price": 75,
+              "currency": "EGP"
+            }
+          ]
+        }
+      ],
+      "locations": [],
+      "action": null
+    }
+  }
+}

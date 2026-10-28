@@ -1,4 +1,10 @@
 import mongoose from "mongoose";
+import { validateCheckoutDeliveryAddress } from "../checkout/checkout.service.js";
+import { assertOrdinaryCart } from "../cart/cart.bundle-compatibility.js";
+import { assertBundleOrderCanReorder, buildBundleOrderMerchandise } from "../bundle/bundle.order-snapshot.js";
+import { loadBundleCartUser, loadBundleCartViewSources } from "../bundle/bundle.cart-transaction.js";
+import { savedBundleCartGroups } from "../bundle/bundle.cart-state.js";
+import { buildBundleCartPurchasePlan } from "../bundle/bundle.purchase-plan.js";
 import { randomUUID } from "crypto";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { OrderModel } from "./order.model.js";
@@ -64,7 +70,7 @@ import { MAX_INSTAPAY_SCREENSHOTS } from "./order.instapay.js";
 import { resolveEffectiveWarehouse } from '../warehouse/warehouse.fulfillment.js';
 import { resolveCartPrimeLocation } from '../cart/cartAddressSnapshot.js';
 import { selectShippingPrice } from '../warehouse/warehouse.delivery.js';
-import { restoreFinalOrderInventory } from "../inventory/inventory.service.js";
+import { restoreFinalOrderInventory, aggregateInventoryDemands } from "../inventory/inventory.service.js";
 import { selectFinalFulfilledOrderItems } from "./order.fulfillment.js";
 import { shouldDeferCardLoyaltyUntilAcceptance } from "../substitution/substitution.loyalty.js";
 import {
@@ -73,6 +79,7 @@ import {
 } from "../substitution/substitution.service.js";
 import { OrderPaymentAttemptModel } from "../payment/orderPaymentAttempt.model.js";
 import { createOrFindRefundOperation } from "../payment/substitutionPayment.service.js";
+import { runOrderCreatedEffects } from "./order.creation-effects.js";
 
 function processRestockedOrderProductsBestEffort(productIds, warehouseId) {
   const uniqueProductIds = [
@@ -172,7 +179,7 @@ async function uploadInstapayScreenshotFiles(files, lang) {
   }
 }
 
-function generateOrderNumber() {
+export function generateOrderNumber() {
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -215,7 +222,7 @@ function isValidStatusTransition(oldStatus, newStatus) {
   return next.includes(newStatus);
 }
 
-function mapCartItemToOrderItem(item) {
+export function mapCartItemToOrderItem(item) {
   const quantity =
     typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 0;
   const itemPrice =
@@ -390,7 +397,50 @@ export async function queueManualGuestMultiCaptureRefund({
   return true;
 }
 
-async function buildOrderItemsWithPromotions({ session, cart, lang = "en" }) {
+async function buildOrderItemsWithBundles({ session, cart, lang }) {
+  if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(cart);
+  if (cart.guestId != null) assertOrdinaryCart(cart);
+  if (!session?.inTransaction?.()) throw new ApiError("An active order transaction is required", 503);
+  const conflict = () => { throw new ApiError("Your cart changed. Refresh it before placing the order.", 409); };
+  const owner = String(cart.user?._id ?? cart.user);
+  const actor = await loadBundleCartUser(owner, session);
+  const { raw, slice, warehouse, products, definitions } = await loadBundleCartViewSources(actor,
+    { warehouseId: String(cart.warehouse), language: lang }, { session });
+  if (!raw || raw.guestId != null || String(raw._id) !== String(cart._id) || raw.__v !== cart.__v ||
+      String(raw.warehouse) !== String(cart.warehouse) || raw.currency !== "EGP" ||
+      !Number.isSafeInteger(raw.__v) || raw.__v < 0 || raw.__v >= Number.MAX_SAFE_INTEGER) conflict();
+  const material = rows => rows.map(row => ({ id: String(row.id), productId: String(row.productId),
+    productType: row.productType, variantId: row.variantId == null ? null : String(row.variantId),
+    quantity: row.quantity, itemPrice: row.itemPrice }));
+  if (JSON.stringify(material(slice.before)) !== JSON.stringify(material(slice.after))) conflict();
+  const groups = savedBundleCartGroups(raw);
+  if (!groups.length) conflict();
+  const bundles = groups.map(group => {
+    const matches = definitions.filter(row => String(row._id) === group.bundleId);
+    if (matches.length !== 1 || matches[0].pricePiastres !== group.unitPricePiastres) conflict();
+    return { groupId: group.id, bundle: matches[0], expectedRevision: group.bundleRevision, quantity: group.quantity };
+  });
+  const plan = buildBundleCartPurchasePlan({ warehouseId: String(raw.warehouse), warehouse, products,
+    ordinaryItems: slice.items, bundles, language: lang });
+  const ordinaryItems = slice.after.map(row => mapCartItemToOrderItem({ ...row, product: row.productId,
+    variantOptionsSnapshot: row.variantOptions }));
+  const ordinaryProducts = ordinaryItems.length ? await ProductModel.find({
+    _id: { $in: [...new Set(ordinaryItems.map(row => String(row.product)))] },
+  }).session(session).select("_id type price discountedPrice subcategory brand variants images") : [];
+  const merchandise = buildBundleOrderMerchandise({ plan, ordinaryItems, userId: owner });
+  const ordinaryPiastres = ordinaryItems.reduce((sum, row) => sum + BigInt(row.lineTotalPiastres), 0n);
+  if (BigInt(toPiastres(merchandise.subtotal)) !== ordinaryPiastres + BigInt(plan.bundleSubtotalPiastres)) conflict();
+  return { orderItems: merchandise.items, subtotal: merchandise.subtotal, bundleGroups: merchandise.bundleGroups,
+    sourceCart: raw,
+    hasPromotionalItems: ordinaryItems.some(row => row.promotion != null),
+    productById: new Map(ordinaryProducts.map(product => [String(product._id), product])) };
+}
+
+// The existing order owner prepares both merchandise kinds; public bundle purchasing stays guarded below.
+export async function buildOrderItemsWithPromotions({ session, cart, lang = "en" }) {
+  if (cart?.bundles !== undefined && (!Array.isArray(cart.bundles) || cart.bundles.length > 0)) {
+    return buildOrderItemsWithBundles({ session, cart, lang });
+  }
   await autoHideExpiredCollections();
 
   const items = Array.isArray(cart.items) ? cart.items : [];
@@ -553,7 +603,7 @@ async function buildOrderItemsWithPromotions({ session, cart, lang = "en" }) {
   };
 }
 
-function mapCartDeliveryAddressToOrder(cart, user) {
+export function mapCartDeliveryAddressToOrder(cart, user) {
   if (!cart.deliveryAddress) return undefined;
 
   const src = cart.deliveryAddress;
@@ -578,10 +628,22 @@ function mapCartDeliveryAddressToOrder(cart, user) {
   };
 }
 
-async function validateStockReadOnly({ session, cart, lang = "en" }) {
-  const items = Array.isArray(cart.items) ? cart.items : [];
+export async function validateStockReadOnly({ session, cart, lang = "en" }) {
+  let items = Array.isArray(cart.items) ? cart.items : [];
   if (!items.length) {
     throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
+  }
+  const hasBundleComponents = items.some(item => item?.bundleGroupId != null || item?.bundleComponentIndex != null);
+  if (hasBundleComponents) {
+    if (!session?.inTransaction?.()) throw new ApiError("An active order transaction is required", 503);
+    const invalidQuantity = () => { throw new ApiError(lang === "en"
+      ? "Cart item quantities must be positive safe integers" : "كميات منتجات السلة غير صالحة", 400); };
+    if (items.some(item => !Number.isSafeInteger(item?.quantity) || item.quantity < 1)) invalidQuantity();
+    const names = new Map(items.map(item => [String(item.product), item.productName]));
+    // Price-allocation rows and ordinary rows can consume the same physical SKU.
+    items = aggregateInventoryDemands(items).map(({ productId, ...demand }) =>
+      ({ ...demand, product: productId, productName: names.get(productId) }));
+    if (items.some(item => !Number.isSafeInteger(item.quantity))) invalidQuantity();
   }
 
   const productIds = [
@@ -605,6 +667,9 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
         400,
       );
     }
+    if (hasBundleComponents && (product.isActive !== true || product.type !== item.productType)) {
+      throw new ApiError(lang === "en" ? "Product is unavailable for this order" : "المنتج غير متاح لهذا الطلب", 400);
+    }
 
     const quantity =
       typeof item.quantity === "number" && item.quantity > 0
@@ -622,6 +687,8 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
       if (
         !stock ||
         typeof stock.quantity !== "number" ||
+        (hasBundleComponents && (!Number.isSafeInteger(stock.quantity) ||
+          stocks.filter(row => String(row.warehouse) === String(cart.warehouse)).length !== 1)) ||
         stock.quantity < quantity
       ) {
         throw new ApiError(
@@ -636,7 +703,7 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
       const variant = variants.find(
         (v) => String(v._id) === String(item.variantId),
       );
-      if (!variant) {
+      if (!variant || (hasBundleComponents && variants.filter(row => String(row._id) === String(item.variantId)).length !== 1)) {
         throw new ApiError(
           lang === "en"
             ? "Variant not found on this product"
@@ -653,6 +720,8 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
       if (
         !vStock ||
         typeof vStock.quantity !== "number" ||
+        (hasBundleComponents && (!Number.isSafeInteger(vStock.quantity) ||
+          vStocks.filter(row => String(row.warehouse) === String(cart.warehouse)).length !== 1)) ||
         vStock.quantity < quantity
       ) {
         throw new ApiError(
@@ -666,7 +735,7 @@ async function validateStockReadOnly({ session, cart, lang = "en" }) {
   }
 }
 
-async function ensureSufficientStockAndDecrement({
+export async function ensureSufficientStockAndDecrement({
   session,
   cart,
   lang = "en",
@@ -812,6 +881,7 @@ async function rebindOrdersLocalization(ordersOrOrder, lang = "en") {
   for (const order of orders) {
     const items = Array.isArray(order.items) ? order.items : [];
     for (const item of items) {
+      if (item.bundleGroupId != null || item.bundleComponentIndex != null) continue;
       if (!item.product) continue;
       allItems.push({
         order,
@@ -907,7 +977,7 @@ async function applyWalletIfUser({ session, userId, netSubtotal }) {
   return { walletUsed, finalSubtotal };
 }
 
-async function processOrderCreationWithCart({
+export async function processOrderCreationWithCart({
   session,
   cart,
   orderUserId,
@@ -921,12 +991,16 @@ async function processOrderCreationWithCart({
   historyByUserId,
   instapayScreenshotUrls = [],
 }) {
-  await resolveOrderCartWarehouse(cart);
+  const hasBundles = cart.bundles !== undefined && (!Array.isArray(cart.bundles) || cart.bundles.length > 0);
+  if (hasBundles) {
+    if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true" || !orderUserId || orderGuestId != null || String(orderUserId) !== String(cart.user?._id ?? cart.user)) assertOrdinaryCart(cart);
+    validateCheckoutDeliveryAddress(cart.deliveryAddress, lang);
+  } else await resolveOrderCartWarehouse(cart);
 
-  const { orderItems, subtotal, hasPromotionalItems, productById } =
+  const { orderItems, subtotal, hasPromotionalItems, productById, bundleGroups, sourceCart } =
     await buildOrderItemsWithPromotions({ session, cart, lang });
 
-  if (cart.items.length === 0 || cart.items < 1) {
+  if (!orderItems.length) {
     throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
   }
 
@@ -966,7 +1040,7 @@ async function processOrderCreationWithCart({
   const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
 
   // Build coupon context from order items + product brand data
-  const couponCartItems = orderItems.map((item) => {
+  const couponCartItems = orderItems.filter(item => item.bundleGroupId == null && item.bundleComponentIndex == null).map((item) => {
     const product = productById.get(String(item.product));
     let hasAdminDiscount = false;
     let basePrice = 0;
@@ -1090,10 +1164,11 @@ async function processOrderCreationWithCart({
   const isCard = pm === paymentMethodEnum.CARD;
   const currentOrderValuePiastres = toPiastres(netSubtotal + netShipping);
   const amountAfterWalletPiastres = toPiastres(finalTotal);
+  const stockCart = bundleGroups?.length ? { items: orderItems, warehouse: cart.warehouse } : cart;
 
   // ── Stock: read-only check for card, decrement deferred to webhook ──
   if (isCard) {
-    await validateStockReadOnly({ session, cart, lang });
+    await validateStockReadOnly({ session, cart: stockCart, lang });
   }
 
   const historyEntry = {
@@ -1111,6 +1186,7 @@ async function processOrderCreationWithCart({
     currency: cart.currency || "EGP",
     deliveryAddress,
     items: orderItems,
+    ...(bundleGroups?.length ? { bundleGroups } : {}),
     subtotal,
     shippingFee,
     discountAmount: couponResult.discountAmount,
@@ -1170,7 +1246,7 @@ async function processOrderCreationWithCart({
   }
 
   // ── COD: validate stock, apply all side effects immediately ──
-  await ensureSufficientStockAndDecrement({ session, cart, lang });
+  await ensureSufficientStockAndDecrement({ session, cart: stockCart, lang });
 
   const createdOrder = await OrderModel.create([orderDoc], { session }).then(
     (res) => res[0],
@@ -1220,11 +1296,24 @@ async function processOrderCreationWithCart({
     );
   }
 
-  cart.items = [];
-  cart.totalCartPrice = 0;
-  cart.lastActivityAt = new Date();
-  cart.status = "ACTIVE";
-  await cart.save({ session });
+  if (sourceCart) {
+    // The legacy model guard blocks saved bundle entries; consume their exact preimage in this transaction.
+    const now = new Date();
+    const cleared = await CartModel.collection.updateOne({ _id: sourceCart._id, user: sourceCart.user, __v: sourceCart.__v,
+      $expr: { $eq: ["$$ROOT", { $literal: sourceCart }] } }, {
+      $set: { items: [], totalCartPrice: 0, lastActivityAt: now, status: "ACTIVE", updatedAt: now },
+      $unset: { bundles: "" }, $inc: { __v: 1 },
+    }, { session });
+    if (cleared.matchedCount !== 1 || cleared.modifiedCount !== 1) {
+      throw new ApiError("Your cart changed. Refresh it before placing the order.", 409);
+    }
+  } else {
+    cart.items = [];
+    cart.totalCartPrice = 0;
+    cart.lastActivityAt = new Date();
+    cart.status = "ACTIVE";
+    await cart.save({ session });
+  }
 
   return createdOrder;
 }
@@ -1310,9 +1399,23 @@ export async function createOrderForUserService({
   if (pm === paymentMethodEnum.CARD) {
     // Fetch cart to get checkoutKey (should always exist from getCart, fallback if not)
     const userCart = await CartModel.findOne({ user: userId });
+    if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(userCart);
     if (userCart && !userCart.checkoutKey) {
       userCart.checkoutKey = generateCheckoutKey();
-      await userCart.save();
+      if (userCart.bundles?.length) {
+        const raw = await CartModel.findOne({ _id: userCart._id, user: userId }).lean();
+        const conflict = () => { throw new ApiError("Your cart changed. Refresh it before placing the order.", 409); };
+        if (!raw || String(raw.user) !== String(userId) || raw.guestId != null || raw.checkoutKey ||
+            raw.__v !== userCart.__v || !Number.isSafeInteger(raw.__v) || raw.__v < 0 || raw.__v >= Number.MAX_SAFE_INTEGER) conflict();
+        // Keep the existing key fallback without letting a model save prune bundle entries.
+        const written = await CartModel.collection.updateOne({ _id: raw._id, user: raw.user, __v: raw.__v,
+          $expr: { $eq: ["$$ROOT", { $literal: raw }] } }, {
+          $set: { checkoutKey: userCart.checkoutKey, updatedAt: new Date() }, $inc: { __v: 1 },
+        });
+        if (written.matchedCount !== 1 || written.modifiedCount !== 1) conflict();
+      } else {
+        await userCart.save();
+      }
     }
 
     const checkoutKey = userCart?.checkoutKey;
@@ -1369,6 +1472,7 @@ export async function createOrderForUserService({
         );
       }
 
+      if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(cart);
       createdOrder = await processOrderCreationWithCart({
         session,
         cart,
@@ -1432,19 +1536,7 @@ export async function createOrderForUserService({
     }
   }
 
-  // ── COD: invalidate caches and send notification ──
-  const productIds = Array.isArray(createdOrder.items)
-    ? createdOrder.items.map((i) => i.product)
-    : [];
-  await invalidateProductCaches(productIds);
-
-
-  sendNewOrderNotificationToAdminsAndModerators(createdOrder).catch((err) =>
-    console.error(
-      "[Order] Failed to send new order notification to admins/moderators:",
-      err.message,
-    ),
-  );
+  await runOrderCreatedEffects(createdOrder);
 
   return { order: createdOrder };
 }
@@ -1478,6 +1570,7 @@ export async function createOrderForGuestService({
   if (pm === paymentMethodEnum.CARD) {
     // Fetch cart to get checkoutKey (should always exist from getCart, fallback if not)
     const guestCart = await CartModel.findOne({ guestId });
+    assertOrdinaryCart(guestCart);
     if (guestCart && !guestCart.checkoutKey) {
       guestCart.checkoutKey = generateCheckoutKey();
       await guestCart.save();
@@ -1595,18 +1688,7 @@ export async function createOrderForGuestService({
     }
   }
 
-  // ── COD: invalidate caches and send notifications ──
-  const productIds = Array.isArray(createdOrder.items)
-    ? createdOrder.items.map((i) => i.product)
-    : [];
-  await invalidateProductCaches(productIds);
-
-  sendNewOrderNotificationToAdminsAndModerators(createdOrder).catch((err) =>
-    console.error(
-      "[Order] Failed to send new order notification to admins/moderators:",
-      err.message,
-    ),
-  );
+  await runOrderCreatedEffects(createdOrder);
 
   return { order: createdOrder };
 }
@@ -1639,10 +1721,13 @@ export async function reorderService({ userId, guestId, orderId, lang = "en" }) 
     );
   }
 
+  assertBundleOrderCanReorder(order);
+
   // 2. Find the existing cart (do NOT create one)
   const identityFilter = userId ? { user: userId } : { guestId };
   const { findCart } = await import("../cart/cart.repository.js");
   const cart = await findCart(identityFilter);
+  assertOrdinaryCart(cart);
 
   if (!cart) {
     throw new ApiError(
@@ -2863,16 +2948,30 @@ async function commitOrderSideEffects(
       const cartFilter = freshOrder.user
         ? { user: freshOrder.user }
         : { guestId: freshOrder.guestId };
-      await CartModel.updateOne(
-        cartFilter,
-        {
-          items: [],
-          totalCartPrice: 0,
-          lastActivityAt: new Date(),
-          status: "ACTIVE",
-        },
-        { session },
-      );
+      if (freshOrder.bundleGroups?.length) {
+        const now = new Date();
+        // Saved bundle entries require a raw write; keep the same cart-clearing behavior.
+        await CartModel.collection.updateOne(
+          { user: freshOrder.user, guestId: null },
+          {
+            $set: { items: [], totalCartPrice: 0, lastActivityAt: now, status: "ACTIVE", updatedAt: now },
+            $unset: { bundles: "" },
+            $inc: { __v: 1 },
+          },
+          { session },
+        );
+      } else {
+        await CartModel.updateOne(
+          cartFilter,
+          {
+            items: [],
+            totalCartPrice: 0,
+            lastActivityAt: new Date(),
+            status: "ACTIVE",
+          },
+          { session },
+        );
+      }
 
       // 5. Update order status
       freshOrder.sideEffectsCommitted = true;

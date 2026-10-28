@@ -10,6 +10,8 @@ import { OrderModel } from "../order/order.model.js";
 import { WarehouseModel } from "../warehouse/warehouse.model.js";
 import { accountStatus, enabledControls, roles } from "../../shared/constants/enums.js";
 import { buildStaffAlertPushOptions } from "./notificationPushOptions.js";
+import { assistantReviewAlertIsCurrent, isAssistantReviewNotification } from "../assistant/review/assistant.notifications.js";
+import mongoose from "mongoose";
 
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_BASE_RETRY_DELAY_MS = 30_000;
@@ -60,8 +62,9 @@ function isPermanentFailure(error) {
   );
 }
 
+const isAssistantBookingAlert = source => source?.domain === "assistant" && source?.event === "booking_created";
 function isKnownStaffAlert(source) {
-  return (source?.domain === "videos" && source?.event === "youtube_player_error") ||
+  return isAssistantReviewNotification(source) || isAssistantBookingAlert(source) || (source?.domain === "videos" && source?.event === "youtube_player_error") ||
     (source?.domain === "order" && source?.event === "new_order_placed");
 }
 
@@ -75,16 +78,21 @@ async function requireCurrentStaffRecipient(outbox, { userModel, orderModel, war
   if (!outbox.recipientUser) throw invalidRecipient();
 
   const user = await userModel.findById(outbox.recipientUser)
-    .select("_id role active deletedAt account_status enabledControls").lean();
+    .select("_id role active deletedAt account_status enabledControls phoneVerified").lean();
   if (!user || user.active !== true || user.deletedAt ||
     [accountStatus.BANNED, accountStatus.DELETED].includes(user.account_status)) {
     throw invalidRecipient();
   }
 
+  if (isAssistantReviewNotification(source)) {
+    if (user.role !== roles.SUPER_ADMIN || user.phoneVerified !== true) throw invalidRecipient();
+    return;
+  }
   if (user.role === roles.SUPER_ADMIN) return;
   if (user.role === roles.ADMIN && (
     (source.domain === "videos" && user.enabledControls?.includes(enabledControls.VIDEOS)) ||
     (source.domain === "order" && user.enabledControls?.includes(enabledControls.ORDERS))
+    || (isAssistantBookingAlert(source) && user.enabledControls?.includes(enabledControls.SERVICE_RESERVATIONS))
   )) return;
 
   if (source.domain === "order" && user.role === roles.MODERATOR && source.referenceId) {
@@ -109,9 +117,11 @@ export async function deliverClaimedNotificationOutbox({
   userModel = UserModel,
   orderModel = OrderModel,
   warehouseModel = WarehouseModel,
+  reservationModel,
   now = new Date(),
   maxAttempts = DEFAULT_MAX_ATTEMPTS,
   baseRetryDelayMs = DEFAULT_BASE_RETRY_DELAY_MS,
+  validateAssistantReview = assistantReviewAlertIsCurrent,
 }) {
   if (!outbox?._id || !outbox?.leaseToken) {
     throw deliveryError("Outbox must be claimed before delivery", "RECIPIENT_INVALID", true);
@@ -126,6 +136,16 @@ export async function deliverClaimedNotificationOutbox({
 
   try {
     await requireCurrentStaffRecipient(outbox, { userModel, orderModel, warehouseModel });
+    if (isAssistantReviewNotification(outbox.source) && !await validateAssistantReview(outbox)) throw invalidRecipient();
+    if (isAssistantBookingAlert(outbox.source)) {
+      if (!/^[a-f\d]{24}$/i.test(outbox.source.referenceId ?? "") || outbox.action?.params?.reservationId !== outbox.source.referenceId) throw invalidRecipient();
+      // Read without registering the ordinary booking model and triggering automatic schema setup in this worker.
+      const reservation = reservationModel
+        ? await reservationModel.findById(outbox.source.referenceId).select("status").maxTimeMS(5000).lean()
+        : await mongoose.connection.db.collection("servicereservations").findOne(
+          { _id: new mongoose.Types.ObjectId(outbox.source.referenceId) }, { projection: { status: 1 }, maxTimeMS: 5000 });
+      if (!reservation || !["BOOKED", "IN_PROGRESS"].includes(reservation.status)) throw deliveryError("Booking alert is no longer current", "EVENT_STALE", true);
+    }
     const result = await dispatch({
       userId: outbox.recipientUser || undefined,
       guestId: outbox.recipientGuestId || undefined,
@@ -140,7 +160,7 @@ export async function deliverClaimedNotificationOutbox({
       source: outbox.source,
       dedupeKey: outbox.dedupeKey,
       channels: { push: true, inApp: true },
-      ...(outbox.source?.domain === "order" && outbox.source?.event === "new_order_placed"
+      ...((outbox.source?.domain === "order" && outbox.source?.event === "new_order_placed") || isAssistantBookingAlert(outbox.source)
         ? { pushOptions: buildStaffAlertPushOptions() }
         : {}),
     });

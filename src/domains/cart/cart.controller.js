@@ -10,6 +10,10 @@ import {
   listCartsForAdminService,
   setCartAddressFromUserService,
   setCartAddressForGuestService,
+  upsertCartBundleService,
+  updateCartBundleService,
+  removeCartBundleService,
+  rebindCartWithBundlesService,
 } from "./cart.service.js";
 
 function getGuestId(req) {
@@ -231,13 +235,35 @@ export const clearMyCart = asyncHandler(async (req, res) => {
 });
 
 export const setMyCartAddress = asyncHandler(async (req, res) => {
-  const { userAddressId } = req.body;
+  const { userAddressId, warehouseId } = req.body;
 
   const cart = await setCartAddressFromUserService({
     userId: req.user._id,
     userAddressId,
+    warehouseId,
     lang: req.lang,
   });
 
+  res.status(200).json({ data: cart });
+});
+
+export const addMyCartBundle = asyncHandler(async (req, res) => {
+  const { bundleId, expectedRevision, quantity } = req.body;
+  const cart = await upsertCartBundleService({ userId: req.user._id, warehouseId: req.params.warehouseId,
+    bundleId, expectedRevision, quantity, lang: req.lang });
+  res.status(200).json({ data: cart });
+});
+export const updateMyCartBundle = asyncHandler(async (req, res) => {
+  const cart = await updateCartBundleService({ userId: req.user._id, warehouseId: req.params.warehouseId,
+    groupId: req.params.groupId, quantity: req.body.quantity, lang: req.lang });
+  res.status(200).json({ data: cart });
+});
+export const removeMyCartBundle = asyncHandler(async (req, res) => {
+  const cart = await removeCartBundleService({ userId: req.user._id, warehouseId: req.params.warehouseId,
+    groupId: req.params.groupId, lang: req.lang });
+  res.status(200).json({ data: cart });
+});
+export const rebindMyBundleCart = asyncHandler(async (req, res) => {
+  const cart = await rebindCartWithBundlesService({ userId: req.user._id, warehouseId: req.params.warehouseId, lang: req.lang });
   res.status(200).json({ data: cart });
 });

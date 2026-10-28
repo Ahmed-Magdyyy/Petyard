@@ -1,0 +1,244 @@
+{
+  "info": {
+    "name": "Petyard assistant cart - default-off API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Local requests only; nothing has been published. API remains default-off pending reviewed setup, native proof and approved policy. Requires a real owned retained catalog card in the test account. All variables are local placeholders, no credentials. Only authenticated users; guest migration is excluded. Read AI_ASSISTANT_CART_CONTRACT.md before running."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:5000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sourceMessageId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "warehouseId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "prepareKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "proposalId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "proposalVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "proposalFingerprint",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Prepare one exact SIMPLE item",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{prepareKey}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/assistant/cart-proposals",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sourceMessageId\": \"{{sourceMessageId}}\",\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"productId\": \"{{productId}}\",\n  \"variantId\": null,\n  \"quantity\": 2,\n  \"language\": \"en\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Authenticated test target only. See AI_ASSISTANT_CART_CONTRACT.md. Preserve the original key/body and proposal identity for recovery; never call normal cart addition as a substitute."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('prepare succeeds', () => pm.expect([200, 201]).to.include(pm.response.code));",
+              "if ([200, 201].includes(pm.response.code)) {",
+              "  const data = pm.response.json().data;",
+              "  pm.expect(['pending', 'expired', 'confirmed']).to.include(data.proposal.status);",
+              "  pm.expect(data.proposal.quote.pricingScope).to.eql('items_only');",
+              "  pm.collectionVariables.set('proposalId', data.proposal.id);",
+              "  pm.collectionVariables.set('proposalVersion', String(data.proposal.version));",
+              "  pm.collectionVariables.set('proposalFingerprint', data.proposal.fingerprint);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "Fictional success example",
+          "status": "Created",
+          "code": 201,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ],
+          "body": "{\n  \"data\": {\n    \"proposal\": {\n      \"id\": \"444444444444444444444444\",\n      \"version\": 1,\n      \"fingerprint\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"status\": \"pending\",\n      \"expiresAt\": \"2026-10-21T12:01:00.000Z\",\n      \"quote\": {\n        \"cartId\": null,\n        \"warehouseId\": \"222222222222222222222222\",\n        \"currency\": \"EGP\",\n        \"pricingScope\": \"items_only\",\n        \"itemsBefore\": [],\n        \"itemsAfter\": [\n          {\n            \"id\": \"666666666666666666666666\",\n            \"productId\": \"333333333333333333333333\",\n            \"productType\": \"SIMPLE\",\n            \"productName\": \"Toy\",\n            \"productImageUrl\": null,\n            \"variantId\": null,\n            \"variantOptions\": [],\n            \"quantity\": 2,\n            \"baseEffectivePrice\": 100,\n            \"itemPrice\": 100,\n            \"promotion\": null,\n            \"promotionDiscountedPrice\": null,\n            \"lineTotal\": 200\n          }\n        ],\n        \"itemsSubtotalAfter\": 200,\n        \"addition\": {\n          \"productId\": \"333333333333333333333333\",\n          \"productType\": \"SIMPLE\",\n          \"variantId\": null,\n          \"quantity\": 2,\n          \"quantityAfter\": 2,\n          \"unitPrice\": 100\n        }\n      }\n    },\n    \"receipt\": null,\n    \"duplicate\": false\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Get retained proposal and receipt status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/assistant/cart-proposals/{{proposalId}}",
+        "description": "Authenticated test target only. See AI_ASSISTANT_CART_CONTRACT.md. Preserve the original key/body and proposal identity for recovery; never call normal cart addition as a substitute."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status succeeds', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json().data;",
+              "  pm.expect(['pending', 'expired', 'confirmed']).to.include(data.proposal.status);",
+              "  if (data.proposal.status === 'confirmed') pm.expect(data.receipt.proposalId).to.eql(data.proposal.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "Fictional success example",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ],
+          "body": "{\n  \"data\": {\n    \"proposal\": {\n      \"id\": \"444444444444444444444444\",\n      \"version\": 1,\n      \"fingerprint\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n      \"status\": \"confirmed\",\n      \"expiresAt\": \"2026-10-21T12:01:00.000Z\",\n      \"quote\": {\n        \"cartId\": null,\n        \"warehouseId\": \"222222222222222222222222\",\n        \"currency\": \"EGP\",\n        \"pricingScope\": \"items_only\",\n        \"itemsBefore\": [],\n        \"itemsAfter\": [\n          {\n            \"id\": \"666666666666666666666666\",\n            \"productId\": \"333333333333333333333333\",\n            \"productType\": \"SIMPLE\",\n            \"productName\": \"Toy\",\n            \"productImageUrl\": null,\n            \"variantId\": null,\n            \"variantOptions\": [],\n            \"quantity\": 2,\n            \"baseEffectivePrice\": 100,\n            \"itemPrice\": 100,\n            \"promotion\": null,\n            \"promotionDiscountedPrice\": null,\n            \"lineTotal\": 200\n          }\n        ],\n        \"itemsSubtotalAfter\": 200,\n        \"addition\": {\n          \"productId\": \"333333333333333333333333\",\n          \"productType\": \"SIMPLE\",\n          \"variantId\": null,\n          \"quantity\": 2,\n          \"quantityAfter\": 2,\n          \"unitPrice\": 100\n        }\n      }\n    },\n    \"receipt\": {\n      \"proposalId\": \"444444444444444444444444\",\n      \"cartId\": \"555555555555555555555555\",\n      \"recordedAt\": \"2026-10-21T12:00:10.000Z\",\n      \"result\": {\n        \"cartId\": \"555555555555555555555555\",\n        \"warehouseId\": \"222222222222222222222222\",\n        \"currency\": \"EGP\",\n        \"pricingScope\": \"items_only\",\n        \"itemsBefore\": [],\n        \"itemsAfter\": [\n          {\n            \"id\": \"777777777777777777777777\",\n            \"productId\": \"333333333333333333333333\",\n            \"productType\": \"SIMPLE\",\n            \"productName\": \"Toy\",\n            \"productImageUrl\": null,\n            \"variantId\": null,\n            \"variantOptions\": [],\n            \"quantity\": 2,\n            \"baseEffectivePrice\": 100,\n            \"itemPrice\": 100,\n            \"promotion\": null,\n            \"promotionDiscountedPrice\": null,\n            \"lineTotal\": 200\n          }\n        ],\n        \"itemsSubtotalAfter\": 200,\n        \"addition\": {\n          \"productId\": \"333333333333333333333333\",\n          \"productType\": \"SIMPLE\",\n          \"variantId\": null,\n          \"quantity\": 2,\n          \"quantityAfter\": 2,\n          \"unitPrice\": 100\n        }\n      }\n    }\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Confirm the reviewed proposal - explicit user action only",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/assistant/cart-proposals/{{proposalId}}/confirmations",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"expectedVersion\": 1,\n  \"fingerprint\": \"{{proposalFingerprint}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Authenticated test target only. See AI_ASSISTANT_CART_CONTRACT.md. Preserve the original key/body and proposal identity for recovery; never call normal cart addition as a substitute."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('confirmation succeeds', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json().data;",
+              "  pm.expect(data.confirmed).to.eql(true);",
+              "  pm.expect(data.receipt.proposalId).to.eql(pm.collectionVariables.get('proposalId'));",
+              "  pm.expect(data.receipt.result.pricingScope).to.eql('items_only');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "Fictional success example",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ],
+          "body": "{\n  \"data\": {\n    \"receipt\": {\n      \"proposalId\": \"444444444444444444444444\",\n      \"cartId\": \"555555555555555555555555\",\n      \"recordedAt\": \"2026-10-21T12:00:10.000Z\",\n      \"result\": {\n        \"cartId\": \"555555555555555555555555\",\n        \"warehouseId\": \"222222222222222222222222\",\n        \"currency\": \"EGP\",\n        \"pricingScope\": \"items_only\",\n        \"itemsBefore\": [],\n        \"itemsAfter\": [\n          {\n            \"id\": \"777777777777777777777777\",\n            \"productId\": \"333333333333333333333333\",\n            \"productType\": \"SIMPLE\",\n            \"productName\": \"Toy\",\n            \"productImageUrl\": null,\n            \"variantId\": null,\n            \"variantOptions\": [],\n            \"quantity\": 2,\n            \"baseEffectivePrice\": 100,\n            \"itemPrice\": 100,\n            \"promotion\": null,\n            \"promotionDiscountedPrice\": null,\n            \"lineTotal\": 200\n          }\n        ],\n        \"itemsSubtotalAfter\": 200,\n        \"addition\": {\n          \"productId\": \"333333333333333333333333\",\n          \"productType\": \"SIMPLE\",\n          \"variantId\": null,\n          \"quantity\": 2,\n          \"quantityAfter\": 2,\n          \"unitPrice\": 100\n        }\n      }\n    },\n    \"duplicate\": false,\n    \"confirmed\": true\n  }\n}"
+        }
+      ]
+    }
+  ]
+}

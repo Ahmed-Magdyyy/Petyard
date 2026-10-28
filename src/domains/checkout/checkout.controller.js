@@ -29,12 +29,13 @@ export const getCheckoutSummaryForGuest = asyncHandler(async (req, res) => {
 });
 
 export const getCheckoutSummaryForUser = asyncHandler(async (req, res) => {
-  const { couponCode } = req.query;
+  const { couponCode, warehouseId } = req.query;
 
   const result = await getCheckoutSummaryService({
     userId: req.user._id,
     guestId: null,
     couponCode,
+    warehouseId,
     lang: req.lang,
   });
 

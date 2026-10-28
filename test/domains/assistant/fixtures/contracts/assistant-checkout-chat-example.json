@@ -1,0 +1,80 @@
+{
+  "description": "Fictional completed run response, not a recorded provider result. Send a new unique key for each logical message and reuse it unchanged only for retries. Existing checkout refresh remains authoritative.",
+  "request": {
+    "method": "POST",
+    "path": "/api/v1/assistant/messages",
+    "headers": {
+      "Idempotency-Key": "checkout-example-message-001"
+    },
+    "body": {
+      "text": "Show my checkout estimate",
+      "catalogContext": {
+        "warehouseId": "222222222222222222222222",
+        "language": "en"
+      }
+    }
+  },
+  "pollRequest": {
+    "method": "GET",
+    "path": "/api/v1/assistant/runs/666666666666666666666666"
+  },
+  "completedRunResponse": {
+    "data": {
+      "run": {
+        "id": "666666666666666666666666",
+        "status": "completed",
+        "subjectId": null,
+        "userSequence": 1,
+        "responseMessageId": "777777777777777777777777",
+        "code": null,
+        "retryAt": null,
+        "message": null,
+        "createdAt": "2026-10-21T11:59:59.000Z",
+        "updatedAt": "2026-10-21T12:00:00.000Z",
+        "pollAfterMs": null,
+        "retry": "reuse_original_idempotency_key",
+        "needsReview": false
+      },
+      "message": {
+        "id": "777777777777777777777777",
+        "runId": "666666666666666666666666",
+        "sequence": 2,
+        "role": "assistant",
+        "text": "The estimate after wallet credit and shipping is 320 EGP. Open checkout to review the calculation, choose payment and place the order yourself. This is an estimate; no order has been placed.",
+        "subjectId": null,
+        "createdAt": "2026-10-21T12:00:00.000Z",
+        "expiresAt": "2026-10-28T12:00:00.000Z",
+        "checkout": {
+          "status": "summary",
+          "generatedAt": "2026-10-21T12:00:00.000Z",
+          "cartId": "444444444444444444444444",
+          "warehouseId": "222222222222222222222222",
+          "currency": "EGP",
+          "dataMode": "estimate",
+          "requiresCheckoutRefresh": true,
+          "couponState": "checkout_managed",
+          "cartChanged": false,
+          "addressComplete": true,
+          "isPrimeLocation": false,
+          "pricing": {
+            "subtotal": 300,
+            "shippingFee": 50,
+            "discountAmount": 0,
+            "shippingDiscount": 0,
+            "totalDiscount": 0,
+            "total": 350,
+            "walletBalance": 30,
+            "walletUsed": 30,
+            "finalTotal": 320,
+            "loyaltyPoints": 300
+          },
+          "action": {
+            "type": "open_checkout",
+            "cartId": "444444444444444444444444",
+            "warehouseId": "222222222222222222222222"
+          }
+        }
+      }
+    }
+  }
+}

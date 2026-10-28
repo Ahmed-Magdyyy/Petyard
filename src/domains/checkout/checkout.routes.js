@@ -8,6 +8,7 @@ import {
   getCheckoutSummaryForUser,
 } from "./checkout.controller.js";
 import { guestLimiter } from "../../shared/middlewares/rateLimitMiddleware.js";
+import { checkoutSummaryValidator } from "./checkout.validators.js";
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.get(
   "/me/summary",
   protect,
   requireSystemPhoneVerifiedForSensitiveActions,
+  checkoutSummaryValidator,
   getCheckoutSummaryForUser
 );
 

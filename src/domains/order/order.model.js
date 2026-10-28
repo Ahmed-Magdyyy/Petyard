@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { bundleOrderGroupSchema, bundlePendingSubstitutionSchema } from "../bundle/bundle.order-schema.js";
+import { assertBundleOrderSnapshot } from "../bundle/bundle.order-snapshot.js";
 import {
   orderStatusEnum,
   orderLineKindEnum,
@@ -36,6 +38,8 @@ const orderItemSchema = new Schema(
       type: String,
       trim: true,
     },
+    bundleGroupId: { type: String, match: /^[a-f\d]{24}$/, immutable: true },
+    bundleComponentIndex: { type: Number, min: 0, validate: Number.isSafeInteger, immutable: true },
     lineKind: {
       type: String,
       enum: Object.values(orderLineKindEnum),
@@ -235,6 +239,8 @@ const orderSchema = new Schema(
         message: "Order must contain at least one item",
       },
     },
+    bundleGroups: { type: [bundleOrderGroupSchema], default: undefined, immutable: true },
+    bundlePendingSubstitution: { type: bundlePendingSubstitutionSchema, default: undefined },
     subtotal: { type: Number, required: true, min: 0 },
     shippingFee: { type: Number, required: true, min: 0 },
     // Historical eligibility. Absent on orders created before Prime.
@@ -318,6 +324,14 @@ const orderSchema = new Schema(
   },
   { timestamps: true }
 );
+
+orderSchema.pre("validate", function () {
+  if (this.bundlePendingSubstitution != null && this.substitutionState !== orderSubstitutionStateEnum.AWAITING_CUSTOMER && this.status !== orderStatusEnum.CANCELLED) {
+    this.bundlePendingSubstitution = undefined;
+  }
+  if (!this.isNew && this.isModified("bundleGroups")) this.invalidate("bundleGroups", "Purchased bundle snapshots are immutable");
+  assertBundleOrderSnapshot(this);
+});
 
 orderSchema.index({ user: 1, createdAt: -1 });
 orderSchema.index({ guestId: 1, createdAt: -1 });

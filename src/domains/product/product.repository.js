@@ -40,8 +40,10 @@ export function findProductIds(filter = {}) {
   return ProductModel.find(filter).select("_id").lean();
 }
 
-export function findProductById(id) {
-  return ProductModel.findById(id);
+export function findProductById(id, { session } = {}) {
+  const query = ProductModel.findById(id);
+  if (session) query.session(session);
+  return query;
 }
 
 export function findProductByIdWithRefs(id) {
@@ -70,11 +72,12 @@ export function findProductsByIds(ids = []) {
 
 export function findProductsByIdsWithOptions(
   ids = [],
-  { select, lean } = {}
+  { select, lean, session } = {}
 ) {
   if (!Array.isArray(ids) || ids.length === 0) return [];
 
   const query = ProductModel.find({ _id: { $in: ids } });
+  if (session) query.session(session);
 
   if (select) {
     query.select(select);

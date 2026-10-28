@@ -172,7 +172,8 @@ export function calculateSubstitutionQuote({
     : toPiastres(order?.discountAmount || 0);
   const preservedCouponDiscountPiastres = Math.min(
     originalCouponDiscountPiastres,
-    finalMerchandiseGrossPiastres,
+    order?.bundleGroups?.length ? currentLines.reduce((total, item) => total +
+      (item.bundleGroupId != null || item.bundleComponentIndex != null ? 0 : lineQuantity(item) * linePricePiastres(item)), selectedMerchandisePiastres) : finalMerchandiseGrossPiastres,
   );
   const hasDeliverableItems =
     currentLines.some((item) => lineQuantity(item) > 0) ||

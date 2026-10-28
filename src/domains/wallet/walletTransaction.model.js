@@ -36,6 +36,7 @@ const walletTransactionSchema = new Schema(
         "ORDER_DEBIT",
         "ORDER_REFUND",
         "ORDER_CARD_REFUND",
+        "ORDER_LOYALTY_RECOVERY",
         "SUBSTITUTION_DEBIT",
         "SUBSTITUTION_CREDIT",
         "POINTS_REDEEM_CREDIT",

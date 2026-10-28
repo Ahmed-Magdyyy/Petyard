@@ -1,4 +1,7 @@
 import { randomUUID } from "crypto";
+import mongoose from "mongoose";
+import { CartModel } from "./cart.model.js";
+import { assertOrdinaryCart } from "./cart.bundle-compatibility.js";
 import {
   findProductById,
   findProductsByIds,
@@ -78,12 +81,12 @@ async function assertWarehouseExists(warehouseId) {
   }
 }
 
-async function resolveCartWarehouseId(warehouseId) {
+async function resolveCartWarehouseId(warehouseId, session) {
   if (!warehouseId) {
     throw new ApiError('Warehouse ID is required', 400);
   }
 
-  const { effectiveWarehouse } = await resolveEffectiveWarehouse(warehouseId);
+  const { effectiveWarehouse } = await resolveEffectiveWarehouse(warehouseId, { session });
   return String(effectiveWarehouse._id);
 }
 
@@ -97,25 +100,50 @@ function buildIdentityFilter({ userId, guestId }) {
   throw new ApiError("Either userId or guestId must be provided", 400);
 }
 
+function isUserCartConflict(error, userId) {
+  return Boolean(userId && error?.code === 11000 && error.keyPattern?.user === 1 &&
+    Object.keys(error.keyPattern).length === 1 &&
+    (error.keyValue == null || String(error.keyValue.user) === String(userId)));
+}
+
+async function saveCart(cart) {
+  try {
+    await cart.save();
+  } catch (error) {
+    if (cart.user && (error instanceof mongoose.Error.VersionError || error instanceof mongoose.Error.DocumentNotFoundError)) {
+      throw new ApiError("Your cart changed. Please try again.", 409);
+    }
+    throw error;
+  }
+}
+
 async function getOrCreateCart({ userId, guestId, warehouseId }) {
   const identityFilter = buildIdentityFilter({ userId, guestId });
 
   let cart = await findCart(identityFilter);
 
   if (!cart) {
-    cart = await createCart({
-      ...identityFilter,
-      warehouse: warehouseId,
-      items: [],
-      totalCartPrice: 0,
-      status: cartStatusEnum.ACTIVE,
-      lastActivityAt: new Date(),
-      checkoutKey: generateCheckoutKey(),
-    });
-  } else if (!cart.checkoutKey) {
+    try {
+      cart = await createCart({
+        ...identityFilter,
+        warehouse: warehouseId,
+        items: [],
+        totalCartPrice: 0,
+        status: cartStatusEnum.ACTIVE,
+        lastActivityAt: new Date(),
+        checkoutKey: generateCheckoutKey(),
+      });
+    } catch (error) {
+      if (!isUserCartConflict(error, userId)) throw error;
+      cart = await findCart(identityFilter);
+      if (!cart) throw new ApiError("Your cart changed. Please try again.", 409);
+    }
+  }
+  assertOrdinaryCart(cart);
+  if (!cart.checkoutKey) {
     // Backfill existing carts that were created before checkoutKey existed
     cart.checkoutKey = generateCheckoutKey();
-    await cart.save();
+    await saveCart(cart);
   }
 
   return cart;
@@ -129,6 +157,7 @@ async function getExistingCartOrThrow({ userId, guestId, warehouseId }) {
   if (!cart) {
     throw new ApiError("Cart not found", 404);
   }
+  assertOrdinaryCart(cart);
   return cart;
 }
 
@@ -143,6 +172,7 @@ function computeTotalCartPrice(cart) {
 }
 
 export function mapCartToResponse(cart, { shippingFee = 0, isPrimeLocation = false } = {}) {
+  assertOrdinaryCart(cart);
   const removedItems =
     Array.isArray(cart._removedItems) && cart._removedItems.length > 0
       ? cart._removedItems.map((item) => ({
@@ -305,32 +335,38 @@ function buildCartProductIds(items) {
   ];
 }
 
-async function fetchProductsForCart(productIds) {
+async function fetchProductsForCart(productIds, session) {
   return findProductsByIdsWithOptions(productIds, {
     select:
-      "_id type price discountedPrice subcategory brand name_en name_ar images warehouseStocks variants",
+      "_id type isActive price discountedPrice subcategory brand name_en name_ar images warehouseStocks variants",
     lean: true,
+    session,
   });
 }
 
-async function fetchPromotionsForProducts(products, now) {
+async function fetchPromotionsForProducts(products, now, session) {
   const promotionByProductId = new Map();
 
-  await Promise.all(
-    products.map(async (product) => {
-      const pid = product?._id ? String(product._id) : null;
-      if (!pid) return;
-      const promotion = await findActivePromotionForProduct(
-        {
-          productId: product._id,
-          subcategoryId: product.subcategory,
-          brandId: product.brand,
-        },
-        now,
-      );
-      promotionByProductId.set(pid, promotion || null);
-    }),
-  );
+  const load = async (product) => {
+    const pid = product?._id ? String(product._id) : null;
+    if (!pid) return;
+    const promotion = await findActivePromotionForProduct(
+      {
+        productId: product._id,
+        subcategoryId: product.subcategory,
+        brandId: product.brand,
+      },
+      now,
+      { session },
+    );
+    promotionByProductId.set(pid, promotion || null);
+  };
+  // MongoDB transactions require sequential operations on their shared session.
+  if (session) {
+    for (const product of products) await load(product);
+  } else {
+    await Promise.all(products.map(load));
+  }
 
   return promotionByProductId;
 }
@@ -370,15 +406,13 @@ async function finalizeActiveCartAndSave(cart, warehouseId) {
   cart.lastActivityAt = new Date();
   cart.status = cartStatusEnum.ACTIVE;
   cart.abandonedAt = undefined;
-  await cart.save();
+  await saveCart(cart);
   return cart;
 }
 
-export async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
+async function refreshCartItemsForWarehouse(cart, warehouseId, lang = "en", session, activeOnly = false) {
   if (!cart) return null;
-
-  await autoHideExpiredCollectionsThrottled();
-
+  assertOrdinaryCart(cart);
   const normalizedLang = normalizeLang(lang);
 
   const items = Array.isArray(cart.items) ? cart.items : [];
@@ -386,28 +420,37 @@ export async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
 
   if (!items.length) {
     cart._removedItems = undefined;
-    await finalizeActiveCartAndSave(cart, warehouseId);
+    computeTotalCartPrice(cart);
     return cart;
   }
 
   const productIds = buildCartProductIds(items);
 
-  const products = await fetchProductsForCart(productIds);
+  const products = await fetchProductsForCart(productIds, session);
   const productById = new Map(products.map((p) => [String(p._id), p]));
 
   const promoNow = new Date();
   const promotionByProductId = await fetchPromotionsForProducts(
     products,
     promoNow,
+    session,
   );
 
   const keptItems = [];
 
   for (const item of items) {
     const product = productById.get(String(item.product));
-    if (!product) continue;
+    if (!product || (activeOnly && product.isActive !== true)) continue;
 
     if (product.type !== item.productType) continue;
+
+    if (activeOnly) {
+      const source = product.type === productTypeEnum.SIMPLE ? product : findVariantById(product, item.variantId);
+      if (source && (!Number.isFinite(source.price) || source.price < 0 ||
+          (source.discountedPrice != null && (!Number.isFinite(source.discountedPrice) || source.discountedPrice < 0 || source.discountedPrice > source.price)))) {
+        throw new ApiError("Product pricing is unavailable", 409);
+      }
+    }
 
     const currentQuantity =
       typeof item.quantity === "number" && item.quantity > 0
@@ -523,8 +566,17 @@ export async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
   });
 
   cart.items = keptItems;
-  await finalizeActiveCartAndSave(cart, warehouseId);
+  computeTotalCartPrice(cart);
 
+  return cart;
+}
+
+export async function rebindCartToWarehouse(cart, warehouseId, lang = "en") {
+  if (!cart) return null;
+  assertOrdinaryCart(cart);
+  await autoHideExpiredCollectionsThrottled();
+  await refreshCartItemsForWarehouse(cart, warehouseId, lang);
+  await finalizeActiveCartAndSave(cart, warehouseId);
   return cart;
 }
 
@@ -536,6 +588,13 @@ export async function getCartService({
 }) {
   if (!warehouseId) {
     throw new ApiError("Warehouse ID is required", 400);
+  }
+  // Bundle reads use the requested warehouse directly; legacy fallback must not supply another stock pool.
+  if (userId && !guestId && process.env.ASSISTANT_BUNDLE_CART_ENABLED === "true") {
+    const existing = await findCart({ user: userId }).select("bundles").lean();
+    if (existing?.bundles !== undefined && (!Array.isArray(existing.bundles) || existing.bundles.length)) {
+      return readCartWithBundles({ userId, warehouseId, lang: normalizeLang(lang) });
+    }
   }
   warehouseId = await resolveCartWarehouseId(warehouseId);
 
@@ -561,9 +620,74 @@ export async function getCartService({
   return mapCartToResponse(cart, { shippingFee, isPrimeLocation });
 }
 
+// Read projection only. Existing mutation/order guards stay active until shared purchasing is complete.
+export async function readCartWithBundles({ userId, warehouseId, lang, session: callerSession }) {
+  const { loadBundleCartUser } = await import("../bundle/bundle.cart-transaction.js");
+  const { getBundleCartView } = await import("../bundle/bundle.cart-service.js");
+  const read = async session => {
+      const actor = await loadBundleCartUser(String(userId), session);
+      // The existing cart owner selects this projection; no new client capability header is required.
+      const view = await getBundleCartView(actor, { warehouseId: String(warehouseId), language: lang },
+        { bundleCartEnabled: true }, { session });
+      const raw = await findCart({ user: userId }).session(session).lean();
+      if (!raw || String(raw._id) !== view.id || raw.__v !== view.version) {
+        throw new ApiError("Your cart changed. Please try again.", 409);
+      }
+      const warehouse = await WarehouseModel.findById(warehouseId)
+        .select("_id active fulfillment primeBoundaryGeometry boundaryGeometry primeShippingPrice defaultShippingPrice")
+        .session(session).lean();
+      const isPrimeLocation = !view.warehouseChangeRequired && await resolveCartPrimeLocation(raw, warehouse, { session });
+      const rawShipping = selectShippingPrice(warehouse, isPrimeLocation);
+      const baseShippingFee = typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
+      const shippingFee = view.pricingStatus === "ready"
+        ? view.totalCartPrice >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee : null;
+      const base = mapCartToResponse(CartModel.hydrate({ ...raw, bundles: undefined }), { shippingFee, isPrimeLocation });
+      return { ...base, deliveryAddress: raw.deliveryAddress ? base.deliveryAddress : null,
+        warehouseId: view.warehouseId, totalCartPrice: view.totalCartPrice, items: view.items,
+        removedItems: view.removedItems.length ? view.removedItems : undefined,
+        bundles: view.bundles.map(({ name, image, ...group }) => ({ ...group, productName: name, productImageUrl: image })),
+        pricingStatus: view.pricingStatus, warehouseChangeRequired: view.warehouseChangeRequired,
+        checkoutSupported: process.env.ASSISTANT_BUNDLE_CART_ENABLED === "true" && view.pricingStatus === "ready" };
+  };
+  if (callerSession) {
+    if (!callerSession.inTransaction?.()) throw new ApiError("An active cart transaction is required", 500);
+    return read(callerSession);
+  }
+  const session = await mongoose.startSession();
+  try { return await session.withTransaction(() => read(session), {
+    readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary", maxCommitTimeMS: 10000,
+  }); } finally { await session.endSession(); }
+}
+
+async function usesBundleCart(userId, guestId) {
+  if (!userId || guestId || process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") return false;
+  const cart = await findCart({ user: userId }).select("bundles").lean();
+  return cart?.bundles !== undefined && (!Array.isArray(cart.bundles) || cart.bundles.length > 0);
+}
+
+async function changeBundleCart(input) {
+  const { changeCartWithBundles } = await import("./cart.bundle-operations.js");
+  return changeCartWithBundles(input);
+}
+
+export async function upsertCartBundleService({ userId, warehouseId, bundleId, expectedRevision, quantity, lang = "en" }) {
+  return changeBundleCart({ userId, warehouseId, lang, change: { action: "add", bundleId, expectedRevision, quantity } });
+}
+export async function updateCartBundleService({ userId, warehouseId, groupId, quantity, lang = "en" }) {
+  return changeBundleCart({ userId, warehouseId, lang, change: { action: "set", groupId, quantity } });
+}
+export async function removeCartBundleService({ userId, warehouseId, groupId, lang = "en" }) {
+  return changeBundleCart({ userId, warehouseId, lang, change: { action: "remove", groupId } });
+}
+export async function rebindCartWithBundlesService({ userId, warehouseId, lang = "en" }) {
+  if (!await usesBundleCart(userId, null)) throw new ApiError("A bundle cart is required for this action", 409);
+  return changeBundleCart({ userId, warehouseId, lang, change: { action: "rebind" } });
+}
+
 export async function setCartAddressFromUserService({
   userId,
   userAddressId,
+  warehouseId: selectedWarehouseId,
   lang = "en",
 }) {
   const { findAddressByIdForUser } =
@@ -583,6 +707,9 @@ export async function setCartAddressFromUserService({
     );
   }
 
+  if (await usesBundleCart(userId, null)) {
+    return changeBundleCart({ userId, warehouseId: selectedWarehouseId, lang, change: { action: "address", userAddressId: String(userAddressId) } });
+  }
   const warehouseId = await resolveCartWarehouseId(address.warehouse);
 
   const baseCart = await findCart({ user: userId });
@@ -593,7 +720,7 @@ export async function setCartAddressFromUserService({
   baseCart.deliveryAddress = buildCartDeliveryAddressSnapshot(address);
 
   baseCart.warehouse = warehouseId;
-  await baseCart.save();
+  await saveCart(baseCart);
 
   return await getCartService({
     userId,
@@ -668,6 +795,10 @@ export async function upsertCartItemService({
     );
   }
 
+  if (await usesBundleCart(userId, guestId)) {
+    return changeBundleCart({ userId, warehouseId, lang, change: { action: "ordinary_add", productId: String(productId),
+      productType: normalizeProductType(productType), variantId: variantId == null ? null : String(variantId), quantity: Number(quantity) } });
+  }
   warehouseId = await resolveCartWarehouseId(warehouseId);
 
   const normalizedProductType = normalizeProductType(productType);
@@ -687,16 +818,20 @@ export async function upsertCartItemService({
     );
   }
 
-  const normalizedLang = normalizeLang(lang);
-  const productName = pickLocalizedField(product, "name", normalizedLang);
-
   const rawCart = await getOrCreateCart({ userId, guestId, warehouseId });
 
   // Rebind first so stale / abandoned items are validated & pruned
   // before the stock check below runs.
   await rebindCartToWarehouse(rawCart, warehouseId, lang);
 
-  const cart = rawCart;
+  applyCartItemAddition(rawCart, product, { variantId, quantity, lang });
+  const refreshed = await rebindCartToWarehouse(rawCart, warehouseId, lang);
+  return mapCustomerCartToResponse(refreshed);
+}
+
+function applyCartItemAddition(cart, product, { variantId, quantity, lang }) {
+  const warehouseId = String(cart.warehouse);
+  const productName = pickLocalizedField(product, "name", normalizeLang(lang));
   const items = Array.isArray(cart.items) ? cart.items : [];
 
   const existing = items.find((item) => {
@@ -814,8 +949,204 @@ export async function upsertCartItemService({
     });
   }
 
-  const refreshed = await rebindCartToWarehouse(cart, warehouseId, lang);
-  return mapCustomerCartToResponse(refreshed);
+}
+
+export function cartItemSnapshots(cart) {
+  return mapCartToResponse(cart).items.map((item) => ({ ...item, id: String(item.id), productId: String(item.productId),
+    variantId: item.variantId ? String(item.variantId) : null,
+    variantOptions: item.variantOptions.map(({ name, value }) => ({ name, value })) }));
+}
+
+// Bundle coordinator only: refresh a private ordinary slice while keeping group refs outside legacy pricing.
+export async function refreshOrdinaryCartSliceForBundle(cart, warehouseId, lang = "en", { session } = {}) {
+  if (session != null && (typeof session.inTransaction !== "function" || !session.inTransaction())) {
+    throw new ApiError("Active transaction session is required", 500);
+  }
+  if (!["en", "ar"].includes(lang) || !/^[a-f\d]{24}$/i.test(String(warehouseId)) ||
+      !cart || !Array.isArray(cart.items) || cart.items.some(item => !/^[a-f\d]{24}$/i.test(String(item?._id)) ||
+        !/^[a-f\d]{24}$/i.test(String(item?.product)) || !["SIMPLE", "VARIANT"].includes(item.productType) ||
+        !Number.isSafeInteger(item.quantity) || item.quantity < 1 || !Number.isFinite(item.itemPrice) || item.itemPrice < 0 ||
+        (item.productType === "VARIANT" ? !/^[a-f\d]{24}$/i.test(String(item.variantId)) : item.variantId != null))) {
+    throw new ApiError("Cart items are unavailable", 409);
+  }
+  const draft = CartModel.hydrate({ ...cart, bundles: undefined });
+  const before = cartItemSnapshots(draft);
+  await refreshCartItemsForWarehouse(draft, String(warehouseId), lang, session, true);
+  const after = cartItemSnapshots(draft);
+  return { items: draft.items.toObject(), before, after, removedItems: mapCartToResponse(draft).removedItems ?? [] };
+}
+
+async function calculateCartAdditionWithBundles(savedCart, input, session) {
+  const { loadBundleCartUser, prepareBundleCartChange } = await import("../bundle/bundle.cart-transaction.js");
+  const { runBundleCartRead, bundleCartGroupView } = await import("../bundle/bundle.cart-service.js");
+  return runBundleCartRead(async current => {
+    const actor = await loadBundleCartUser(String(input.userId), current);
+    const prepared = await prepareBundleCartChange(actor, { warehouseId: input.warehouseId, language: input.lang,
+      change: { action: "ordinary_add", cartId: String(savedCart._id), expectedCartVersion: savedCart.__v,
+        productId: String(input.productId), productType: input.productType, variantId: input.variantId,
+        quantity: input.quantity, newItemId: String(new mongoose.Types.ObjectId()) } }, { session: current });
+    if (!prepared.raw || !mongoose.mongo.BSON.serialize(savedCart).equals(mongoose.mongo.BSON.serialize(prepared.raw))) {
+      throw new ApiError("Cart changed; request a new preview", 409);
+    }
+    const draft = CartModel.hydrate(prepared.raw);
+    draft.items = prepared.slice.items;
+    draft.totalCartPrice = prepared.quote.patch.totalCartPrice;
+    const item = prepared.quote.ordinaryItemsAfter.find(row => row.productId === String(input.productId) && row.variantId === input.variantId);
+    if (!item) throw new ApiError("Cart addition is unavailable", 409);
+    if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(draft);
+    return { savedCart: prepared.raw, draft, quote: { cartId: String(draft._id), warehouseId: input.warehouseId, currency: "EGP",
+      pricingScope: "items_only", itemsBefore: prepared.quote.ordinaryItemsBefore, itemsAfter: prepared.quote.ordinaryItemsAfter,
+      itemsSubtotalAfter: draft.totalCartPrice, bundles: prepared.quote.groups.map(group => bundleCartGroupView(group, group, null)),
+      addition: { productId: String(input.productId), productType: input.productType, variantId: input.variantId,
+        quantity: input.quantity, quantityAfter: item.quantity, unitPrice: item.itemPrice } } };
+  }, session);
+}
+
+async function calculateCartAddition({ userId, warehouseId, productId, productType, variantId = null, quantity, lang = "en" }, { session } = {}) {
+  if (session != null && (typeof session.inTransaction !== "function" || !session.inTransaction())) {
+    throw new ApiError("Active transaction session is required", 500);
+  }
+  const id = (value) => value != null && /^[a-f\d]{24}$/i.test(String(value));
+  const type = normalizeProductType(productType);
+  if (!id(userId) || !id(warehouseId) || !id(productId) || !type || !["ar", "en"].includes(lang) ||
+      !Number.isSafeInteger(quantity) || quantity < 1 ||
+      (type === "VARIANT" ? !id(variantId) : variantId !== null)) throw new ApiError("Invalid cart addition", 400);
+  const requestedWarehouse = String(warehouseId).toLowerCase();
+  const effectiveWarehouse = await resolveCartWarehouseId(requestedWarehouse, session);
+  if (effectiveWarehouse !== requestedWarehouse) throw new ApiError("Warehouse changed; refresh the app location", 409);
+  const product = await findProductById(productId, { session });
+  if (!product || product.isActive !== true) throw new ApiError("Product not available", 404);
+  if (product.type !== type) throw new ApiError("Product type mismatch", 400);
+  const source = type === "VARIANT" ? findVariantById(product, variantId) : product;
+  if (!source) throw new ApiError("Variant not found on this product", 404);
+  if (!Number.isFinite(source.price) || source.price < 0 ||
+      (source.discountedPrice != null && (!Number.isFinite(source.discountedPrice) || source.discountedPrice < 0 || source.discountedPrice > source.price))) {
+    throw new ApiError("Product pricing is unavailable", 409);
+  }
+  const cartQuery = findCart({ user: userId });
+  if (session) cartQuery.session(session);
+  const savedCart = await cartQuery.lean();
+  if (process.env.ASSISTANT_BUNDLE_CART_ENABLED === "true" && Array.isArray(savedCart?.bundles) && savedCart.bundles.length) {
+    return calculateCartAdditionWithBundles(savedCart, { userId, warehouseId: requestedWarehouse, productId, productType: type, variantId, quantity, lang }, session);
+  }
+  assertOrdinaryCart(savedCart);
+  if (savedCart && String(savedCart.warehouse) !== requestedWarehouse) throw new ApiError("Cart warehouse changed; refresh the cart", 409);
+  // Hydrate a private draft: refreshing it must not create/save a cart or run promotion maintenance.
+  const draft = savedCart ? CartModel.hydrate(savedCart) : new CartModel({ user: userId, warehouse: requestedWarehouse, items: [] });
+  const itemsBefore = cartItemSnapshots(draft);
+  await refreshCartItemsForWarehouse(draft, requestedWarehouse, lang, session);
+  const previous = draft.items.find((item) => String(item.product) === String(product._id) &&
+    (variantId === null ? !item.variantId : String(item.variantId) === String(variantId)));
+  if (!Number.isSafeInteger((previous?.quantity ?? 0) + quantity)) throw new ApiError("Cart quantity is invalid", 409);
+  applyCartItemAddition(draft, product, { variantId, quantity, lang });
+  const added = draft.items.find((item) => String(item.product) === String(product._id) &&
+    (variantId === null ? !item.variantId : String(item.variantId) === String(variantId)));
+  const expectedQuantity = added.quantity;
+  await refreshCartItemsForWarehouse(draft, requestedWarehouse, lang, session);
+  const response = mapCartToResponse(draft);
+  const itemsAfter = cartItemSnapshots(draft);
+  const item = itemsAfter.find((entry) => String(entry.productId) === String(product._id) &&
+    (variantId === null ? !entry.variantId : String(entry.variantId) === String(variantId)));
+  if (!item || item.quantity !== expectedQuantity || !Number.isFinite(item.itemPrice) || item.itemPrice < 0 ||
+      !Number.isSafeInteger(Math.round(response.totalCartPrice * 100))) throw new ApiError("Cart changed; request a new preview", 409);
+  const quote = { cartId: savedCart ? String(savedCart._id) : null, warehouseId: requestedWarehouse, currency: response.currency,
+    pricingScope: "items_only", itemsBefore, itemsAfter, itemsSubtotalAfter: response.totalCartPrice,
+    addition: { productId: String(product._id), productType: type, variantId: variantId === null ? null : String(variantId),
+      quantity, quantityAfter: item.quantity, unitPrice: item.itemPrice } };
+  return { quote, savedCart, draft };
+}
+
+// Draft-only line IDs change per calculation; existing line IDs remain material.
+export function cartAdditionQuoteForComparison(quote) {
+  const beforeIds = new Set(quote.itemsBefore.map((item) => item.id));
+  return { ...quote, itemsAfter: quote.itemsAfter.map(({ id, ...item }) => ({ ...item, ...(beforeIds.has(id) ? { id } : {}) })) };
+}
+
+// Internal quote only: callers still need durable proposal confirmation before any cart mutation.
+export async function previewCartAdditionService(input, options) {
+  return (await calculateCartAddition(input, options)).quote;
+}
+
+// Private draft only: no cart creation, key backfill, address selection or promotion maintenance.
+export async function previewCurrentUserCartService({ userId, warehouseId, lang = "en" }) {
+  const id = (value) => value != null && /^[a-f\d]{24}$/i.test(String(value));
+  if (!id(userId) || !id(warehouseId) || !["ar", "en"].includes(lang)) throw new ApiError("Invalid cart summary", 400);
+  const { effectiveWarehouse: warehouse } = await resolveEffectiveWarehouse(warehouseId);
+  if (String(warehouse._id) !== String(warehouseId)) throw new ApiError("Warehouse changed; refresh the app location", 409);
+  const saved = await findCart({ user: userId }).lean();
+  if (process.env.ASSISTANT_BUNDLE_CART_ENABLED === "true" && Array.isArray(saved?.bundles) && saved.bundles.length) {
+    const { runBundleCartRead } = await import("../bundle/bundle.cart-service.js");
+    return runBundleCartRead(async session => {
+      const sourceCart = await findCart({ user: userId }).session(session).lean();
+      if (!sourceCart || !mongoose.mongo.BSON.serialize(saved).equals(mongoose.mongo.BSON.serialize(sourceCart))) {
+        throw new ApiError("Cart changed; refresh the cart", 409);
+      }
+      const cart = await readCartWithBundles({ userId, warehouseId, lang, session });
+      if (cart.warehouseChangeRequired || !["ready", "review_required"].includes(cart.pricingStatus)) {
+        throw new ApiError("Cart pricing is unavailable; refresh the cart", 409);
+      }
+      const currentWarehouse = await WarehouseModel.findById(warehouseId).session(session).lean();
+      if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(sourceCart);
+      return { cart, warehouse: currentWarehouse, sourceCart, changed: cart.pricingStatus === "review_required" };
+    });
+  }
+  assertOrdinaryCart(saved);
+  if (!saved) return { cart: null, warehouse, changed: false };
+  if (String(saved.warehouse) !== String(warehouseId)) throw new ApiError("Cart warehouse changed; refresh the cart", 409);
+  if (!id(saved._id) || !Array.isArray(saved.items) || saved.items.some((item) => !id(item._id) || !Number.isSafeInteger(item.quantity) || item.quantity < 1 ||
+      !id(item.product) || !["SIMPLE", "VARIANT"].includes(item.productType) || (item.productType === "VARIANT" && !id(item.variantId)))) {
+    throw new ApiError("Cart items are unavailable", 409);
+  }
+  const draft = CartModel.hydrate(saved);
+  const material = (items) => items.map(({ id, productId, productType, variantId, variantOptions, quantity, itemPrice }) =>
+    ({ id, productId, productType, variantId, variantOptions, quantity, itemPrice }));
+  const before = material(cartItemSnapshots(draft));
+  await refreshCartItemsForWarehouse(draft, String(warehouseId), lang, undefined, true);
+  const cart = mapCartToResponse(draft);
+  if (!Number.isFinite(cart.totalCartPrice) || cart.totalCartPrice < 0 || !Number.isSafeInteger(Math.round(cart.totalCartPrice * 100))) {
+    throw new ApiError("Cart pricing is unavailable", 409);
+  }
+  return { cart, warehouse, sourceCart: saved, changed: JSON.stringify(before) !== JSON.stringify(material(cartItemSnapshots(draft))) };
+}
+
+// Internal transaction primitive: authorization and receipt must share the caller's transaction.
+export async function writeConfirmedCartAdditionService(input, expectedQuote, { session } = {}) {
+  if (!session || typeof session.inTransaction !== "function" || !session.inTransaction()) {
+    throw new ApiError("Active transaction session is required", 500);
+  }
+  let indexes;
+  try { indexes = await CartModel.collection.indexes(); } catch { throw new ApiError("Cart uniqueness is not ready", 503); }
+  const uniqueOwner = indexes.some((entry) => JSON.stringify(entry.key) === '{"user":1}' && entry.unique === true &&
+    !entry.sparse && entry.expireAfterSeconds === undefined && (!entry.collation || entry.collation.locale === "simple") &&
+    (!entry.partialFilterExpression || JSON.stringify(entry.partialFilterExpression) === '{"user":{"$type":"objectId"}}'));
+  if (!uniqueOwner) throw new ApiError("Cart uniqueness is not ready", 503);
+  const { quote, savedCart, draft } = await calculateCartAddition(input, { session });
+  if (JSON.stringify(cartAdditionQuoteForComparison(quote)) !== JSON.stringify(cartAdditionQuoteForComparison(expectedQuote))) {
+    throw new ApiError("Cart changed; request a new preview", 409);
+  }
+  if (savedCart && (!Number.isSafeInteger(savedCart.__v) || savedCart.__v < 0 || savedCart.__v >= Number.MAX_SAFE_INTEGER)) {
+    throw new ApiError("Cart version is not ready", 503);
+  }
+  const now = new Date();
+  draft.checkoutKey ||= generateCheckoutKey();
+  draft.lastActivityAt = now;
+  draft.status = cartStatusEnum.ACTIVE;
+  draft.abandonedAt = undefined;
+  await draft.validate();
+  if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(draft);
+  if (savedCart) {
+    // The raw preimage also detects legacy/query writes that do not increment __v.
+    const result = await CartModel.collection.updateOne({ _id: savedCart._id, user: savedCart.user, __v: savedCart.__v,
+      $expr: { $eq: ["$$ROOT", { $literal: savedCart }] } }, {
+      $set: { items: draft.items.toObject(), totalCartPrice: draft.totalCartPrice, warehouse: draft.warehouse,
+        checkoutKey: draft.checkoutKey, status: draft.status, lastActivityAt: now, updatedAt: now },
+      $unset: { abandonedAt: "" }, $inc: { __v: 1 },
+    }, { session });
+    if (result.matchedCount !== 1) throw new ApiError("Cart changed; request a new preview", 409);
+  } else {
+    await CartModel.create([draft.toObject()], { session });
+  }
+  return { ...quote, cartId: String(draft._id) };
 }
 
 export async function updateCartItemQuantityService({
@@ -835,6 +1166,9 @@ export async function updateCartItemQuantityService({
     );
   }
 
+  if (await usesBundleCart(userId, guestId)) {
+    return changeBundleCart({ userId, warehouseId, lang, change: { action: "ordinary_set", itemId: String(itemId), quantity: Number(quantity) } });
+  }
   warehouseId = await resolveCartWarehouseId(warehouseId);
   const cart = await getExistingCartOrThrow({ userId, guestId, warehouseId });
 
@@ -924,6 +1258,9 @@ export async function removeCartItemService({
   itemId,
   lang = "en",
 }) {
+  if (await usesBundleCart(userId, guestId)) {
+    return changeBundleCart({ userId, warehouseId, lang, change: { action: "ordinary_remove", itemId: String(itemId) } });
+  }
   warehouseId = await resolveCartWarehouseId(warehouseId);
   const cart = await getExistingCartOrThrow({ userId, guestId, warehouseId });
 
@@ -942,9 +1279,14 @@ export async function removeCartItemService({
 }
 
 export async function clearCartService({ userId, guestId, warehouseId }) {
+  if (await usesBundleCart(userId, guestId)) {
+    return changeBundleCart({ userId, warehouseId, change: { action: "clear" } });
+  }
   const identityFilter = buildIdentityFilter({ userId, guestId });
-
-  await deleteCart(identityFilter);
+  const existing = await findCart(identityFilter);
+  assertOrdinaryCart(existing);
+  const result = await deleteCart(identityFilter);
+  if (existing && result.deletedCount !== 1) throw new ApiError("Your cart changed. Please try again.", 409);
 
   return { success: true };
 }
@@ -957,6 +1299,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
   warehouseId = await resolveCartWarehouseId(warehouseId);
 
   const guestCart = await findCart({ guestId });
+  assertOrdinaryCart(guestCart);
 
   // No guest cart: just return the current user cart (or an empty one)
   if (!guestCart) {
@@ -973,6 +1316,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
   }
 
   let userCart = await findCart({ user: userId });
+  assertOrdinaryCart(userCart);
 
   // Case A: no existing user cart -> adopt guest cart
   if (!userCart) {
@@ -980,7 +1324,13 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     guestCart.guestId = undefined;
     guestCart.lastActivityAt = new Date();
     guestCart.status = "ACTIVE";
-    await guestCart.save();
+    try {
+      await guestCart.save();
+    } catch (error) {
+      if (!isUserCartConflict(error, userId)) throw error;
+      // The rejected adoption wrote nothing; retain guest items for a fresh merge attempt.
+      throw new ApiError("Your cart changed. Please try again.", 409);
+    }
 
     const adoptedCart = await rebindCartToWarehouse(guestCart, warehouseId);
     return mapCustomerCartToResponse(adoptedCart);
@@ -1179,6 +1529,7 @@ export async function markAbandonedCartsService(thresholdMs) {
   });
 
   for (const cart of candidates) {
+    if (cart.bundles !== undefined && (!Array.isArray(cart.bundles) || cart.bundles.length > 0)) continue;
     if (!cart.user || typeof cart.user.email !== "string") {
       continue;
     }

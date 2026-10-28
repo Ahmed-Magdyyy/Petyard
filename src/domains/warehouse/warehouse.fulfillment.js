@@ -39,12 +39,14 @@ function assertUsableFallback(sourceWarehouse, fallbackWarehouse) {
   return fallbackWarehouse;
 }
 
-async function findOperationalDefaultWarehouse(sourceWarehouseId) {
-  const defaultWarehouse = await WarehouseModel.findOne({
+async function findOperationalDefaultWarehouse(sourceWarehouseId, session) {
+  const query = WarehouseModel.findOne({
     _id: { $ne: sourceWarehouseId },
     isDefault: true,
     active: true,
   });
+  if (session) query.session(session);
+  const defaultWarehouse = await query;
 
   return isWarehouseOperational(defaultWarehouse) ? defaultWarehouse : null;
 }
@@ -124,7 +126,7 @@ export async function assertWarehouseNotInUseAsFallback(warehouseId) {
   }
 }
 
-export async function resolveEffectiveWarehouse(warehouseOrId) {
+export async function resolveEffectiveWarehouse(warehouseOrId, { session } = {}) {
   const hasWarehouseState =
     warehouseOrId &&
     typeof warehouseOrId === 'object' &&
@@ -134,10 +136,12 @@ export async function resolveEffectiveWarehouse(warehouseOrId) {
     warehouseOrId && typeof warehouseOrId === 'object' && warehouseOrId._id
       ? warehouseOrId._id
       : warehouseOrId;
-  const sourceWarehouse =
-    hasWarehouseState
-      ? warehouseOrId
-      : await WarehouseModel.findById(lookupId);
+  let sourceWarehouse = warehouseOrId;
+  if (!hasWarehouseState || session) {
+    const query = WarehouseModel.findById(lookupId);
+    if (session) query.session(session);
+    sourceWarehouse = await query;
+  }
 
   if (!sourceWarehouse) {
     throw new ApiError(
@@ -170,9 +174,14 @@ export async function resolveEffectiveWarehouse(warehouseOrId) {
   const configuredFallbackId =
     sourceWarehouse.fulfillment?.fallbackWarehouse || null;
 
-  const fallbackWarehouse = configuredFallbackId
-    ? await WarehouseModel.findById(configuredFallbackId)
-    : await findOperationalDefaultWarehouse(sourceWarehouse._id);
+  let fallbackWarehouse;
+  if (configuredFallbackId) {
+    const query = WarehouseModel.findById(configuredFallbackId);
+    if (session) query.session(session);
+    fallbackWarehouse = await query;
+  } else {
+    fallbackWarehouse = await findOperationalDefaultWarehouse(sourceWarehouse._id, session);
+  }
 
   return {
     zoneWarehouse: sourceWarehouse,

@@ -12,6 +12,7 @@ import {
 } from "../../../src/domains/inventory/inventory.service.js";
 import { ProductModel } from "../../../src/domains/product/product.model.js";
 import { WarehouseModel } from "../../../src/domains/warehouse/warehouse.model.js";
+import { RestockSubscriptionModel } from "../../../src/domains/restockSubscription/restockSubscription.model.js";
 import { updateProductStockService } from "../../../src/domains/product/product.service.js";
 
 function queryResult(value) {
@@ -399,6 +400,8 @@ test("legacy duplicate stock rows remain readable when unrelated fields change",
 });
 
 test("product stock writes preserve unchanged revisions and increment changed rows", async (t) => {
+  let restockRead;
+  const backgroundSettled = new Promise(resolve => { restockRead = resolve; });
   const firstWarehouse = new mongoose.Types.ObjectId();
   const secondWarehouse = new mongoose.Types.ObjectId();
   const product = {
@@ -414,6 +417,13 @@ test("product stock writes preserve unchanged revisions and increment changed ro
   };
   t.mock.method(ProductModel, "findById", () => product);
   t.mock.method(WarehouseModel, "countDocuments", async () => 2);
+  t.mock.method(RestockSubscriptionModel, "updateMany", async filter => {
+    assert.equal(String(filter.product), String(product._id)); return { modifiedCount: 0 };
+  });
+  t.mock.method(RestockSubscriptionModel, "find", filter => {
+    assert.equal(String(filter.product), String(product._id));
+    return { lean: async () => { restockRead(); return []; } };
+  });
 
   await updateProductStockService(
     product._id,
@@ -429,6 +439,7 @@ test("product stock writes preserve unchanged revisions and increment changed ro
   assert.equal(product.warehouseStocks[0].revision, 5);
   assert.equal(product.warehouseStocks[1].revision, 10);
   assert.equal(product.warehouseStocks[1].quantity, 4);
+  await backgroundSettled;
 });
 
 test("release accepts a positive mutation without requiring an expected snapshot", async (t) => {

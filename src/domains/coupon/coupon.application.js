@@ -19,6 +19,7 @@ import { OrderModel } from "../order/order.model.js";
  * @param {number}  opts.subtotal         – full cart / order subtotal
  * @param {number}  opts.shippingFee      – resolved shipping fee
  * @param {string}  [opts.lang="en"]
+ * @param {object}  [opts.session]        – caller snapshot session for coupon and usage reads
  *
  * @returns {Promise<{
  *   couponCode: string|null,
@@ -37,6 +38,7 @@ export async function validateAndApplyCoupon({
   subtotal,
   shippingFee,
   lang = "en",
+  session,
 }) {
   // ── No coupon provided – return zero-discount result ───────────────
   if (!couponCode) {
@@ -64,7 +66,7 @@ export async function validateAndApplyCoupon({
   }
 
   // ── 1. Find active coupon ──────────────────────────────────────────
-  const coupon = await findActiveCouponByCodeService(trimmedCode);
+  const coupon = await findActiveCouponByCodeService(trimmedCode, undefined, { session });
 
   // ── 2. Allowed users ───────────────────────────────────────────────
   const allowedUserIds = Array.isArray(coupon.allowedUserIds)
@@ -113,10 +115,12 @@ export async function validateAndApplyCoupon({
   // ── 4. Per-user usage limit ────────────────────────────────────────
   if (userId && typeof coupon.maxUsagePerUser === "number") {
     if (coupon.maxUsagePerUser >= 0) {
-      const userUsage = await OrderModel.countDocuments({
+      let usageQuery = OrderModel.countDocuments({
         user: userId,
         couponCode: coupon.code,
       });
+      if (session) usageQuery = usageQuery.session(session);
+      const userUsage = await usageQuery;
 
       if (userUsage >= coupon.maxUsagePerUser) {
         throw new ApiError(

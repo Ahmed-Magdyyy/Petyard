@@ -1,0 +1,158 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { createHash } from "node:crypto";
+import mongoose from "mongoose";
+import { embeddingNativeCollections, embeddingNativeOptIn, validateEmbeddingNativePlan, embeddingNativeConnection,
+  embeddingNativeMarker, claimEmbeddingNativeDatabase, cleanupEmbeddingNativeDatabase, verifyEmbeddingNativeEmpty,
+  installEmbeddingNativeGuard } from "./fixtures/embeddingNative.js";
+
+const index = { key: { key: 1 }, name: "key_1", unique: true, expireAfterSeconds: null };
+function plan() {
+  return { host: "magdy.pbupj.mongodb.net", database: "ai_test_embedding_111111111111", run: "11111111-1111-1111-1111-111111111111",
+    optIn: embeddingNativeOptIn, collections: [...embeddingNativeCollections], maxInsertAttempts: 96, caseCount: 8,
+    indexes: Object.fromEntries(embeddingNativeCollections.filter(name => !["users", "assistanttestownership"].includes(name))
+      .map(name => [name, name === "assistantembeddingbatches" ? [index] : []])) };
+}
+function fixture() {
+  const p = plan(), f = { plan: p, stores: {}, drops: [] };
+  const db = { databaseName: p.database, listCollections() { return { async toArray() { return Object.keys(f.stores).map(name => ({ name })); } }; },
+    async createCollection(name) { f.stores[name] = []; }, collection(name) { return {
+      async insertOne(row) { f.stores[name].push(row); }, async findOne() { return f.stores[name]?.[0] ?? null; },
+      async countDocuments(filter = {}) { const rows = f.stores[name] ?? []; return filter.fixtureRun ? rows.filter(row => row.fixtureRun !== filter.fixtureRun.$ne).length : rows.length; },
+    }; }, async dropCollection(name) { if (f.denied === name) throw Error("Fictional cleanup denial"); f.drops.push(name); delete f.stores[name]; await f.afterDrop?.(name); } };
+  const client = { options: { srvHost: p.host, dbName: "petyard" } };
+  f.connection = { readyState: 1, name: p.database, db, getClient: () => client };
+  return f;
+}
+
+test("native plan rejects application targets, altered collection/index scope and larger attempt limits", () => {
+  validateEmbeddingNativePlan(plan());
+  for (const change of [{ database: "petyard" }, { host: "other.mongodb.net" }, { collections: [...embeddingNativeCollections, "orders"] },
+    { maxInsertAttempts: 97 }, { caseCount: 9 }, { optIn: "other" }, { run: "bad" }, { indexes: {} }]) assert.throws(() => validateEmbeddingNativePlan({ ...plan(), ...change }));
+});
+
+test("every connection fence detects changes to client, selected database, handle and topology target", () => {
+  for (const mode of ["name", "database", "client", "host", "default", "handle", "state"]) {
+    const f = fixture(), scope = embeddingNativeConnection(f.connection, f.plan);
+    if (mode === "name") f.connection.name = "petyard";
+    if (mode === "database") f.connection.db.databaseName = "petyard";
+    if (mode === "client") f.connection.getClient = () => ({});
+    if (mode === "host") f.connection.getClient().options.srvHost = "other.mongodb.net";
+    if (mode === "default") f.connection.getClient().options.dbName = "other";
+    if (mode === "handle") f.connection.db = { ...f.connection.db };
+    if (mode === "state") f.connection.readyState = 0;
+    assert.throws(scope.check);
+  }
+});
+
+test("ownership is exclusive and cleanup removes only owned collections with the marker last", async () => {
+  const f = fixture(); await claimEmbeddingNativeDatabase(f.connection, f.plan);
+  assert.deepEqual(f.stores.assistanttestownership, [embeddingNativeMarker(f.plan)]);
+  await assert.rejects(claimEmbeddingNativeDatabase(f.connection, f.plan));
+  f.stores.assistantembeddingbatches = [{ _id: 1, fixtureRun: f.plan.run }]; f.stores.users = [];
+  assert.equal((await cleanupEmbeddingNativeDatabase(f.connection, f.plan)).droppedOwnedCollections, 3);
+  assert.equal(f.drops.at(-1), "assistanttestownership"); assert.equal((await verifyEmbeddingNativeEmpty(f.connection, f.plan)).collectionsRemaining, 0);
+});
+
+test("foreign data, extra namespaces, marker changes and over-budget records stop all drops", async () => {
+  for (const mode of ["foreign", "unknown", "marker", "extra-marker", "over-budget"]) {
+    const f = fixture(); await claimEmbeddingNativeDatabase(f.connection, f.plan);
+    if (mode === "foreign") f.stores.users = [{ _id: 1 }];
+    if (mode === "unknown") f.stores.orders = [];
+    if (mode === "marker") f.stores.assistanttestownership[0].run = "different";
+    if (mode === "extra-marker") f.stores.assistanttestownership.push({ _id: "other" });
+    if (mode === "over-budget") f.stores.users = Array(96).fill({ fixtureRun: f.plan.run });
+    await assert.rejects(cleanupEmbeddingNativeDatabase(f.connection, f.plan)); assert.deepEqual(f.drops, []);
+  }
+  const f = fixture(); await claimEmbeddingNativeDatabase(f.connection, f.plan); f.stores.users = []; f.denied = "users";
+  await assert.rejects(cleanupEmbeddingNativeDatabase(f.connection, f.plan)); assert.ok(f.stores.assistanttestownership);
+});
+
+test("ownership changed during cleanup stops before another collection can be dropped", async () => {
+  const f = fixture(); await claimEmbeddingNativeDatabase(f.connection, f.plan);
+  f.stores.assistantembeddingbatches = []; f.stores.users = [];
+  f.afterDrop = () => { f.stores.assistanttestownership[0].run = "different"; };
+  await assert.rejects(cleanupEmbeddingNativeDatabase(f.connection, f.plan));
+  assert.equal(f.drops.length, 1); assert.ok(f.stores.assistanttestownership); assert.ok(f.stores.users);
+});
+
+test("driver writes are exact owned records, only budget upserts are allowed, and every attempt counts", t => {
+  const f = fixture(), p = mongoose.mongo.Collection.prototype, calls = [];
+  for (const method of ["insertOne", "updateOne", "findOneAndUpdate", "findOne"]) t.mock.method(p, method, (...args) => { calls.push(args); return "native"; });
+  const guard = installEmbeddingNativeGuard(t, f.connection, f.plan);
+  const owned = { client: f.connection.getClient(), dbName: f.plan.database, collectionName: "assistantbudgets" };
+  assert.equal(p.insertOne.call(owned, { _id: "control" }), "native"); assert.equal(calls.at(-1)[0].fixtureRun, f.plan.run);
+  assert.equal(p.updateOne.call(owned, { _id: "global:fictional" }, { $setOnInsert: { spent: 0 } }, { upsert: true }), "native");
+  assert.equal(calls.at(-1)[1].$setOnInsert.fixtureRun, f.plan.run); assert.equal(guard.insertAttempts(), 3);
+  for (const value of [{ ...owned, dbName: "petyard" }, { ...owned, client: {} }, { ...owned, collectionName: "orders" }]) {
+    assert.throws(() => p.insertOne.call(value, { _id: 1 })); assert.throws(() => p.findOne.call(value, {}));
+  }
+  for (const [filter, update] of [[{}, { $set: { spent: 1 } }], [{ _id: { $gt: 0 } }, { $set: { spent: 1 } }],
+    [{ _id: "control" }, { $unset: { fixtureRun: 1 } }], [{ _id: "control" }, { $set: { fixtureRun: "other" } }],
+    [{ _id: "control" }, [{ $set: { spent: 1 } }]]]) assert.throws(() => p.updateOne.call(owned, filter, update));
+  assert.throws(() => p.updateOne.call({ ...owned, collectionName: "users" }, { _id: new mongoose.Types.ObjectId() }, { $set: { role: "admin" } }, { upsert: true }));
+  while (guard.insertAttempts() < 96) p.insertOne.call(owned, { _id: new mongoose.Types.ObjectId() });
+  assert.throws(() => p.insertOne.call(owned, { _id: 1 }), /budget exceeded/);
+});
+
+test("only the narrow query-vector redaction is a permitted multi-record update", t => {
+  const f = fixture(), p = mongoose.mongo.Collection.prototype, calls = [];
+  t.mock.method(p, "updateMany", (...args) => { calls.push(args); return "native"; }); installEmbeddingNativeGuard(t, f.connection, f.plan);
+  const owned = { client: f.connection.getClient(), dbName: f.plan.database, collectionName: "assistantembeddingbatches" };
+  const filter = { kind: "customer_query", vectorsExpireAt: { $lte: new Date() }, vectors: { $exists: true } };
+  assert.equal(p.updateMany.call(owned, filter, { $unset: { vectors: 1 } }), "native"); assert.equal(calls[0][0].fixtureRun, f.plan.run);
+  for (const [query, update, options] of [[{}, { $unset: { vectors: 1 } }, {}], [{ ...filter, kind: "reference" }, { $unset: { vectors: 1 } }, {}],
+    [filter, { $unset: { reservation: 1 } }, {}], [filter, { $unset: { vectors: 1 }, $set: { accounting: "settled" } }, {}],
+    [filter, { $unset: { vectors: 1 } }, { upsert: true }]]) assert.throws(() => p.updateMany.call(owned, query, update, options));
+  assert.throws(() => p.updateMany.call({ ...owned, collectionName: "assistantbudgets" }, filter, { $unset: { vectors: 1 } }));
+});
+
+test("real installed Mongoose receipt create/save and timestamped redaction pass the guarded driver offline", async t => {
+  const f = fixture(), p = mongoose.mongo.Collection.prototype, calls = [];
+  for (const method of ["insertOne", "updateOne", "updateMany"]) t.mock.method(p, method, async (...args) => {
+    calls.push({ method, args }); return { acknowledged: true, insertedId: args[0]._id, matchedCount: 1, modifiedCount: 1 };
+  });
+  installEmbeddingNativeGuard(t, f.connection, f.plan);
+  const { AssistantEmbeddingBatch } = await import("../../../src/domains/assistant/references/assistant.embedding-batch.model.js");
+  const owned = { client: f.connection.getClient(), dbName: f.plan.database, collectionName: "assistantembeddingbatches" };
+  for (const method of ["insertOne", "updateOne", "updateMany"]) t.mock.method(AssistantEmbeddingBatch.collection, method, (...args) => p[method].call(owned, ...args));
+  const [row] = await AssistantEmbeddingBatch.create([{ key: "a".repeat(64), kind: "customer_query", owner: new mongoose.Types.ObjectId(), run: new mongoose.Types.ObjectId(),
+    queryContextHash: "b".repeat(64), batchHash: "c".repeat(64), vectorsExpireAt: new Date(), model: "text-embedding-3-small", dimensions: 1536,
+    config: {}, reservation: {}, status: "uncertain", accounting: "reserved" }]);
+  assert.equal(calls[0].method, "insertOne"); assert.equal(calls[0].args[0].fixtureRun, f.plan.run);
+  row.accounting = "charged_reservation"; row.status = "failed";
+  row.reconciliation = { resolution: "charge_reserved", reason: "Fictional offline guard check", actor: new mongoose.Types.ObjectId(), at: new Date() };
+  await row.save(); assert.equal(calls[1].method, "updateOne"); assert.equal(calls[1].args[0].fixtureRun, f.plan.run);
+  const { scrubExpiredQueryVectors } = await import("../../../src/domains/assistant/customer/assistant.query-embedding.js");
+  await scrubExpiredQueryVectors(); assert.equal(calls[2].method, "updateMany"); assert.ok(calls[2].args[1].$set.updatedAt instanceof Date);
+});
+
+test("normal schema indexes are pinned and Search, bulk, raw command and whole-database operations are refused", t => {
+  const f = fixture(), p = mongoose.mongo.Collection.prototype, d = mongoose.mongo.Db.prototype;
+  t.mock.method(p, "createIndex", () => "native"); t.mock.method(p, "aggregate", () => "native");
+  for (const method of ["createCollection", "dropCollection"]) t.mock.method(d, method, () => "native");
+  installEmbeddingNativeGuard(t, f.connection, f.plan);
+  const owned = { client: f.connection.getClient(), dbName: f.plan.database, collectionName: "assistantembeddingbatches" };
+  assert.equal(p.createIndex.call(owned, { key: 1 }, { unique: true }), "native");
+  assert.throws(() => p.createIndex.call(owned, { other: 1 }, {})); assert.throws(() => p.createIndex.call(owned, { key: 1 }, { unique: true, sparse: true }));
+  for (const stage of ["$out", "$merge", "$lookup", "$unionWith", "$vectorSearch", "$search", "$listSearchIndexes"]) assert.throws(() => p.aggregate.call(owned, [{ [stage]: {} }]));
+  for (const method of ["insertMany", "bulkWrite", "deleteMany", "rename", "createSearchIndex", "dropSearchIndex"]) if (typeof p[method] === "function") assert.throws(() => p[method].call(owned));
+  const db = { client: f.connection.getClient(), databaseName: f.plan.database };
+  assert.equal(d.createCollection.call(db, "users"), "native"); assert.throws(() => d.createCollection.call(db, "orders"));
+  assert.throws(() => d.dropDatabase.call(db)); assert.throws(() => d.command.call(db, { dropDatabase: 1 }));
+});
+
+test("prepared launcher check is offline and rejects stale historical pins without consuming another claim", async t => {
+  const directory = ".scratch/assistant-retrieval/embedding-native/"; let before, proof;
+  try { before = await readdir(directory); proof = JSON.parse(await readFile(directory + "preparation.json", "utf8")); }
+  catch (error) { if (error.code !== "ENOENT") throw error; t.skip("Local approval artifacts are absent from a clean checkout"); return; }
+  assert.equal(proof.executed, false); let stale = false;
+  for (const [file, digest] of Object.entries(proof.pins)) if (createHash("sha256").update(await readFile(file)).digest("hex") !== digest) { stale = true; break; }
+  const check = () => promisify(execFile)(process.execPath, [directory + "run.mjs", "--check"], { windowsHide: true });
+  if (stale) await assert.rejects(check(), error => error.code === 1 && /Prepared file changed:/.test(error.stderr));
+  else { const { stdout } = await check(); assert.match(stdout, /no connection, credentials, claim or writes/); }
+  assert.deepEqual(await readdir(directory), before);
+});

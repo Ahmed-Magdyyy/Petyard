@@ -8,8 +8,10 @@ import { getSubcategoryChildrenIds } from "../subcategory/subcategory.service.js
  * Load all subcategories in a single query and build a parentId map.
  * Returns a Map<string, string|null> of subcategoryId → parentId.
  */
-async function loadSubcategoryParentMap() {
-  const all = await SubcategoryModel.find({}, { _id: 1, parent: 1 }).lean();
+async function loadSubcategoryParentMap(session) {
+  const query = SubcategoryModel.find({}, { _id: 1, parent: 1 });
+  if (session) query.session(session);
+  const all = await query.lean();
   const map = new Map();
   for (const s of all) {
     map.set(String(s._id), s.parent ? String(s.parent) : null);
@@ -215,7 +217,8 @@ export async function ensurePromotionalCollectionUniqueness({
 
 export async function findActivePromotionForProduct(
   { productId, subcategoryId, brandId },
-  now = new Date()
+  now = new Date(),
+  { session } = {}
 ) {
   const or = [];
 
@@ -226,7 +229,7 @@ export async function findActivePromotionForProduct(
   if (subcategoryId) {
     // Include the product's subcategory AND all its ancestors
     // so a collection targeting a parent subcategory matches child products
-    const parentMap = await loadSubcategoryParentMap();
+    const parentMap = await loadSubcategoryParentMap(session);
     const ancestorIds = getAncestorIdsFromMap(subcategoryId, parentMap);
     const allSubcatIds = [subcategoryId, ...ancestorIds];
     or.push({ "selector.subcategoryIds": { $in: allSubcatIds } });
@@ -238,7 +241,7 @@ export async function findActivePromotionForProduct(
 
   if (or.length === 0) return null;
 
-  const collection = await CollectionModel.findOne(
+  const query = CollectionModel.findOne(
     {
       isVisible: true,
       "promotion.enabled": true,
@@ -252,7 +255,9 @@ export async function findActivePromotionForProduct(
       slug: 1,
       promotion: 1,
     }
-  ).lean();
+  );
+  if (session) query.session(session);
+  const collection = await query.lean();
 
   if (!collection?.promotion) return null;
 

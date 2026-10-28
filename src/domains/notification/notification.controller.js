@@ -95,6 +95,7 @@ export const getMyNotifications = asyncHandler(async (req, res) => {
 
   const result = await getMyNotificationsService({
     userId: req.user._id,
+    actorRole: req.user.role,
     lang: req.lang,
     page: parseInt(page, 10) || 1,
     limit: Math.min(parseInt(limit, 10) || 20, 50),
@@ -109,7 +110,7 @@ export const getUnreadCount = asyncHandler(async (req, res) => {
     throw new ApiError("Authentication required", 401);
   }
 
-  const result = await getUnreadCountService(req.user._id);
+  const result = await getUnreadCountService(req.user._id, req.user.role);
 
   res.status(200).json({ data: result });
 });
@@ -123,6 +124,7 @@ export const markNotificationAsRead = asyncHandler(async (req, res) => {
 
   const result = await markNotificationAsReadService({
     userId: req.user._id,
+    actorRole: req.user.role,
     notificationId: id,
   });
 
@@ -138,7 +140,7 @@ export const markAllNotificationsAsRead = asyncHandler(async (req, res) => {
     throw new ApiError("Authentication required", 401);
   }
 
-  const result = await markAllNotificationsAsReadService(req.user._id);
+  const result = await markAllNotificationsAsReadService(req.user._id, req.user.role);
 
   res.status(200).json({ data: result });
 });
@@ -152,6 +154,7 @@ export const deleteNotification = asyncHandler(async (req, res) => {
 
   const result = await deleteNotificationService({
     userId: req.user._id,
+    actorRole: req.user.role,
     notificationId: id,
   });
 

@@ -1,0 +1,28 @@
+{
+  "reply": "أكيد! أنا مساعد Petyard للعناية بالحيوانات الأليفة. جرّب مع Milo لعبة مطاردة كرة خفيفة وكبيرة كفاية ما تتبلعش، أو لعبة إخفاء مكافآت في مكان سهل وآمن. خليك بتراقبه، وابعد أي لعبة فيها قطع صغيرة أو أجزاء سايبة ممكن يبلعها، وشيل اللعبة لو اتقطعت أو باظت.",
+  "scope": "pet_care",
+  "primaryTopic": "behavior",
+  "languageAssessment": "none",
+  "subjectAction": "keep",
+  "resolvedSubjectId": "pet:111111111111111111111111",
+  "subjectName": "",
+  "subjectNameQuote": "",
+  "subjectSpecies": "",
+  "subjectSpeciesQuote": "",
+  "replyLanguage": "arabizi",
+  "memoryKey": "none",
+  "memoryValue": "",
+  "memorySubjectId": "",
+  "sourceQuote": "",
+  "dietaryWarningAction": "none",
+  "dietaryWarningSubjectId": "",
+  "dietaryWarningQuote": "",
+  "productSearch": {
+    "action": "none",
+    "query": "",
+    "minimumPackageWeightGrams": null,
+    "maximumPriceMinor": null,
+    "sourceQuote": "",
+    "options": []
+  }
+}

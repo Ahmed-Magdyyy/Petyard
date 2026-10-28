@@ -350,7 +350,7 @@ export async function deleteCouponService(id) {
   await coupon.deleteOne();
 }
 
-export async function findActiveCouponByCodeService(code, now = new Date()) {
+export async function findActiveCouponByCodeService(code, now = new Date(), { session } = {}) {
   const normalizedCode = normalizeCouponCode(code);
   if (!normalizedCode) {
     throw new ApiError("code is required", 400);
@@ -365,11 +365,13 @@ export async function findActiveCouponByCodeService(code, now = new Date()) {
     { expiresAt: { $exists: false } },
   ];
 
-  const coupon = await CouponModel.findOne({
+  let query = CouponModel.findOne({
     code: normalizedCode,
     isActive: true,
     $and: [{ $or: orStart }, { $or: orEnd }],
   });
+  if (session) query = query.session(session);
+  const coupon = await query;
 
   if (!coupon) {
     throw new ApiError("Expired or Invalid coupon code", 404);

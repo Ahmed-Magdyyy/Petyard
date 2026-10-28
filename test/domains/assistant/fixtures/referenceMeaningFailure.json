@@ -1,0 +1,51 @@
+{
+  "origin": "Recorded fictional live quality response, 2026-10-26; rejected semantic cases, not accepted model examples",
+  "ambiguity": {
+    "input": "anaddaf farshet el kalb ezay?",
+    "answer": {
+      "reply": "أنا مساعد Petyard للعناية بالحيوانات. لو قصدك فرشة روي: شيل الشعر والوسخ الأول، واغسل الغطا حسب تعليمات الملصق بمنظف خفيف، واشطفه كويس وسيبه ينشف تمامًا قبل ما يرجع يستخدمه. لو الفرشة نفسها مش بتتغسل، نظّفها بالمكنسة وامسحها بالطريقة الموصى بيها من الشركة. تجنّب المعطرات والمنظفات القوية عشان ممكن تهيّج جلده أو تنفّسه.",
+      "scope": "pet_care",
+      "primaryTopic": "grooming",
+      "languageAssessment": "none",
+      "subjectAction": "keep",
+      "resolvedSubjectId": "pet:444444444444444444444444",
+      "subjectName": "",
+      "subjectNameQuote": "",
+      "subjectSpecies": "",
+      "subjectSpeciesQuote": "",
+      "replyLanguage": "ar",
+      "memoryKey": "none",
+      "memoryValue": "",
+      "memorySubjectId": "",
+      "sourceQuote": "",
+      "dietaryWarningAction": "none",
+      "dietaryWarningSubjectId": "",
+      "dietaryWarningQuote": "",
+      "checkoutSummary": "none",
+      "bookingOptions": {
+        "action": "none",
+        "services": [],
+        "locationId": "",
+        "date": "",
+        "hour24": null,
+        "sourceQuote": ""
+      },
+      "productSearch": {
+        "action": "none",
+        "query": "",
+        "minimumPackageWeightGrams": null,
+        "maximumPriceMinor": null,
+        "sourceQuote": "",
+        "options": []
+      }
+    }
+  },
+  "followup": {
+    "input": "el nom",
+    "query": {
+      "status": "ready",
+      "query": "إزاي أنضف نوم الكلب؟"
+    },
+    "reason": "Lost the concrete sleeping-bedding object despite ranking the intended source first."
+  }
+}

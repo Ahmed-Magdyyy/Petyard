@@ -1,5 +1,6 @@
 import { getPrivateImageDeliveryUrl } from "../../shared/utils/privateImageDelivery.js";
 import { fromPiastres } from "../../shared/utils/money.js";
+import { presentBundleOrderGroups } from "../bundle/bundle.order-snapshot.js";
 
 function presentSettlementMoney(settlement, field) {
   const value = settlement?.[field];
@@ -75,8 +76,20 @@ export function presentOrder(order, deliveryOptions) {
     return order;
   }
 
-  const value =
+  let value =
     typeof order.toJSON === "function" ? order.toJSON() : { ...order };
+  if (value.bundleGroups !== undefined || value.items?.some(item => item.bundleGroupId != null || item.bundleComponentIndex != null)) {
+    const bundles = presentBundleOrderGroups(value);
+    const { bundleGroups, ...rest } = value;
+    value = { ...rest, items: value.items.filter(item => item.bundleGroupId == null), bundles };
+  }
+  if (value.bundleCheckout !== undefined) { const { bundleCheckout, ...rest } = value; value = rest; }
+  if (value.bundleCardPayment !== undefined) { const { bundleCardPayment, ...rest } = value; value = rest; }
+  if (value.bundleCardInitialization !== undefined) { const { bundleCardInitialization, ...rest } = value; value = rest; }
+  if (value.bundleCaptureRefund !== undefined) { const { bundleCaptureRefund, ...rest } = value; value = rest; }
+  if (value.bundleReturn !== undefined) { const { bundleReturn, ...rest } = value; value = rest; }
+  if (value.bundleCancellation !== undefined) { const { bundleCancellation, ...rest } = value; value = rest; }
+  if (value.bundlePendingSubstitution !== undefined) { const { bundlePendingSubstitution, ...rest } = value; value = rest; }
   const presentedValue = value.settlement
     ? {
         ...value,

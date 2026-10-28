@@ -46,6 +46,8 @@ import publicProductPlaybackRoutes from "../domains/videos/public/publicProductP
 import bunnyStreamWebhookRoutes from "../domains/videos/provider/bunnyStreamWebhook.routes.js";
 import videoProviderAdminRoutes from "../domains/videos/provider/videoProviderAdmin.routes.js";
 import videoAnalyticsRoutes from "../domains/videos/analytics/videoAnalytics.routes.js";
+import assistantRoutes from "../domains/assistant/assistant.routes.js";
+import bundleRoutes from "../domains/bundle/bundle.routes.js";
 
 export function mountRoutes(app) {
   // ── App Redirect (only for app.petyardstores.com) ──────────
@@ -59,6 +61,8 @@ export function mountRoutes(app) {
   });
 
   app.use("/api/v1/analytics", analyticsRoutes);
+  app.use("/api/v1/assistant", assistantRoutes);
+  app.use("/api/v1/bundles", bundleRoutes);
   app.use("/api/v1/auth", authRoutes);
   app.use("/api/v1/users", userRoutes);
   app.use("/api/v1/conditions", conditionRoutes);

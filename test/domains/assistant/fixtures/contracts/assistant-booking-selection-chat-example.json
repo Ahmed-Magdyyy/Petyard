@@ -1,0 +1,307 @@
+{
+  "synthetic": true,
+  "note": "Fictional IDs, prices and labels. Public DTO examples only; no request was executed.",
+  "discoveryMessageRequest": {
+    "text": "Show grooming services",
+    "bookingContext": {
+      "location": {
+        "governorateCode": "alexandria",
+        "areaCode": "smouha"
+      }
+    }
+  },
+  "discoveryHistoryMessage": {
+    "id": "444444444444444444444444",
+    "runId": "444444444444444444444444",
+    "sequence": 2,
+    "role": "assistant",
+    "text": "These are Petyard's catalog services and Alexandria branches. Select the service, branch, time and pet, then review the details and prices before confirming yourself. This list does not confirm appointment availability; no booking has been made.",
+    "subjectId": "pet:222222222222222222222222",
+    "createdAt": "2026-10-22T10:00:00.000Z",
+    "expiresAt": "2026-10-29T10:00:00.000Z",
+    "booking": {
+      "status": "ready",
+      "reason": null,
+      "generatedAt": "2026-10-22T10:00:00.000Z",
+      "dataMode": "catalog_snapshot",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresExplicitConfirmation": true,
+      "services": [
+        {
+          "type": "GROOMING",
+          "name": "Grooming",
+          "options": [
+            {
+              "key": "standard",
+              "name": "Standard grooming",
+              "price": 75,
+              "currency": "EGP"
+            }
+          ]
+        }
+      ],
+      "locations": [
+        {
+          "id": "111111111111111111111111",
+          "name": "Example Alexandria branch",
+          "city": "Alexandria",
+          "slug": "example",
+          "timezone": "Africa/Cairo"
+        }
+      ],
+      "action": {
+        "type": "review_booking_options",
+        "requiresFreshLocation": true
+      }
+    },
+    "bookingSelection": {
+      "status": "collecting",
+      "dataMode": "selection_snapshot",
+      "generatedAt": "2026-10-22T10:00:00.000Z",
+      "selection": {
+        "services": [],
+        "locationId": null,
+        "date": null,
+        "hour24": null,
+        "petId": "222222222222222222222222"
+      },
+      "missing": [
+        "services",
+        "locationId",
+        "date",
+        "hour24"
+      ],
+      "unavailable": [],
+      "timezone": "Africa/Cairo",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresExplicitConfirmation": true,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresPetAndContactReview": true,
+      "action": null
+    }
+  },
+  "selectionMessageRequest": {
+    "text": "Standard grooming at the Alexandria branch on 25 October 2026 at 4 pm",
+    "bookingContext": {
+      "location": {
+        "governorateCode": "alexandria",
+        "areaCode": "smouha"
+      }
+    }
+  },
+  "selectionHistoryMessage": {
+    "id": "333333333333333333333333",
+    "runId": "333333333333333333333333",
+    "sequence": 4,
+    "role": "assistant",
+    "text": "I've collected your booking choices. Open the review to check the pet, your details, availability and price before confirming yourself. No appointment is reserved.",
+    "subjectId": "pet:222222222222222222222222",
+    "createdAt": "2026-10-22T10:00:00.000Z",
+    "expiresAt": "2026-10-29T10:00:00.000Z",
+    "booking": {
+      "status": "ready",
+      "reason": null,
+      "generatedAt": "2026-10-22T10:00:00.000Z",
+      "dataMode": "catalog_snapshot",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresExplicitConfirmation": true,
+      "services": [
+        {
+          "type": "GROOMING",
+          "name": "Grooming",
+          "options": [
+            {
+              "key": "standard",
+              "name": "Standard grooming",
+              "price": 75,
+              "currency": "EGP"
+            }
+          ]
+        }
+      ],
+      "locations": [
+        {
+          "id": "111111111111111111111111",
+          "name": "Example Alexandria branch",
+          "city": "Alexandria",
+          "slug": "example",
+          "timezone": "Africa/Cairo"
+        }
+      ],
+      "action": {
+        "type": "review_booking_options",
+        "requiresFreshLocation": true
+      }
+    },
+    "bookingSelection": {
+      "status": "selection_complete",
+      "dataMode": "selection_snapshot",
+      "generatedAt": "2026-10-22T10:00:00.000Z",
+      "selection": {
+        "services": [
+          {
+            "serviceType": "GROOMING",
+            "serviceOptionKey": "standard"
+          }
+        ],
+        "locationId": "111111111111111111111111",
+        "date": "2026-10-25",
+        "hour24": 16,
+        "petId": "222222222222222222222222"
+      },
+      "missing": [],
+      "unavailable": [],
+      "timezone": "Africa/Cairo",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresExplicitConfirmation": true,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresPetAndContactReview": true,
+      "action": {
+        "type": "review_booking_selection",
+        "requiresFreshLocation": true,
+        "booking": {
+          "services": [
+            {
+              "serviceType": "GROOMING",
+              "serviceOptionKey": "standard"
+            }
+          ],
+          "locationId": "111111111111111111111111",
+          "date": "2026-10-25",
+          "hour24": 16,
+          "petId": "222222222222222222222222"
+        }
+      }
+    }
+  },
+  "arabiziMessageRequest": {
+    "text": "grooming standard fi far3 alex 25 October 2026 el sa3a 4 pm",
+    "bookingContext": {
+      "location": {
+        "governorateCode": "alexandria",
+        "areaCode": "smouha"
+      }
+    }
+  },
+  "egyptianArabicSelectionHistoryMessage": {
+    "id": "555555555555555555555555",
+    "runId": "555555555555555555555555",
+    "sequence": 6,
+    "role": "assistant",
+    "text": "جمّعت اختيارات الحجز. افتح المراجعة عشان تتأكد من الحيوان وبياناتك وتوافر الميعاد والسعر قبل ما تأكد بنفسك. لسه مفيش ميعاد اتحجز.",
+    "subjectId": "pet:222222222222222222222222",
+    "createdAt": "2026-10-22T10:00:00.000Z",
+    "expiresAt": "2026-10-29T10:00:00.000Z",
+    "booking": {
+      "status": "ready",
+      "reason": null,
+      "generatedAt": "2026-10-22T10:00:00.000Z",
+      "dataMode": "catalog_snapshot",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresExplicitConfirmation": true,
+      "services": [
+        {
+          "type": "GROOMING",
+          "name": "Grooming",
+          "options": [
+            {
+              "key": "standard",
+              "name": "Standard grooming",
+              "price": 75,
+              "currency": "EGP"
+            }
+          ]
+        }
+      ],
+      "locations": [
+        {
+          "id": "111111111111111111111111",
+          "name": "Example Alexandria branch",
+          "city": "Alexandria",
+          "slug": "example",
+          "timezone": "Africa/Cairo"
+        }
+      ],
+      "action": {
+        "type": "review_booking_options",
+        "requiresFreshLocation": true
+      }
+    },
+    "bookingSelection": {
+      "status": "selection_complete",
+      "dataMode": "selection_snapshot",
+      "generatedAt": "2026-10-22T10:00:00.000Z",
+      "selection": {
+        "services": [
+          {
+            "serviceType": "GROOMING",
+            "serviceOptionKey": "standard"
+          }
+        ],
+        "locationId": "111111111111111111111111",
+        "date": "2026-10-25",
+        "hour24": 16,
+        "petId": "222222222222222222222222"
+      },
+      "missing": [],
+      "unavailable": [],
+      "timezone": "Africa/Cairo",
+      "estimateOnly": true,
+      "slotReserved": false,
+      "requiresExplicitConfirmation": true,
+      "requiresRefreshBeforeConfirmation": true,
+      "requiresPetAndContactReview": true,
+      "action": {
+        "type": "review_booking_selection",
+        "requiresFreshLocation": true,
+        "booking": {
+          "services": [
+            {
+              "serviceType": "GROOMING",
+              "serviceOptionKey": "standard"
+            }
+          ],
+          "locationId": "111111111111111111111111",
+          "date": "2026-10-25",
+          "hour24": 16,
+          "petId": "222222222222222222222222"
+        }
+      }
+    }
+  },
+  "afterReviewButtonOnly": {
+    "method": "POST",
+    "path": "/api/v1/assistant/booking-proposals",
+    "headers": {
+      "Idempotency-Key": "new-review-key-example-1"
+    },
+    "body": {
+      "location": {
+        "governorateCode": "alexandria",
+        "areaCode": "smouha"
+      },
+      "language": "en",
+      "booking": {
+        "services": [
+          {
+            "serviceType": "GROOMING",
+            "serviceOptionKey": "standard"
+          }
+        ],
+        "locationId": "111111111111111111111111",
+        "date": "2026-10-25",
+        "hour24": 16,
+        "petId": "222222222222222222222222"
+      }
+    }
+  },
+  "finalConfirmation": "Use the returned proposal ID/version/fingerprint and fresh app location only after the customer reviews the current quote and taps Confirm."
+}

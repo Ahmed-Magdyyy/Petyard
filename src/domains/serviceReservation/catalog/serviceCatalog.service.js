@@ -74,6 +74,11 @@ export async function resolveServiceSelectionOrThrow({
   optionKey,
 }) {
   const svc = await getServiceDefinition(serviceType);
+  return resolveServiceSelectionFromDefinition({ serviceType, optionKey }, svc);
+}
+
+// Shared selection rules; transactional callers supply their own session-bound definition.
+export function resolveServiceSelectionFromDefinition({ serviceType, optionKey }, svc) {
   if (!svc) {
     throw new ApiError("Invalid serviceType", 400);
   }

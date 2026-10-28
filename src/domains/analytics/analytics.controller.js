@@ -1,4 +1,7 @@
 import asyncHandler from "express-async-handler";
+import { getOrderComparisonService } from "./analytics.order-comparison.js";
+import { getLowestProductsService } from "./analytics.lowest-products.js";
+import { getHighestProductsService } from "./analytics.highest-products.js";
 import {
   getOrdersOverviewService,
   getTopProductsService,
@@ -29,6 +32,12 @@ function buildAppliedFilters({ from, to, warehouse, location } = {}) {
 
 // ─── 1. Orders Overview ──────────────────────────────────────────────────────
 
+export const getOrderComparison = asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const data = await getOrderComparisonService(req.query);
+  res.status(200).json({ data });
+});
+
 export const getOrdersOverview = asyncHandler(async (req, res) => {
   const { from, to, warehouse } = req.query;
 
@@ -51,6 +60,18 @@ export const getTopProducts = asyncHandler(async (req, res) => {
     appliedFilters: buildAppliedFilters({ from, to, warehouse }),
     data,
   });
+});
+
+export const getLowestProducts = asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const data = await getLowestProductsService(req.query);
+  res.status(200).json({ data });
+});
+
+export const getHighestProducts = asyncHandler(async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const data = await getHighestProductsService(req.query);
+  res.status(200).json({ data });
 });
 
 // ─── 3. Services Overview ────────────────────────────────────────────────────

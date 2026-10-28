@@ -1,0 +1,118 @@
+{
+  "summaryResponse": {
+    "data": {
+      "status": "summary",
+      "cartId": "444444444444444444444444",
+      "warehouseId": "222222222222222222222222",
+      "currency": "EGP",
+      "dataMode": "estimate",
+      "requiresCheckoutRefresh": true,
+      "couponState": "checkout_managed",
+      "items": [
+        {
+          "id": "555555555555555555555555",
+          "productId": "333333333333333333333333",
+          "productType": "SIMPLE",
+          "productName": "Toy",
+          "productImageUrl": null,
+          "variantId": null,
+          "variantOptions": [],
+          "quantity": 3,
+          "baseEffectivePrice": 100,
+          "itemPrice": 100,
+          "promotion": null,
+          "promotionDiscountedPrice": null,
+          "lineTotal": 300
+        }
+      ],
+      "removedItems": [],
+      "cartChanged": false,
+      "addressComplete": true,
+      "isPrimeLocation": false,
+      "pricing": {
+        "subtotal": 300,
+        "shippingFee": 50,
+        "discountAmount": 0,
+        "shippingDiscount": 0,
+        "totalDiscount": 0,
+        "total": 350,
+        "walletBalance": 30,
+        "walletUsed": 30,
+        "finalTotal": 320,
+        "loyaltyPoints": 300
+      },
+      "action": {
+        "type": "open_checkout",
+        "cartId": "444444444444444444444444",
+        "warehouseId": "222222222222222222222222"
+      }
+    }
+  },
+  "needsAddressResponse": {
+    "data": {
+      "status": "needs_address",
+      "cartId": "444444444444444444444444",
+      "warehouseId": "222222222222222222222222",
+      "currency": "EGP",
+      "dataMode": "estimate",
+      "requiresCheckoutRefresh": true,
+      "couponState": "checkout_managed",
+      "items": [
+        {
+          "id": "555555555555555555555555",
+          "productId": "333333333333333333333333",
+          "productType": "SIMPLE",
+          "productName": "Toy",
+          "productImageUrl": null,
+          "variantId": null,
+          "variantOptions": [],
+          "quantity": 3,
+          "baseEffectivePrice": 100,
+          "itemPrice": 100,
+          "promotion": null,
+          "promotionDiscountedPrice": null,
+          "lineTotal": 300
+        }
+      ],
+      "removedItems": [],
+      "cartChanged": false,
+      "addressComplete": false,
+      "isPrimeLocation": null,
+      "pricing": {
+        "subtotal": 300,
+        "shippingFee": null,
+        "discountAmount": 0,
+        "shippingDiscount": 0,
+        "totalDiscount": 0,
+        "total": null,
+        "walletBalance": 30,
+        "walletUsed": 30,
+        "finalTotal": null,
+        "loyaltyPoints": 300
+      },
+      "action": {
+        "type": "open_checkout",
+        "cartId": "444444444444444444444444",
+        "warehouseId": "222222222222222222222222"
+      }
+    }
+  },
+  "missingCartResponse": {
+    "data": {
+      "status": "missing_cart",
+      "cartId": null,
+      "warehouseId": "222222222222222222222222",
+      "currency": "EGP",
+      "dataMode": "estimate",
+      "requiresCheckoutRefresh": true,
+      "couponState": "checkout_managed",
+      "items": [],
+      "removedItems": [],
+      "cartChanged": false,
+      "addressComplete": false,
+      "isPrimeLocation": null,
+      "pricing": null,
+      "action": null
+    }
+  }
+}

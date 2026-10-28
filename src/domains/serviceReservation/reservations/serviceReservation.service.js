@@ -160,7 +160,7 @@ function computeAgeYears(birthDate) {
   return Math.max(years, 0);
 }
 
-async function resolvePetSnapshot({ userId, petId, payload, lang }) {
+export async function resolvePetSnapshot({ userId, petId, payload, lang, session }) {
   const { ownerName, ownerPhone, petType, petName, age, gender, comment } =
     payload;
 
@@ -176,7 +176,8 @@ async function resolvePetSnapshot({ userId, petId, payload, lang }) {
   };
 
   if (userId && (!snapshot.ownerName || !snapshot.ownerPhone)) {
-    const user = await UserModel.findById(userId).select("name phone").lean();
+    const query = UserModel.findById(userId).select("name phone");
+    const user = await (session ? query.session(session) : query).lean();
     if (user) {
       snapshot.ownerName = snapshot.ownerName || user.name || null;
       snapshot.ownerPhone = snapshot.ownerPhone || user.phone || null;
@@ -188,9 +189,9 @@ async function resolvePetSnapshot({ userId, petId, payload, lang }) {
       throw new ApiError("petId is only allowed for logged-in users", 400);
     }
 
-    const pet = await PetModel.findOne({ _id: petId, petOwner: userId })
-      .select("_id name type gender birthDate")
-      .lean();
+    const query = PetModel.findOne({ _id: petId, petOwner: userId })
+      .select("_id name type gender birthDate");
+    const pet = await (session ? query.session(session) : query).lean();
 
     if (!pet) {
       throw new ApiError("Pet not found for this user", 404);
@@ -298,7 +299,7 @@ async function buildReservationDto(reservation, location, lang) {
   };
 }
 
-function assertWithinBookingWindowOrThrow(cairoDateStart, lang = "en") {
+export function assertWithinBookingWindowOrThrow(cairoDateStart, lang = "en") {
   const now = getNowCairo().startOf("day");
   const diffDays = cairoDateStart.diff(now, "days").days;
 

@@ -1,0 +1,141 @@
+{
+  "info": {
+    "name": "Petyard assistant booking chat",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Portable local examples only. Requests default skipped. Do not run without explicit target/model-spend approval. Full contract: AI_ASSISTANT_BOOKING_CHAT_CONTRACT.md. This collection was not executed or published."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "allowBookingChatRequests",
+      "value": "false"
+    },
+    {
+      "key": "bookingChatMessageKey",
+      "value": ""
+    },
+    {
+      "key": "bookingChatRunId",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (String(pm.variables.get('allowBookingChatRequests')) !== 'true' || !pm.variables.get('accessToken') || !pm.variables.get('bookingChatMessageKey')) pm.execution.skipRequest();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Ask for booking services - no reservation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Accepted or replay', () => pm.expect(pm.response.code).to.be.oneOf([200,202]));",
+              "const d=pm.response.json().data; if(d.run && d.run.id) pm.collectionVariables.set('bookingChatRunId',d.run.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{bookingChatMessageKey}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/assistant/messages",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"Show me clinic services\",\n  \"bookingContext\": {\n    \"location\": {\n      \"governorateCode\": \"alexandria\",\n      \"areaCode\": \"smouha\"\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Authenticated customer message with current raw app selection. Explicitly authorized execution may consume a model allowance and booking-read admission. Never execute without authorization. No proposal/booking is created by discovery. Reuse the original message key for network recovery."
+      }
+    },
+    {
+      "name": "Read the same owned chat run and saved service card",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.variables.get('bookingChatRunId')) pm.execution.skipRequest();"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Owned result', () => pm.response.to.have.status(200));",
+              "if(pm.response.json().data.message?.booking) pm.test('No slot held', () => pm.expect(pm.response.json().data.message.booking.slotReserved).to.eql(false));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/assistant/runs/{{bookingChatRunId}}",
+        "description": "Fetch the original run, not a new message. A saved card is a historical catalog snapshot. Use current metadata and fresh location/review before any user confirmation."
+      },
+      "response": [
+        {
+          "name": "Fictional completed response excerpt",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"data\": {\n    \"run\": {\n      \"id\": \"777777777777777777777777\",\n      \"status\": \"completed\",\n      \"responseMessageId\": \"666666666666666666666666\"\n    },\n    \"message\": {\n      \"id\": \"666666666666666666666666\",\n      \"runId\": \"777777777777777777777777\",\n      \"sequence\": 2,\n      \"role\": \"assistant\",\n      \"text\": \"These are Petyard's catalog services and Alexandria branches. Select the service, branch, time and pet, then review the details and prices before confirming yourself. This list does not confirm appointment availability; no booking has been made.\",\n      \"subjectId\": null,\n      \"createdAt\": \"2026-10-22T09:00:00.000Z\",\n      \"expiresAt\": \"2026-10-29T09:00:00.000Z\",\n      \"booking\": {\n        \"status\": \"ready\",\n        \"reason\": null,\n        \"generatedAt\": \"2026-10-22T09:00:00.000Z\",\n        \"dataMode\": \"catalog_snapshot\",\n        \"estimateOnly\": true,\n        \"slotReserved\": false,\n        \"requiresRefreshBeforeConfirmation\": true,\n        \"requiresExplicitConfirmation\": true,\n        \"services\": [\n          {\n            \"type\": \"CLINIC\",\n            \"name\": \"Clinic\",\n            \"options\": [\n              {\n                \"key\": \"checkup\",\n                \"name\": \"Check Up\",\n                \"price\": 75,\n                \"currency\": \"EGP\"\n              }\n            ]\n          }\n        ],\n        \"locations\": [\n          {\n            \"id\": \"222222222222222222222222\",\n            \"name\": \"Example branch\",\n            \"city\": \"Alexandria\",\n            \"slug\": \"example\",\n            \"timezone\": \"Africa/Cairo\"\n          }\n        ],\n        \"action\": {\n          \"type\": \"review_booking_options\",\n          \"requiresFreshLocation\": true\n        }\n      }\n    }\n  }\n}",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/assistant/runs/{{bookingChatRunId}}",
+            "description": "Fetch the original run, not a new message. A saved card is a historical catalog snapshot. Use current metadata and fresh location/review before any user confirmation."
+          }
+        }
+      ]
+    }
+  ]
+}

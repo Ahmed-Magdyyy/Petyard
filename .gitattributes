@@ -1,0 +1,2 @@
+# Preserve PDF test fixtures byte-for-byte across Windows and Linux checkouts.
+*.pdf binary

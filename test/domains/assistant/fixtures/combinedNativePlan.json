@@ -1,0 +1,423 @@
+{
+  "host": "magdy.pbupj.mongodb.net",
+  "database": "ai_test_aaaaaaaa_111111111111",
+  "run": "11111111-1111-4111-8111-111111111111",
+  "optIn": "one-owned-combined-assistant-native-run",
+  "collections": [
+    "assistanttestownership",
+    "users",
+    "pets",
+    "warehouses",
+    "products",
+    "brands",
+    "categories",
+    "subcategories",
+    "orders",
+    "manualbundles",
+    "carts",
+    "collections",
+    "loyaltysettings",
+    "assistantchats",
+    "assistantmessages",
+    "assistantruns",
+    "assistantaccounts",
+    "assistantmemories",
+    "assistantdietarywarnings",
+    "assistantbudgets",
+    "assistantevents",
+    "notificationoutboxes",
+    "assistantadminchats",
+    "assistantadminmessages",
+    "assistantcartproposals",
+    "assistantcartreceipts",
+    "assistantbookingreceipts"
+  ],
+  "caseCount": 8,
+  "maxInsertAttempts": 256,
+  "maxFakeCalls": 4,
+  "indexes": {
+    "assistantchats": [
+      {
+        "key": {
+          "owner": 1
+        },
+        "name": "owner_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      }
+    ],
+    "assistantmessages": [
+      {
+        "key": {
+          "chat": 1,
+          "sequence": 1
+        },
+        "name": "chat_1_sequence_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "owner": 1,
+          "sequence": -1
+        },
+        "name": "owner_1_sequence_-1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "run": 1,
+          "role": 1
+        },
+        "name": "run_1_role_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "expiresAt_1",
+        "unique": false,
+        "expireAfterSeconds": 0
+      }
+    ],
+    "assistantruns": [
+      {
+        "key": {
+          "owner": 1,
+          "key": 1
+        },
+        "name": "owner_1_key_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "status": 1,
+          "createdAt": 1
+        },
+        "name": "status_1_createdAt_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "status": 1,
+          "dispatchDeadline": 1
+        },
+        "name": "status_1_dispatchDeadline_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "createdAt": 1
+        },
+        "name": "createdAt_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "attempts.dispatchedAt": 1
+        },
+        "name": "attempts.dispatchedAt_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "expiresAt_1",
+        "unique": false,
+        "expireAfterSeconds": 0
+      }
+    ],
+    "assistantaccounts": [
+      {
+        "key": {
+          "owner": 1
+        },
+        "name": "owner_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      }
+    ],
+    "assistantmemories": [
+      {
+        "key": {
+          "owner": 1,
+          "subjectId": 1,
+          "key": 1
+        },
+        "name": "owner_1_subjectId_1_key_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "owner": 1,
+          "state": 1,
+          "updatedAt": -1
+        },
+        "name": "owner_1_state_1_updatedAt_-1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "expiresAt_1",
+        "unique": false,
+        "expireAfterSeconds": 0
+      }
+    ],
+    "assistantdietarywarnings": [
+      {
+        "key": {
+          "owner": 1,
+          "subjectId": 1,
+          "sourceMessage": 1
+        },
+        "name": "owner_1_subjectId_1_sourceMessage_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "owner": 1,
+          "subjectId": 1,
+          "state": 1,
+          "_id": -1
+        },
+        "name": "owner_1_subjectId_1_state_1__id_-1",
+        "unique": false,
+        "expireAfterSeconds": null
+      }
+    ],
+    "assistantbudgets": [],
+    "assistantevents": [
+      {
+        "key": {
+          "owner": 1,
+          "createdAt": -1
+        },
+        "name": "owner_1_createdAt_-1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "owner": 1,
+          "type": 1,
+          "_id": -1
+        },
+        "name": "owner_1_type_1__id_-1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "type": 1,
+          "createdAt": -1,
+          "owner": 1
+        },
+        "name": "type_1_createdAt_-1_owner_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "expiresAt_1",
+        "unique": false,
+        "expireAfterSeconds": 0
+      }
+    ],
+    "assistantadminchats": [
+      {
+        "key": {
+          "owner": 1
+        },
+        "name": "owner_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      }
+    ],
+    "assistantadminmessages": [
+      {
+        "key": {
+          "chat": 1,
+          "sequence": 1
+        },
+        "name": "chat_1_sequence_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "owner": 1,
+          "sequence": -1
+        },
+        "name": "owner_1_sequence_-1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "run": 1,
+          "role": 1
+        },
+        "name": "run_1_role_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "expiresAt_1",
+        "unique": false,
+        "expireAfterSeconds": 0
+      }
+    ],
+    "notificationoutboxes": [
+      {
+        "key": {
+          "dedupeKey": 1
+        },
+        "name": "dedupeKey_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "recipientUser": 1
+        },
+        "name": "recipientUser_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "recipientGuestId": 1
+        },
+        "name": "recipientGuestId_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "status": 1
+        },
+        "name": "status_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "nextAttemptAt": 1
+        },
+        "name": "nextAttemptAt_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "leaseExpiresAt": 1
+        },
+        "name": "leaseExpiresAt_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "status": 1,
+          "nextAttemptAt": 1
+        },
+        "name": "status_1_nextAttemptAt_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "status": 1,
+          "leaseExpiresAt": 1
+        },
+        "name": "status_1_leaseExpiresAt_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "recipientUser": 1,
+          "createdAt": -1
+        },
+        "name": "recipientUser_1_createdAt_-1",
+        "unique": false,
+        "expireAfterSeconds": null
+      },
+      {
+        "key": {
+          "recipientGuestId": 1,
+          "createdAt": -1
+        },
+        "name": "recipientGuestId_1_createdAt_-1",
+        "unique": false,
+        "expireAfterSeconds": null
+      }
+    ],
+    "assistantcartproposals": [
+      {
+        "key": {
+          "owner": 1,
+          "key": 1
+        },
+        "name": "owner_1_key_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      }
+    ],
+    "assistantcartreceipts": [],
+    "assistantbookingreceipts": [
+      {
+        "key": {
+          "notificationPending": 1,
+          "notificationAttemptedAt": 1,
+          "recordedAt": 1,
+          "_id": 1
+        },
+        "name": "notificationPending_1_notificationAttemptedAt_1_recordedAt_1__id_1",
+        "unique": false,
+        "expireAfterSeconds": null
+      }
+    ],
+    "manualbundles": [
+      {
+        "key": {
+          "origin": 1,
+          "status": 1,
+          "_id": -1
+        },
+        "name": "manual_bundle_catalog_v1",
+        "unique": false,
+        "expireAfterSeconds": null
+      }
+    ],
+    "carts": [
+      {
+        "key": {
+          "user": 1
+        },
+        "name": "user_1",
+        "unique": true,
+        "expireAfterSeconds": null
+      }
+    ]
+  }
+}

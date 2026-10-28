@@ -1,0 +1,159 @@
+{
+  "info": {
+    "name": "Petyard - Assistant embedding charge review",
+    "description": "Local contract template; not executed or published. All requests skip by default. SuperAdmin-only review of saved financial evidence. Read AI_ASSISTANT_EMBEDDING_CONTRACT.md. charge_reserved consumes the saved microUSD allowance; it is not a confirmed provider invoice or customer payment. No paid retry, source activation or chat unlock.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:3000"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "allowEmbeddingReviewRequests",
+      "value": "false"
+    },
+    {
+      "key": "reviewBatchId",
+      "value": ""
+    },
+    {
+      "key": "reviewReason",
+      "value": ""
+    },
+    {
+      "key": "confirmEmbeddingReview",
+      "value": "false"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.variables.get('allowEmbeddingReviewRequests') !== 'true' || !String(pm.variables.get('adminToken') || '').trim()) { pm.execution.skipRequest(); }"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Private response is not cached', function () { pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'); });"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "List unresolved receipts",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/assistant/admin/embedding-batches?limit=20",
+        "description": "Only reserved dispatching/uncertain receipts, newest ObjectId first. Copy an intentionally chosen id to reviewBatchId; no automatic selection. For the next page add before=<nextBefore>. Listed active requests can have canReconcile=false."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Queue is bounded and includes its cursor', function () { pm.response.to.have.status(200); const data = pm.response.json().data; pm.expect(data.batches).to.be.an('array'); pm.expect(data.batches.length).to.be.at.most(20); pm.expect(data).to.have.property('nextBefore'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Review selected saved receipt",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/assistant/admin/embedding-batches/{{reviewBatchId}}",
+        "description": "Use the queue's id unchanged. Inspect kind/owner, providerRequestId, state and reservedMicroUsd. Divide microUSD by 1,000,000 to display USD; this is never EGP. Closing an uncertain charge keeps its full reservation as a conservative expense, without changing source approval or customer chat."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!/^[a-f0-9]{24}$/i.test(String(pm.variables.get('reviewBatchId') || ''))) { pm.execution.skipRequest(); }"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Receipt identity and eligibility are explicit', function () { pm.response.to.have.status(200); const row = pm.response.json().data; pm.expect(row.id).to.eql(String(pm.variables.get('reviewBatchId')).toLowerCase()); pm.expect(row.canReconcile).to.be.a('boolean'); pm.expect(row.reservedMicroUsd).to.be.a('number'); });",
+              "if (pm.response.code === 200) { const row = pm.response.json().data; pm.collectionVariables.set('lastReviewedBatchId', row.id); pm.collectionVariables.set('lastReviewCanReconcile', String(row.canReconcile)); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Close the reviewed unknown charge",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/v1/assistant/admin/embedding-batches/{{reviewBatchId}}/reconcile",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"resolution\": \"charge_reserved\",\n  \"reason\": {{reviewReasonJson}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Financial mutation. GET this receipt first; review the reserved amount and enter reviewReason. Then explicitly set the COLLECTION variable confirmEmbeddingReview=true. The script resets it before sending; environment overrides cannot confirm. Server rechecks state/authority. After timeout GET the same receipt: charged_reservation with reconciliation records success; reserved stays unresolved. Repeating that same closed receipt is idempotent and preserves the first actor/reason. No Idempotency-Key header is required. Never select another receipt to recover a lost response."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const approved = pm.collectionVariables.get('confirmEmbeddingReview') === 'true'; pm.collectionVariables.set('confirmEmbeddingReview', 'false');",
+              "const id = String(pm.variables.get('reviewBatchId') || '').toLowerCase(), reason = String(pm.variables.get('reviewReason') || '');",
+              "if (!approved || pm.collectionVariables.get('lastReviewedBatchId') !== id || pm.collectionVariables.get('lastReviewCanReconcile') !== 'true' || !reason.trim() || reason.length > 500 || reason.includes(String.fromCharCode(0))) { pm.execution.skipRequest(); } else { pm.variables.set('reviewReasonJson', JSON.stringify(reason)); }"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Closure is audited and no longer eligible', function () { pm.response.to.have.status(200); const data = pm.response.json().data; pm.expect(data.duplicate).to.be.a('boolean'); pm.expect(data.batch.accounting).to.eql('charged_reservation'); pm.expect(data.batch.status).to.eql('failed'); pm.expect(data.batch.canReconcile).to.eql(false); pm.expect(data.batch.chargedMicroUsd).to.eql(data.batch.reservedMicroUsd); pm.expect(data.batch.reconciliation.resolution).to.eql('charge_reserved'); });",
+              "if (pm.response.code === 200) { pm.collectionVariables.set('lastReviewCanReconcile', 'false'); }"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

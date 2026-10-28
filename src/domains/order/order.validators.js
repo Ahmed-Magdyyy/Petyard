@@ -7,6 +7,10 @@ import {
 import { getInstapayScreenshotFiles } from "./order.instapay.js";
 
 export const createOrderForUserValidator = [
+  // Reject the retired request explicitly; ignoring it could place an ordinary order by mistake.
+  body("bundleCheckout")
+    .not().exists()
+    .withMessage("Bundle checkout is unavailable while its integration is being revised"),
   body("couponCode")
     .optional({ nullable: true })
     .isString()

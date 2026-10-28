@@ -6,14 +6,71 @@ import { validateAndApplyCoupon } from "../coupon/coupon.application.js";
 import { ProductModel } from "../product/product.model.js";
 import { UserModel } from "../user/user.model.js";
 import { calculateLoyaltyPointsForOrder } from "../loyalty/loyalty.service.js";
-import { FREE_SHIPPING_THRESHOLD } from "../../shared/constants/enums.js";
 import { isPrimeLocation as qualifiesForPrime, selectShippingPrice } from "../warehouse/warehouse.delivery.js";
+import { calculateCheckoutShipping, applyWalletToMerchandise } from "./checkout.calculations.js";
+import { assertOrdinaryCart } from "../cart/cart.bundle-compatibility.js";
+
+const hasSavedBundles = cart => cart?.bundles !== undefined && (!Array.isArray(cart.bundles) || cart.bundles.length > 0);
+function checkoutWarehouse(cart, userId, selectedWarehouseId) {
+  if (!hasSavedBundles(cart)) return cart.warehouse;
+  if (!userId || process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(cart);
+  if (typeof selectedWarehouseId !== "string" || !/^[a-f\d]{24}$/i.test(selectedWarehouseId)) {
+    throw new ApiError("The current selected warehouseId is required for bundle checkout pricing", 400);
+  }
+  return selectedWarehouseId;
+}
+function requireCurrentBundlePricing(cart) {
+  if (cart.bundles?.length && cart.pricingStatus !== "ready") {
+    throw new ApiError("Cart contents or the selected warehouse changed. Refresh the cart before checkout.", 409);
+  }
+}
+
+export function validateCheckoutDeliveryAddress(addr, lang = "en") {
+  if (!addr) {
+    throw new ApiError(
+      lang === "en"
+        ? "Delivery address is not set for this cart"
+        : "لم يتم تعيين عنوان التوصيل لهذا السلة",
+      400,
+    );
+  }
+  const requiredFields = [
+    "name",
+    "governorate",
+    "phone",
+    "building",
+    "floor",
+    "apartment",
+    "details",
+  ];
+  const missingFields = requiredFields.filter((f) => !addr[f]);
+  if (missingFields.length > 0) {
+    throw new ApiError(
+      lang === "en"
+        ? `Delivery address is missing required fields: ${missingFields.join(", ")}`
+        : `عنوان التوصيل يفتقد الحقول المطلوبة: ${missingFields.join(", ")}`,
+      400,
+    );
+  }
+  if (
+    !addr.location ||
+    typeof addr.location.lat !== "number" ||
+    typeof addr.location.lng !== "number"
+  ) {
+    throw new ApiError(
+      lang === "en"
+        ? "Delivery address is missing location (lat, lng)"
+        : "عنوان التوصيل يفتقد الموقع",
+      400,
+    );
+  }
+}
 
 /**
  * Build the structures that validateAndApplyCoupon needs from cart items.
  * Fetches product brands in a single query.
  */
-async function buildCouponContext(items) {
+export async function buildCouponContext(items, { session } = {}) {
   const productIds = [
     ...new Set(
       items
@@ -22,9 +79,10 @@ async function buildCouponContext(items) {
     ),
   ];
 
-  const products = await ProductModel.find({ _id: { $in: productIds } })
-    .select("_id brand price discountedPrice variants")
-    .lean();
+  let query = ProductModel.find({ _id: { $in: productIds } })
+    .select("_id brand price discountedPrice variants");
+  if (session) query = query.session(session);
+  const products = await query.lean();
 
   const productBrandMap = new Map(
     products.map((p) => [String(p._id), p.brand ? String(p.brand) : null]),
@@ -90,7 +148,7 @@ async function buildCouponContext(items) {
  * Build coupon summary object for API response.
  * Shape is identical to the old inline construction.
  */
-function buildCouponSummary(couponDoc) {
+export function buildCouponSummary(couponDoc) {
   return {
     id: couponDoc._id,
     code: couponDoc.code,
@@ -119,6 +177,7 @@ export async function applyCouponAtCheckoutService({
   userId,
   guestId,
   couponCode,
+  warehouseId: selectedWarehouseId,
   lang = "en",
 }) {
   if (!couponCode || typeof couponCode !== "string" || !couponCode.trim()) {
@@ -134,7 +193,7 @@ export async function applyCouponAtCheckoutService({
 
   const filter = userId ? { user: userId } : { guestId };
 
-  const baseCart = await findCart(filter).select("_id warehouse");
+  const baseCart = await findCart(filter).select("_id warehouse bundles");
 
   if (!baseCart) {
     throw new ApiError("Cart not found", 404);
@@ -144,6 +203,7 @@ export async function applyCouponAtCheckoutService({
   if (!warehouseId) {
     throw new ApiError("Cart warehouse is not set", 400);
   }
+  warehouseId = checkoutWarehouse(baseCart, userId, selectedWarehouseId);
 
   const cart = await getCartService({
     userId: userId || null,
@@ -153,9 +213,10 @@ export async function applyCouponAtCheckoutService({
   });
 
   warehouseId = cart.warehouseId;
+  requireCurrentBundlePricing(cart);
 
   const items = Array.isArray(cart.items) ? cart.items : [];
-  if (!items.length) {
+  if (!items.length && !cart.bundles?.length) {
     throw new ApiError("Cart is empty", 400);
   }
 
@@ -182,8 +243,7 @@ export async function applyCouponAtCheckoutService({
   const rawShipping = selectShippingPrice(warehouse, isPrimeLocation);
   const baseShippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
-  // Free shipping for orders with items subtotal >= threshold
-  const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
+  const shippingFee = calculateCheckoutShipping(subtotal, baseShippingFee);
 
   // Build coupon context (product brands + cart items with promo flags)
   const { cartItems, productBrandMap } = await buildCouponContext(items);
@@ -206,6 +266,7 @@ export async function applyCouponAtCheckoutService({
     warehouseId,
     currency: cart.currency || "EGP",
     coupon: couponSummary,
+    ...(cart.bundles?.length ? { checkoutSupported: cart.checkoutSupported === true } : {}),
     pricing: {
       subtotal,
       shippingBefore: shippingFee,
@@ -223,6 +284,7 @@ export async function getCheckoutSummaryService({
   userId,
   guestId,
   couponCode,
+  warehouseId: selectedWarehouseId,
   lang = "en",
 }) {
   if (!userId && !guestId) {
@@ -231,7 +293,7 @@ export async function getCheckoutSummaryService({
 
   const identityFilter = userId ? { user: userId } : { guestId };
 
-  const baseCart = await findCart(identityFilter).select("_id warehouse items");
+  const baseCart = await findCart(identityFilter).select("_id warehouse items bundles");
 
   if (!baseCart) {
     throw new ApiError("Cart not found", 404);
@@ -241,11 +303,11 @@ export async function getCheckoutSummaryService({
     throw new ApiError("Cart warehouse is not set", 400);
   }
 
-  if (baseCart.items.length === 0) {
+  if (baseCart.items.length === 0 && !hasSavedBundles(baseCart)) {
     throw new ApiError(lang === "en" ? "Cart is empty" : "السلة فارغة", 400);
   }
 
-  let warehouseId = baseCart.warehouse;
+  let warehouseId = checkoutWarehouse(baseCart, userId, selectedWarehouseId);
 
   const cartResponse = await getCartService({
     userId: userId || null,
@@ -255,6 +317,7 @@ export async function getCheckoutSummaryService({
   });
 
   warehouseId = cartResponse.warehouseId;
+  requireCurrentBundlePricing(cartResponse);
 
   const subtotal =
     typeof cartResponse.totalCartPrice === "number" &&
@@ -280,8 +343,7 @@ export async function getCheckoutSummaryService({
   const rawShipping = selectShippingPrice(warehouse, isPrimeLocation);
   const baseShippingFee =
     typeof rawShipping === "number" && rawShipping >= 0 ? rawShipping : 0;
-  // Free shipping for orders with items subtotal >= threshold
-  const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : baseShippingFee;
+  const shippingFee = calculateCheckoutShipping(subtotal, baseShippingFee);
 
   const trimmedCode =
     typeof couponCode === "string" && couponCode.trim()
@@ -346,13 +408,10 @@ export async function getCheckoutSummaryService({
     ) {
       walletBalance = user.walletBalance;
 
-      // Wallet applies only to items after discount (not shipping)
-      walletUsed = Math.min(walletBalance, netSubtotal);
-
-      // Final total = (netSubtotal - walletUsed) + shipping
-      const remainingSubtotal = netSubtotal - walletUsed;
+      const wallet = applyWalletToMerchandise(netSubtotal, walletBalance);
+      walletUsed = wallet.walletUsed;
       finalTotal =
-        remainingSubtotal + (pricing.shippingFee - pricing.shippingDiscount);
+        wallet.remainingSubtotal + (pricing.shippingFee - pricing.shippingDiscount);
     }
 
     // Calculate estimated loyalty points (awarded on delivery)
@@ -362,44 +421,7 @@ export async function getCheckoutSummaryService({
 
   // Validate delivery address completeness before returning summary
   const addr = cartResponse.deliveryAddress;
-  if (!addr) {
-    throw new ApiError(
-      lang === "en"
-        ? "Delivery address is not set for this cart"
-        : "لم يتم تعيين عنوان التوصيل لهذا السلة",
-      400,
-    );
-  }
-  const requiredFields = [
-    "name",
-    "governorate",
-    "phone",
-    "building",
-    "floor",
-    "apartment",
-    "details",
-  ];
-  const missingFields = requiredFields.filter((f) => !addr[f]);
-  if (missingFields.length > 0) {
-    throw new ApiError(
-      lang === "en"
-        ? `Delivery address is missing required fields: ${missingFields.join(", ")}`
-        : `عنوان التوصيل يفتقد الحقول المطلوبة: ${missingFields.join(", ")}`,
-      400,
-    );
-  }
-  if (
-    !addr.location ||
-    typeof addr.location.lat !== "number" ||
-    typeof addr.location.lng !== "number"
-  ) {
-    throw new ApiError(
-      lang === "en"
-        ? "Delivery address is missing location (lat, lng)"
-        : "عنوان التوصيل يفتقد الموقع",
-      400,
-    );
-  }
+  validateCheckoutDeliveryAddress(addr, lang);
 
   return {
     cartId: cartResponse.id,
@@ -408,6 +430,7 @@ export async function getCheckoutSummaryService({
     currency: cartResponse.currency || "EGP",
     deliveryAddress: addr,
     items: cartResponse.items,
+    ...(cartResponse.bundles?.length ? { bundles: cartResponse.bundles, checkoutSupported: cartResponse.checkoutSupported === true } : {}),
     pricing: {
       ...pricing,
       walletBalance,

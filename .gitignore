@@ -37,6 +37,11 @@ exports/
 scripts/
 scripts/*
 !scripts/
+!scripts/ai-assistant-prototype/
+!scripts/ai-assistant-prototype/*.js
+!scripts/ai-assistant-prototype/*.mjs
+!scripts/ai-assistant-prototype/*.md
+scripts/ai-assistant-prototype/.local/
 !scripts/syncNotificationBroadcastTopics.mjs
 !scripts/checkFcmTopicMigration.mjs
 !scripts/cloudinaryToBunnyCopy.js
@@ -58,3 +63,23 @@ CLOUDINARY_DELIVERY_OPTIMIZATION_IMPLEMENTATION_PLAN.md
 PRODUCT_SUBSTITUTIONS_FRONTEND_INTEGRATION_GUIDE.md
 fe_payment_guide.md
 PRODUCT_CLIENT_EXPORT_API.md
+scripts/
+.scratch/
+postman/
+
+# Local AI assistant plans, approvals, checkpoints and test reports.
+/AI_ASSISTANT_*.md
+
+# Local prototype evaluations and native pilots that require excluded artifacts.
+/test/domains/assistant/catalogIntentEvaluation.test.js
+/test/domains/assistant/catalogPilot.test.js
+/test/domains/assistant/catalogPilotV6.test.js
+/test/domains/assistant/catalogPilotV7.test.js
+/test/domains/assistant/catalogPilotV8.test.js
+/test/domains/assistant/liveEvaluation.test.js
+/test/domains/assistant/providerPrototype.test.js
+/test/domains/assistant/runtimeSemantic.test.js
+/test/domains/assistant/catalogNativePreparation.test.js
+/test/domains/assistant/catalogSemantic.native.mongo.test.js
+/test/domains/assistant/currentReferenceSearch.native.mongo.test.js
+/test/domains/assistant/currentReferenceSearchPreparation.test.js

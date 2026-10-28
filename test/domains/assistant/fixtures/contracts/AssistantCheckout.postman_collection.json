@@ -1,0 +1,213 @@
+{
+  "info": {
+    "name": "Petyard assistant checkout summary",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Authenticated default-off read-only commerce estimate. Requires the current effective warehouse. Uses cart rate admission. No coupon application or ordering. See AI_ASSISTANT_CHECKOUT_CONTRACT.md."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "warehouseId",
+      "value": "222222222222222222222222"
+    },
+    {
+      "key": "language",
+      "value": "en"
+    },
+    {
+      "key": "messageKey",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Read checkout estimate",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/assistant/checkout-summary?warehouseId={{warehouseId}}&language={{language}}",
+        "description": "Supply the current resolve-location effective warehouse, never zoneWarehouse. Unknown shipping/total remain null. Returned action opens existing app checkout/cart; refresh live data there."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"No cache\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"no-store\"));",
+              "pm.test(\"Estimate only\", () => { const d = pm.response.json().data; pm.expect(d.dataMode).to.eql(\"estimate\"); pm.expect(d.requiresCheckoutRefresh).to.eql(true); });"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "summaryResponse",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ],
+          "body": "{\n  \"data\": {\n    \"status\": \"summary\",\n    \"cartId\": \"444444444444444444444444\",\n    \"warehouseId\": \"222222222222222222222222\",\n    \"currency\": \"EGP\",\n    \"dataMode\": \"estimate\",\n    \"requiresCheckoutRefresh\": true,\n    \"couponState\": \"checkout_managed\",\n    \"items\": [\n      {\n        \"id\": \"555555555555555555555555\",\n        \"productId\": \"333333333333333333333333\",\n        \"productType\": \"SIMPLE\",\n        \"productName\": \"Toy\",\n        \"productImageUrl\": null,\n        \"variantId\": null,\n        \"variantOptions\": [],\n        \"quantity\": 3,\n        \"baseEffectivePrice\": 100,\n        \"itemPrice\": 100,\n        \"promotion\": null,\n        \"promotionDiscountedPrice\": null,\n        \"lineTotal\": 300\n      }\n    ],\n    \"removedItems\": [],\n    \"cartChanged\": false,\n    \"addressComplete\": true,\n    \"isPrimeLocation\": false,\n    \"pricing\": {\n      \"subtotal\": 300,\n      \"shippingFee\": 50,\n      \"discountAmount\": 0,\n      \"shippingDiscount\": 0,\n      \"totalDiscount\": 0,\n      \"total\": 350,\n      \"walletBalance\": 30,\n      \"walletUsed\": 30,\n      \"finalTotal\": 320,\n      \"loyaltyPoints\": 300\n    },\n    \"action\": {\n      \"type\": \"open_checkout\",\n      \"cartId\": \"444444444444444444444444\",\n      \"warehouseId\": \"222222222222222222222222\"\n    }\n  }\n}"
+        },
+        {
+          "name": "needsAddressResponse",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ],
+          "body": "{\n  \"data\": {\n    \"status\": \"needs_address\",\n    \"cartId\": \"444444444444444444444444\",\n    \"warehouseId\": \"222222222222222222222222\",\n    \"currency\": \"EGP\",\n    \"dataMode\": \"estimate\",\n    \"requiresCheckoutRefresh\": true,\n    \"couponState\": \"checkout_managed\",\n    \"items\": [\n      {\n        \"id\": \"555555555555555555555555\",\n        \"productId\": \"333333333333333333333333\",\n        \"productType\": \"SIMPLE\",\n        \"productName\": \"Toy\",\n        \"productImageUrl\": null,\n        \"variantId\": null,\n        \"variantOptions\": [],\n        \"quantity\": 3,\n        \"baseEffectivePrice\": 100,\n        \"itemPrice\": 100,\n        \"promotion\": null,\n        \"promotionDiscountedPrice\": null,\n        \"lineTotal\": 300\n      }\n    ],\n    \"removedItems\": [],\n    \"cartChanged\": false,\n    \"addressComplete\": false,\n    \"isPrimeLocation\": null,\n    \"pricing\": {\n      \"subtotal\": 300,\n      \"shippingFee\": null,\n      \"discountAmount\": 0,\n      \"shippingDiscount\": 0,\n      \"totalDiscount\": 0,\n      \"total\": null,\n      \"walletBalance\": 30,\n      \"walletUsed\": 30,\n      \"finalTotal\": null,\n      \"loyaltyPoints\": 300\n    },\n    \"action\": {\n      \"type\": \"open_checkout\",\n      \"cartId\": \"444444444444444444444444\",\n      \"warehouseId\": \"222222222222222222222222\"\n    }\n  }\n}"
+        },
+        {
+          "name": "missingCartResponse",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ],
+          "body": "{\n  \"data\": {\n    \"status\": \"missing_cart\",\n    \"cartId\": null,\n    \"warehouseId\": \"222222222222222222222222\",\n    \"currency\": \"EGP\",\n    \"dataMode\": \"estimate\",\n    \"requiresCheckoutRefresh\": true,\n    \"couponState\": \"checkout_managed\",\n    \"items\": [],\n    \"removedItems\": [],\n    \"cartChanged\": false,\n    \"addressComplete\": false,\n    \"isPrimeLocation\": null,\n    \"pricing\": null,\n    \"action\": null\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Ask checkout estimate in chat (manual opt-in)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{messageKey}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/assistant/messages",
+        "description": "Manual future use only: a running worker may dispatch a billable model call. Leave messageKey blank to prevent dispatch. Use one unique key per logical message; keep it unchanged with the identical body for retries. Requires approved enabled test configuration, authenticated token and effective warehouse. No live execution was performed for this contract.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"Show my checkout estimate\",\n  \"catalogContext\": {\"warehouseId\": \"{{warehouseId}}\", \"language\": \"{{language}}\"}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.variables.get('messageKey')) throw new Error('Set an explicit messageKey only for an approved manual chat request.');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Accepted or replayed', () => pm.expect([200,202]).to.include(pm.response.code));",
+              "if ([200,202].includes(pm.response.code)) pm.collectionVariables.set('runId', pm.response.json().data.run.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Poll retained checkout reply (one request)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/assistant/runs/{{runId}}",
+        "description": "Use the admitted data.run.id. Wait pollAfterMs between manual polls while queued/dispatching; no continuous GET checkout-summary loop. Completed data.message.checkout is optional and historical."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.variables.get('runId')) throw new Error('Supply the admitted runId.');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Owned run returned', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) { const c = pm.response.json().data.message?.checkout; if (c) pm.test('Estimate requires checkout refresh', () => { pm.expect(c.dataMode).to.eql('estimate'); pm.expect(c.requiresCheckoutRefresh).to.eql(true); }); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Read retained checkout history",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/assistant/messages?limit=20",
+        "description": "Existing newest-first history with optional message.checkout. Does not reread cart. Clear local wallet/card data at logout/account switch; compare current area before navigation."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Owned history returned', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

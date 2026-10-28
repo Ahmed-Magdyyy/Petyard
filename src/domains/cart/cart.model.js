@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { bundleCartGroupSchema } from "../bundle/bundle.cart-schema.js";
+import { assertOrdinaryCart, ordinaryCartFilter } from "./cart.bundle-compatibility.js";
 import {
   cartStatusEnum,
   productTypeEnum,
@@ -81,6 +83,14 @@ const cartSchema = new Schema(
       default: [],
     },
 
+    bundles: {
+      type: [bundleCartGroupSchema],
+      default: undefined,
+      validate: rows => rows === undefined || (Array.isArray(rows) &&
+        new Set(rows.map(row => row.id)).size === rows.length &&
+        new Set(rows.map(row => row.bundleId)).size === rows.length),
+    },
+
     totalCartPrice: {
       type: Number,
       required: true,
@@ -153,5 +163,16 @@ const cartSchema = new Schema(
 
 cartSchema.index({ user: 1 });
 cartSchema.index({ status: 1, lastActivityAt: 1 });
+
+// Legacy saves must not prune/reprice groups, even if a bundle writer won after the read.
+cartSchema.pre("save", function () {
+  assertOrdinaryCart(this);
+  if (!this.isNew) this.$where = ordinaryCartFilter(this.$where ?? {});
+});
+for (const operation of ["updateOne", "updateMany", "deleteOne", "deleteMany", "findOneAndUpdate", "findOneAndDelete", "replaceOne", "findOneAndReplace"]) {
+  cartSchema.pre(operation, { query: true, document: false }, function () {
+    this.setQuery(ordinaryCartFilter(this.getFilter()));
+  });
+}
 
 export const CartModel = model("Cart", cartSchema);

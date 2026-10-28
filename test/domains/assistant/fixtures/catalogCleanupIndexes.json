@@ -1,0 +1,584 @@
+{
+  "indexes": {
+    "users": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "email": 1
+        },
+        "name": "email_1",
+        "background": true,
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "role": 1
+        },
+        "name": "role_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "active": 1
+        },
+        "name": "active_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "refreshTokens.expiresAt": 1
+        },
+        "name": "refreshTokens.expiresAt_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "authProviders.provider": 1,
+          "authProviders.providerUserId": 1
+        },
+        "name": "authProviders.provider_1_authProviders.providerUserId_1",
+        "unique": true,
+        "partialFilterExpression": {
+          "authProviders.providerUserId": {
+            "$type": "string"
+          }
+        }
+      },
+      {
+        "v": 2,
+        "key": {
+          "phone": 1
+        },
+        "name": "phone_1",
+        "unique": true,
+        "partialFilterExpression": {
+          "phone": {
+            "$type": "string"
+          }
+        }
+      }
+    ],
+    "assistantaccounts": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1
+        },
+        "name": "owner_1",
+        "unique": true
+      }
+    ],
+    "assistantchats": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1
+        },
+        "name": "owner_1",
+        "unique": true
+      }
+    ],
+    "assistantruns": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1,
+          "key": 1
+        },
+        "name": "owner_1_key_1",
+        "unique": true
+      }
+    ],
+    "assistantmessages": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "chat": 1,
+          "sequence": 1
+        },
+        "name": "chat_1_sequence_1",
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "run": 1,
+          "role": 1
+        },
+        "name": "run_1_role_1",
+        "unique": true
+      }
+    ],
+    "assistantdietarywarnings": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1,
+          "subjectId": 1,
+          "sourceMessage": 1
+        },
+        "name": "owner_1_subjectId_1_sourceMessage_1",
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1,
+          "subjectId": 1,
+          "state": 1,
+          "_id": -1
+        },
+        "name": "owner_1_subjectId_1_state_1__id_-1"
+      }
+    ],
+    "assistantevents": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1,
+          "createdAt": -1
+        },
+        "name": "owner_1_createdAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1,
+          "type": 1,
+          "_id": -1
+        },
+        "name": "owner_1_type_1__id_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "type": 1,
+          "createdAt": -1,
+          "owner": 1
+        },
+        "name": "type_1_createdAt_-1_owner_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "expiresAt_1",
+        "expireAfterSeconds": 0
+      }
+    ],
+    "categories": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "slug": 1
+        },
+        "name": "slug_1",
+        "background": true,
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "position": 1
+        },
+        "name": "position_1"
+      }
+    ],
+    "warehouses": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "boundaryGeometry": "2dsphere"
+        },
+        "name": "boundaryGeometry_2dsphere",
+        "background": true,
+        "2dsphereIndexVersion": 3
+      },
+      {
+        "v": 2,
+        "key": {
+          "moderators": 1
+        },
+        "name": "moderators_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "code": 1
+        },
+        "name": "code_1",
+        "background": true,
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "active": 1
+        },
+        "name": "active_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "governorate": 1,
+          "active": 1
+        },
+        "name": "governorate_1_active_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "isDefault": 1
+        },
+        "name": "isDefault_1",
+        "background": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "location": "2dsphere"
+        },
+        "name": "location_2dsphere",
+        "background": true,
+        "2dsphereIndexVersion": 3
+      }
+    ],
+    "products": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "name_ar": 1
+        },
+        "name": "name_ar_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "tags": 1
+        },
+        "name": "tags_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "slug": 1
+        },
+        "name": "slug_1",
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "type": 1
+        },
+        "name": "type_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "type": 1,
+          "variants.warehouseStocks.warehouse": 1
+        },
+        "name": "type_1_variants.warehouseStocks.warehouse_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "name_en": 1
+        },
+        "name": "name_en_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "category": 1
+        },
+        "name": "category_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "subcategory": 1
+        },
+        "name": "subcategory_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "brand": 1
+        },
+        "name": "brand_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "type": 1,
+          "warehouseStocks.warehouse": 1
+        },
+        "name": "type_1_warehouseStocks.warehouse_1"
+      }
+    ],
+    "subcategories": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "category": 1,
+          "slug": 1
+        },
+        "name": "category_1_slug_1",
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "category": 1
+        },
+        "name": "category_1"
+      }
+    ],
+    "brands": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "name_ar": 1
+        },
+        "name": "name_ar_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "position": 1,
+          "slug": 1
+        },
+        "name": "position_1_slug_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "slug": 1
+        },
+        "name": "slug_1",
+        "background": true,
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "name_en": 1
+        },
+        "name": "name_en_1"
+      }
+    ],
+    "collections": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "promotion.enabled": 1,
+          "promotion.isActive": 1,
+          "promotion.startsAt": 1,
+          "promotion.endsAt": 1
+        },
+        "name": "promotion.enabled_1_promotion.isActive_1_promotion.startsAt_1_promotion.endsAt_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "slug": 1
+        },
+        "name": "slug_1",
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "isVisible": 1
+        },
+        "name": "isVisible_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "isVisible": 1,
+          "position": 1
+        },
+        "name": "isVisible_1_position_1"
+      }
+    ],
+    "pets": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "petOwner": 1
+        },
+        "name": "petOwner_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "petOwner": 1,
+          "isDefault": 1
+        },
+        "name": "petOwner_1_isDefault_1",
+        "unique": true,
+        "partialFilterExpression": {
+          "isDefault": true
+        }
+      },
+      {
+        "v": 2,
+        "key": {
+          "chronic_conditions": 1
+        },
+        "name": "chronic_conditions_1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "temp_health_issues": 1
+        },
+        "name": "temp_health_issues_1"
+      }
+    ],
+    "assistantmemories": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1,
+          "subjectId": 1,
+          "key": 1
+        },
+        "name": "owner_1_subjectId_1_key_1",
+        "unique": true
+      },
+      {
+        "v": 2,
+        "key": {
+          "owner": 1,
+          "state": 1,
+          "updatedAt": -1
+        },
+        "name": "owner_1_state_1_updatedAt_-1"
+      },
+      {
+        "v": 2,
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "expiresAt_1",
+        "expireAfterSeconds": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "source": "catalog-semantic-focused-v4/ar_unsupported_negative_2",
+  "input": "عايز أكل قطط من غير أي مكونات ممكن تعمل حساسية، بس مش عارف المكونات اللي لازم أتجنبها.",
+  "structured": {
+    "reply": "",
+    "scope": "health",
+    "primaryTopic": "nutrition",
+    "languageAssessment": "none",
+    "subjectAction": "keep",
+    "resolvedSubjectId": "pet:222222222222222222222222",
+    "subjectName": "",
+    "subjectNameQuote": "",
+    "subjectSpecies": "",
+    "subjectSpeciesQuote": "",
+    "replyLanguage": "ar",
+    "memoryKey": "none",
+    "memoryValue": "",
+    "memorySubjectId": "",
+    "sourceQuote": "",
+    "dietaryWarningAction": "none",
+    "dietaryWarningSubjectId": "",
+    "dietaryWarningQuote": "",
+    "checkoutSummary": "none",
+    "bookingOptions": {
+      "action": "none",
+      "services": [],
+      "locationId": "",
+      "date": "",
+      "hour24": null,
+      "sourceQuote": ""
+    },
+    "productSearch": {
+      "action": "general",
+      "query": "أكل قطط للحساسية",
+      "minimumPackageWeightGrams": null,
+      "maximumPriceMinor": null,
+      "sourceQuote": "",
+      "options": []
+    }
+  }
+}

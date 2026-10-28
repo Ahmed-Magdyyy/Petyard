@@ -1,0 +1,244 @@
+{
+  "notice": "Fictional field examples only; not a database fixture or approved launch policy.",
+  "prepareRequest": {
+    "sourceMessageId": "111111111111111111111111",
+    "warehouseId": "222222222222222222222222",
+    "productId": "333333333333333333333333",
+    "variantId": null,
+    "quantity": 2,
+    "language": "en"
+  },
+  "prepareResponse": {
+    "data": {
+      "proposal": {
+        "id": "444444444444444444444444",
+        "version": 1,
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "pending",
+        "expiresAt": "2026-10-21T12:01:00.000Z",
+        "quote": {
+          "cartId": null,
+          "warehouseId": "222222222222222222222222",
+          "currency": "EGP",
+          "pricingScope": "items_only",
+          "itemsBefore": [],
+          "itemsAfter": [
+            {
+              "id": "666666666666666666666666",
+              "productId": "333333333333333333333333",
+              "productType": "SIMPLE",
+              "productName": "Toy",
+              "productImageUrl": null,
+              "variantId": null,
+              "variantOptions": [],
+              "quantity": 2,
+              "baseEffectivePrice": 100,
+              "itemPrice": 100,
+              "promotion": null,
+              "promotionDiscountedPrice": null,
+              "lineTotal": 200
+            }
+          ],
+          "itemsSubtotalAfter": 200,
+          "addition": {
+            "productId": "333333333333333333333333",
+            "productType": "SIMPLE",
+            "variantId": null,
+            "quantity": 2,
+            "quantityAfter": 2,
+            "unitPrice": 100
+          }
+        }
+      },
+      "receipt": null,
+      "duplicate": false
+    }
+  },
+  "confirmRequest": {
+    "expectedVersion": 1,
+    "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "confirmResponse": {
+    "data": {
+      "receipt": {
+        "proposalId": "444444444444444444444444",
+        "cartId": "555555555555555555555555",
+        "recordedAt": "2026-10-21T12:00:10.000Z",
+        "result": {
+          "cartId": "555555555555555555555555",
+          "warehouseId": "222222222222222222222222",
+          "currency": "EGP",
+          "pricingScope": "items_only",
+          "itemsBefore": [],
+          "itemsAfter": [
+            {
+              "id": "777777777777777777777777",
+              "productId": "333333333333333333333333",
+              "productType": "SIMPLE",
+              "productName": "Toy",
+              "productImageUrl": null,
+              "variantId": null,
+              "variantOptions": [],
+              "quantity": 2,
+              "baseEffectivePrice": 100,
+              "itemPrice": 100,
+              "promotion": null,
+              "promotionDiscountedPrice": null,
+              "lineTotal": 200
+            }
+          ],
+          "itemsSubtotalAfter": 200,
+          "addition": {
+            "productId": "333333333333333333333333",
+            "productType": "SIMPLE",
+            "variantId": null,
+            "quantity": 2,
+            "quantityAfter": 2,
+            "unitPrice": 100
+          }
+        }
+      },
+      "duplicate": false,
+      "confirmed": true
+    }
+  },
+  "confirmedStatusResponse": {
+    "data": {
+      "proposal": {
+        "id": "444444444444444444444444",
+        "version": 1,
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "confirmed",
+        "expiresAt": "2026-10-21T12:01:00.000Z",
+        "quote": {
+          "cartId": null,
+          "warehouseId": "222222222222222222222222",
+          "currency": "EGP",
+          "pricingScope": "items_only",
+          "itemsBefore": [],
+          "itemsAfter": [
+            {
+              "id": "666666666666666666666666",
+              "productId": "333333333333333333333333",
+              "productType": "SIMPLE",
+              "productName": "Toy",
+              "productImageUrl": null,
+              "variantId": null,
+              "variantOptions": [],
+              "quantity": 2,
+              "baseEffectivePrice": 100,
+              "itemPrice": 100,
+              "promotion": null,
+              "promotionDiscountedPrice": null,
+              "lineTotal": 200
+            }
+          ],
+          "itemsSubtotalAfter": 200,
+          "addition": {
+            "productId": "333333333333333333333333",
+            "productType": "SIMPLE",
+            "variantId": null,
+            "quantity": 2,
+            "quantityAfter": 2,
+            "unitPrice": 100
+          }
+        }
+      },
+      "receipt": {
+        "proposalId": "444444444444444444444444",
+        "cartId": "555555555555555555555555",
+        "recordedAt": "2026-10-21T12:00:10.000Z",
+        "result": {
+          "cartId": "555555555555555555555555",
+          "warehouseId": "222222222222222222222222",
+          "currency": "EGP",
+          "pricingScope": "items_only",
+          "itemsBefore": [],
+          "itemsAfter": [
+            {
+              "id": "777777777777777777777777",
+              "productId": "333333333333333333333333",
+              "productType": "SIMPLE",
+              "productName": "Toy",
+              "productImageUrl": null,
+              "variantId": null,
+              "variantOptions": [],
+              "quantity": 2,
+              "baseEffectivePrice": 100,
+              "itemPrice": 100,
+              "promotion": null,
+              "promotionDiscountedPrice": null,
+              "lineTotal": 200
+            }
+          ],
+          "itemsSubtotalAfter": 200,
+          "addition": {
+            "productId": "333333333333333333333333",
+            "productType": "SIMPLE",
+            "variantId": null,
+            "quantity": 2,
+            "quantityAfter": 2,
+            "unitPrice": 100
+          }
+        }
+      }
+    }
+  },
+  "expiredStatusResponse": {
+    "data": {
+      "proposal": {
+        "id": "444444444444444444444444",
+        "version": 1,
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "expired",
+        "expiresAt": "2026-10-21T12:01:00.000Z",
+        "quote": {
+          "cartId": null,
+          "warehouseId": "222222222222222222222222",
+          "currency": "EGP",
+          "pricingScope": "items_only",
+          "itemsBefore": [],
+          "itemsAfter": [
+            {
+              "id": "666666666666666666666666",
+              "productId": "333333333333333333333333",
+              "productType": "SIMPLE",
+              "productName": "Toy",
+              "productImageUrl": null,
+              "variantId": null,
+              "variantOptions": [],
+              "quantity": 2,
+              "baseEffectivePrice": 100,
+              "itemPrice": 100,
+              "promotion": null,
+              "promotionDiscountedPrice": null,
+              "lineTotal": 200
+            }
+          ],
+          "itemsSubtotalAfter": 200,
+          "addition": {
+            "productId": "333333333333333333333333",
+            "productType": "SIMPLE",
+            "variantId": null,
+            "quantity": 2,
+            "quantityAfter": 2,
+            "unitPrice": 100
+          }
+        }
+      },
+      "receipt": null
+    }
+  },
+  "rateError": {
+    "status": "error",
+    "error": {
+      "code": "cart_request_rate_limit",
+      "message": "Too many cart requests. Wait before checking or submitting again.",
+      "retryAt": "2026-10-21T12:01:00.000Z"
+    },
+    "fallback": {
+      "shopping": true,
+      "booking": true
+    }
+  }
+}

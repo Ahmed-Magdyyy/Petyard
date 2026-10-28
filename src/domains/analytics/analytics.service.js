@@ -16,11 +16,7 @@ import {
   returnStatusEnum,
   cartStatusEnum,
 } from "../../shared/constants/enums.js";
-import {
-  buildFinalFulfilledLineTotalExpression,
-  buildFinalFulfilledLineMatchExpression,
-  buildFinalFulfillmentQuantityExpression,
-} from "../order/order.fulfillment.js";
+import { recordedProductSalesStages } from "./analytics.product-sales.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -93,16 +89,20 @@ function firstOr(result, fallback = {}) {
 
 // ─── 1. Orders Overview ──────────────────────────────────────────────────────
 
-export async function getOrdersOverviewService({ from, to, warehouse }) {
+export async function getOrdersOverviewService({ from, to, warehouse }, { maxTimeMS } = {}) {
   const dateFilter = buildDateFilter(from, to);
   const scopeFilter = buildScopeFilter("warehouse", warehouse);
   const baseMatch = { ...dateFilter, ...scopeFilter };
 
   const revenueStatuses = [orderStatusEnum.CANCELLED, orderStatusEnum.RETURNED];
 
+  const aggregate = (pipeline) => {
+    const query = OrderModel.aggregate(pipeline);
+    return maxTimeMS === undefined ? query : query.option({ maxTimeMS });
+  };
   const [kpis, statusDocs, paymentDocs] = await Promise.all([
     // KPIs — exclude cancelled / returned
-    OrderModel.aggregate([
+    aggregate([
       { $match: { ...baseMatch, status: { $nin: revenueStatuses } } },
       {
         $group: {
@@ -115,13 +115,13 @@ export async function getOrdersOverviewService({ from, to, warehouse }) {
     ]),
 
     // Status breakdown — all statuses count
-    OrderModel.aggregate([
+    aggregate([
       { $match: baseMatch },
       { $group: { _id: "$status", count: { $sum: 1 } } },
     ]),
 
     // Sales by payment method — exclude cancelled / returned
-    OrderModel.aggregate([
+    aggregate([
       { $match: { ...baseMatch, status: { $nin: revenueStatuses } } },
       { $group: { _id: "$paymentMethod", total: { $sum: "$total" } } },
     ]),
@@ -157,29 +157,9 @@ export async function getTopProductsService({
 }) {
   const dateFilter = buildDateFilter(from, to);
   const scopeFilter = buildScopeFilter("warehouse", warehouse);
-  const revenueStatuses = [orderStatusEnum.CANCELLED, orderStatusEnum.RETURNED];
 
   const topProducts = await OrderModel.aggregate([
-    {
-      $match: {
-        ...dateFilter,
-        ...scopeFilter,
-        status: { $nin: revenueStatuses },
-      },
-    },
-    { $unwind: "$items" },
-    { $match: buildFinalFulfilledLineMatchExpression() },
-    {
-      $group: {
-        _id: "$items.product",
-        totalIncome: {
-          $sum: buildFinalFulfilledLineTotalExpression(),
-        },
-        totalQuantitySold: {
-          $sum: buildFinalFulfillmentQuantityExpression(),
-        },
-      },
-    },
+    ...recordedProductSalesStages({ ...dateFilter, ...scopeFilter }),
     { $sort: { totalIncome: -1, totalQuantitySold: -1 } },
     { $limit: Number(limit) },
     {

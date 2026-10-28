@@ -51,3 +51,14 @@ export function egyptTimezoneReplacer(_key, value) {
   }
   return value;
 }
+
+const responseTimestampFields = new Set([
+  "createdAt", "updatedAt", "expiresAt", "resetsAt", "retryAt", "generatedAt",
+  "start", "endExclusive", "observedThroughExclusive", "observedThrough",
+  "dispatchDeadline", "nextAttemptAt", "searchVerifiedAt", "activatedAt", "at",
+]);
+
+// Private assistant JSON must convert timestamps without rewriting literal source/user text.
+export function cairoTimestampReplacer(key, value) {
+  return responseTimestampFields.has(key) ? egyptTimezoneReplacer(key, value) : value;
+}

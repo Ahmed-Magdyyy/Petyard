@@ -10,7 +10,10 @@ import {
 } from "../../shared/constants/enums.js";
 import {
   getOrdersOverview,
+  getOrderComparison,
   getTopProducts,
+  getLowestProducts,
+  getHighestProducts,
   getServicesOverview,
   getStats,
   getSalesChart,
@@ -34,7 +37,10 @@ router.use(
 
 // ─── Order analytics (filters by warehouse) ─────────────────────────────────
 router.get("/orders", ordersOverviewValidator, getOrdersOverview);
+router.get("/orders/comparison", getOrderComparison);
 router.get("/orders/top-products", topProductsValidator, getTopProducts);
+router.get("/orders/lowest-products", getLowestProducts);
+router.get("/orders/highest-products", getHighestProducts);
 
 // ─── Service analytics (filters by location) ────────────────────────────────
 router.get("/services", servicesOverviewValidator, getServicesOverview);

@@ -3,6 +3,7 @@ import { pickLocalizedField } from "../../shared/utils/i18n.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
 import { parseBoundedInt } from "../../shared/utils/env.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
+import { roles } from "../../shared/constants/enums.js";
 
 function normalizeLang(lang) {
   return lang === "ar" ? "ar" : "en";
@@ -26,6 +27,14 @@ function getActorFilter({ userId, guestId }) {
   }
 
   return hasUser ? { user: userId } : { guestId: normalizedGuestId };
+}
+
+function getVisibleActorFilter({ userId, guestId, actorRole }) {
+  const filter = getActorFilter({ userId, guestId });
+  if (!userId || actorRole !== roles.SUPER_ADMIN) {
+    filter.$nor = [{ "source.domain": "assistant", "source.event": "review_candidate" }];
+  }
+  return filter;
 }
 
 function buildNotificationDocument({
@@ -168,12 +177,13 @@ function mapNotificationToResponse(notification, lang) {
 export async function getNotificationsForActorService({
   userId,
   guestId,
+  actorRole,
   lang = "en",
   page = 1,
   limit = 20,
   isRead,
 }) {
-  const filter = getActorFilter({ userId, guestId });
+  const filter = getVisibleActorFilter({ userId, guestId, actorRole });
 
   // Optional filter by read status
   if (isRead === true || isRead === "true") {
@@ -204,9 +214,9 @@ export async function getNotificationsForActorService({
 /**
  * Get unread count for a user
  */
-export async function getUnreadCountForActorService({ userId, guestId }) {
+export async function getUnreadCountForActorService({ userId, guestId, actorRole }) {
   const count = await InAppNotificationModel.countDocuments({
-    ...getActorFilter({ userId, guestId }),
+    ...getVisibleActorFilter({ userId, guestId, actorRole }),
     isRead: false,
   });
 
@@ -219,10 +229,11 @@ export async function getUnreadCountForActorService({ userId, guestId }) {
 export async function markNotificationAsReadForActorService({
   userId,
   guestId,
+  actorRole,
   notificationId,
 }) {
   const notification = await InAppNotificationModel.findOneAndUpdate(
-    { _id: notificationId, ...getActorFilter({ userId, guestId }) },
+    { _id: notificationId, ...getVisibleActorFilter({ userId, guestId, actorRole }) },
     { isRead: true, readAt: new Date() },
     { returnDocument: "after" }
   );
@@ -233,9 +244,9 @@ export async function markNotificationAsReadForActorService({
 /**
  * Mark all notifications as read for a user
  */
-export async function markAllNotificationsAsReadForActorService({ userId, guestId }) {
+export async function markAllNotificationsAsReadForActorService({ userId, guestId, actorRole }) {
   const result = await InAppNotificationModel.updateMany(
-    { ...getActorFilter({ userId, guestId }), isRead: false },
+    { ...getVisibleActorFilter({ userId, guestId, actorRole }), isRead: false },
     { isRead: true, readAt: new Date() }
   );
 
@@ -248,11 +259,12 @@ export async function markAllNotificationsAsReadForActorService({ userId, guestI
 export async function deleteNotificationForActorService({
   userId,
   guestId,
+  actorRole,
   notificationId,
 }) {
   const result = await InAppNotificationModel.deleteOne({
     _id: notificationId,
-    ...getActorFilter({ userId, guestId }),
+    ...getVisibleActorFilter({ userId, guestId, actorRole }),
   });
 
   return { deleted: result.deletedCount > 0 };
@@ -261,14 +273,14 @@ export async function deleteNotificationForActorService({
 // Legacy registered-user exports.
 export const getMyNotificationsService = ({ userId, ...rest }) =>
   getNotificationsForActorService({ userId, ...rest });
-export const getUnreadCountService = (userId) =>
-  getUnreadCountForActorService({ userId });
-export const markNotificationAsReadService = ({ userId, notificationId }) =>
-  markNotificationAsReadForActorService({ userId, notificationId });
-export const markAllNotificationsAsReadService = (userId) =>
-  markAllNotificationsAsReadForActorService({ userId });
-export const deleteNotificationService = ({ userId, notificationId }) =>
-  deleteNotificationForActorService({ userId, notificationId });
+export const getUnreadCountService = (userId, actorRole) =>
+  getUnreadCountForActorService({ userId, actorRole });
+export const markNotificationAsReadService = ({ userId, notificationId, actorRole }) =>
+  markNotificationAsReadForActorService({ userId, notificationId, actorRole });
+export const markAllNotificationsAsReadService = (userId, actorRole) =>
+  markAllNotificationsAsReadForActorService({ userId, actorRole });
+export const deleteNotificationService = ({ userId, notificationId, actorRole }) =>
+  deleteNotificationForActorService({ userId, notificationId, actorRole });
 
 // Guest-specific exports keep every query and mutation owner scoped.
 export const getGuestNotificationsService = ({ guestId, ...rest }) =>

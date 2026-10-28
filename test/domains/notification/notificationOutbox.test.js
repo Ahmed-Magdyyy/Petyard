@@ -154,5 +154,6 @@ test("guest notification mutations are owner-scoped and opaque", async (t) => {
   assert.deepEqual(filter, {
     _id: "507f1f77bcf86cd799439011",
     guestId: "guest-a",
+    $nor: [{ "source.domain": "assistant", "source.event": "review_candidate" }],
   });
 });

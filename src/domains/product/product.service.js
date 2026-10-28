@@ -537,7 +537,7 @@ function computeProductStockForWarehouse(product, warehouseId) {
   return 0;
 }
 
-function buildInStockFilter(warehouseId, productType) {
+export function buildInStockFilter(warehouseId, productType) {
   const stockMatch = warehouseId
     ? {
         warehouse: String(warehouseId),

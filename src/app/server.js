@@ -15,7 +15,7 @@ import hpp from "hpp";
 
 import { globalError } from "../shared/middlewares/errorMiddleware.js";
 import { unmatchedRouteHandler } from "../shared/middlewares/botFilterMiddleware.js";
-import { globalApiLimiter } from "../shared/middlewares/rateLimitMiddleware.js";
+import { createGlobalApiLimiter } from "../shared/middlewares/rateLimitMiddleware.js";
 import { dbConnection } from "../config/database.js";
 import { mountRoutes } from "./routes.js";
 import { i18nMiddleware } from "../shared/middlewares/i18nMiddleware.js";
@@ -32,6 +32,8 @@ import { validateVideosStreamConfiguration } from "../domains/videos/provider/st
 import { bunnyStreamWebhookBody, BUNNY_STREAM_WEBHOOK_PATH } from "../domains/videos/provider/bunnyStreamWebhook.middleware.js";
 import { productBatchBodyParser } from "../domains/product/productBatch.middleware.js";
 import { requestIdMiddleware } from "../shared/middlewares/requestIdMiddleware.js";
+import { assistantBody, assistantAwareApiLimit } from "../domains/assistant/assistant.body.js";
+import { bundleJsonBody } from "../domains/bundle/bundle.routes.js";
 
 validateMediaConfiguration();
 validateVideosStreamConfiguration();
@@ -43,6 +45,8 @@ app.set("json replacer", egyptTimezoneReplacer);
 app.use(requestIdMiddleware);
 app.use(BUNNY_STREAM_WEBHOOK_PATH, bunnyStreamWebhookBody);
 app.use("/api/v1/products/batch", productBatchBodyParser);
+app.use("/api/v1/assistant", ...assistantBody);
+app.use("/api/v1/bundles/admin", bundleJsonBody);
 app.use(express.urlencoded({ extended: false, limit: "5mb" }));
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(__dirname, "uploads")));
@@ -105,7 +109,7 @@ app.use(helmet());
 dbConnection();
 
 // Global API rate limiter (applied before all routes)
-app.use("/api/", globalApiLimiter);
+app.use("/api/", createGlobalApiLimiter(assistantAwareApiLimit));
 
 // Mount Routes
 mountRoutes(app);

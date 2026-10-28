@@ -16,6 +16,10 @@ import {
   mergeGuestCartIntoMyCart,
   listCartsForAdmin,
   setMyCartAddress,
+  addMyCartBundle,
+  updateMyCartBundle,
+  removeMyCartBundle,
+  rebindMyBundleCart,
 } from "./cart.controller.js";
 import {
   warehouseIdParamValidator,
@@ -24,6 +28,10 @@ import {
   updateCartItemQuantityValidator,
   setUserCartAddressValidator,
   setGuestCartAddressValidator,
+  upsertCartBundleValidator,
+  cartBundleIdValidator,
+  updateCartBundleValidator,
+  emptyBundleCartBodyValidator,
 } from "./cart.validators.js";
 
 const router = Router();
@@ -75,6 +83,11 @@ router.get("/admin", listCartsForAdmin);
 router.use("/me", protect);
 
 router.get("/me/:warehouseId", warehouseIdParamValidator, getMyCart);
+
+router.post("/me/:warehouseId/bundles", warehouseIdParamValidator, upsertCartBundleValidator, addMyCartBundle);
+router.patch("/me/:warehouseId/bundles/:groupId", warehouseIdParamValidator, cartBundleIdValidator, updateCartBundleValidator, updateMyCartBundle);
+router.delete("/me/:warehouseId/bundles/:groupId", warehouseIdParamValidator, cartBundleIdValidator, emptyBundleCartBodyValidator, removeMyCartBundle);
+router.post("/me/:warehouseId/rebind", warehouseIdParamValidator, emptyBundleCartBodyValidator, rebindMyBundleCart);
 
 router.patch(
   "/me/address",

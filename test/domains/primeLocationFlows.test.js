@@ -21,6 +21,7 @@ import { createOrderForUserService } from '../../src/domains/order/order.service
 import { UserModel } from '../../src/domains/user/user.model.js';
 import { SavedCardModel } from '../../src/domains/payment/savedCard.model.js';
 import { WalletTransactionModel } from '../../src/domains/wallet/walletTransaction.model.js';
+import { LoyaltySettingsModel } from '../../src/domains/loyalty/loyaltySettings.model.js';
 
 function queryResult(value) {
   const query = {
@@ -263,6 +264,97 @@ test('Prime shipping combines with fixed, percent, and free-shipping coupons', a
   }
 });
 
+test('checkout summary preserves authenticated wallet, coupon and loyalty pricing', async (t) => {
+  const warehouse = makeWarehouse();
+  const userId = new mongoose.Types.ObjectId();
+  const cart = makeCart(warehouse, { userId });
+  mockCartModels(t, warehouse, cart);
+  let balance = 30, activeCoupon;
+  t.mock.method(UserModel, 'findById', () => queryResult({ walletBalance: balance }));
+  t.mock.method(LoyaltySettingsModel, 'findOne', () => queryResult({ isActive: true, pointsEarnRate: 2 }));
+  t.mock.method(CouponModel, 'findOne', () => queryResult(activeCoupon));
+  for (const scenario of [
+    { coupon: null, discount: 0, shippingDiscount: 0, total: 120, finalTotal: 90, points: 200 },
+    { coupon: { code: 'FIXED', discountType: 'FIXED', discountValue: 10 }, discount: 10, shippingDiscount: 0, total: 110, finalTotal: 80, points: 180 },
+    { coupon: { code: 'PERCENT', discountType: 'PERCENT', discountValue: 10 }, discount: 10, shippingDiscount: 0, total: 110, finalTotal: 80, points: 180 },
+    { coupon: { code: 'SHIP', freeShipping: true }, discount: 0, shippingDiscount: 20, total: 100, finalTotal: 70, points: 200 },
+  ]) {
+    activeCoupon = scenario.coupon && { ...scenario.coupon, _id: new mongoose.Types.ObjectId() };
+    const result = await getCheckoutSummaryService({ userId, couponCode: activeCoupon?.code });
+    assert.deepEqual(result.pricing, { subtotal: 100, shippingFee: 20, discountAmount: scenario.discount,
+      shippingDiscount: scenario.shippingDiscount, totalDiscount: scenario.discount + scenario.shippingDiscount,
+      total: scenario.total, walletBalance: 30, walletUsed: 30, finalTotal: scenario.finalTotal, loyaltyPoints: scenario.points });
+    assert.deepEqual(Object.keys(result).sort(), ['cartId', 'coupon', 'currency', 'deliveryAddress', 'isPrimeLocation', 'items', 'pricing', 'warehouseId']);
+  }
+  balance = 1000;
+  const capped = await getCheckoutSummaryService({ userId });
+  assert.equal(capped.pricing.walletUsed, 100);
+  assert.equal(capped.pricing.finalTotal, 20, 'Wallet must not cover shipping');
+});
+
+test('checkout summary retains legacy wallet fallback and missing-settings initialization', async (t) => {
+  const warehouse = makeWarehouse(), userId = new mongoose.Types.ObjectId();
+  const cart = makeCart(warehouse, { userId });
+  mockCartModels(t, warehouse, cart);
+  let user, settings = null, initialized = 0;
+  t.mock.method(UserModel, 'findById', () => queryResult(user));
+  t.mock.method(LoyaltySettingsModel, 'findOne', () => queryResult(settings));
+  t.mock.method(LoyaltySettingsModel, 'create', async (value) => { initialized++; settings = value; return value; });
+  for (user of [null, { walletBalance: 0 }, { walletBalance: -1 }, { walletBalance: '30' }, { walletBalance: NaN }]) {
+    const result = await getCheckoutSummaryService({ userId });
+    assert.equal(result.pricing.walletBalance, 0);
+    assert.equal(result.pricing.walletUsed, 0);
+    assert.equal(result.pricing.finalTotal, 120);
+    assert.equal(result.pricing.loyaltyPoints, 100);
+  }
+  assert.equal(initialized, 1, 'Normal checkout retains its existing settings initialization');
+});
+
+test('checkout summary retains fractional EGP arithmetic without adding rounding', async (t) => {
+  const warehouse = makeWarehouse(), userId = new mongoose.Types.ObjectId();
+  const cart = makeCart(warehouse, { userId });
+  mockCartModels(t, warehouse, cart);
+  cart.items[0].itemPrice = 0.3;
+  t.mock.method(ProductModel, 'find', () => queryResult([{
+    _id: cart.items[0].product, type: 'SIMPLE', price: 0.3,
+    warehouseStocks: [{ warehouse: warehouse._id, quantity: 100 }], variants: [],
+  }]));
+  warehouse.primeShippingPrice = 0.02;
+  t.mock.method(UserModel, 'findById', () => queryResult({ walletBalance: 0.1 }));
+  t.mock.method(LoyaltySettingsModel, 'findOne', () => queryResult({ isActive: true, pointsEarnRate: 2 }));
+  const result = await getCheckoutSummaryService({ userId });
+  assert.equal(result.pricing.subtotal, 0.3);
+  assert.equal(result.pricing.total, 0.32);
+  assert.equal(result.pricing.walletUsed, 0.1);
+  assert.equal(result.pricing.finalTotal, 0.21999999999999997);
+  assert.equal(result.pricing.loyaltyPoints, 0);
+});
+
+test('checkout summary preserves address errors after user and loyalty reads', async (t) => {
+  const warehouse = makeWarehouse(), userId = new mongoose.Types.ObjectId();
+  const cart = makeCart(warehouse, { userId });
+  mockCartModels(t, warehouse, cart);
+  const reads = [];
+  t.mock.method(UserModel, 'findById', () => { reads.push('user'); return queryResult({ walletBalance: 30 }); });
+  t.mock.method(LoyaltySettingsModel, 'findOne', () => { reads.push('loyalty'); return queryResult({ isActive: false }); });
+  cart.deliveryAddress = undefined;
+  await assert.rejects(getCheckoutSummaryService({ userId }), { message: 'Delivery address is not set for this cart', statusCode: 400 });
+  assert.deepEqual(reads, ['user', 'loyalty']);
+});
+
+test('guest checkout keeps shipping fallback without user or loyalty lookups', async (t) => {
+  const warehouse = makeWarehouse({ prime: false }), cart = makeCart(warehouse);
+  mockCartModels(t, warehouse, cart);
+  t.mock.method(UserModel, 'findById', () => assert.fail('Guest checkout must not read a user'));
+  t.mock.method(LoyaltySettingsModel, 'findOne', () => assert.fail('Guest checkout must not read loyalty settings'));
+  for (const shipping of [undefined, -1, NaN, '20']) {
+    warehouse.defaultShippingPrice = shipping;
+    const result = await getCheckoutSummaryService({ guestId: cart.guestId });
+    assert.deepEqual(result.pricing, { subtotal: 100, shippingFee: 0, discountAmount: 0, shippingDiscount: 0,
+      totalDiscount: 0, total: 100, walletBalance: 0, walletUsed: 0, finalTotal: 100, loyaltyPoints: 0 });
+  }
+});
+
 test('guest card order persists Prime fee and sends that total to the mocked payment gateway', async (t) => {
   const warehouse = makeWarehouse();
   const cart = makeCart(warehouse, { subtotal: 100 });
@@ -320,6 +412,7 @@ test('guest card order persists Prime fee and sends that total to the mocked pay
   assert.equal(savedOrder.isPrimeLocation, true);
   assert.equal(savedOrder.shippingFee, 20);
   assert.equal(savedOrder.total, 120);
+  assert.equal(savedOrder.checkoutCart, undefined);
   assert.equal(savedOrder.settlement.lockedNetShippingPiastres, 2000);
   assert.equal(paymentBody.amount, 12000);
   assert.equal(paymentBody.items[0].amount, 12000);
@@ -387,6 +480,7 @@ test('user card order applies wallet only to merchandise and persists remaining 
   assert.equal(savedOrder.shippingFee, 20);
   assert.equal(savedOrder.walletUsed, 100);
   assert.equal(savedOrder.total, 20);
+  assert.equal(savedOrder.checkoutCart, undefined);
   assert.equal(savedOrder.settlement.lockedNetShippingPiastres, 2000);
   assert.equal(paymentBody.amount, 2000);
   assert.equal(paymentBody.items[0].amount, 2000);

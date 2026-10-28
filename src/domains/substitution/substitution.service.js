@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 import mongoose from "mongoose";
+import { assertBundleLineCanSubstitute } from "../bundle/bundle.order-snapshot.js";
+import { bindPendingBundleSubstitution } from "../bundle/bundle.substitution-pending.js";
 import { ApiError } from "../../shared/utils/ApiError.js";
 import { buildPagination } from "../../shared/utils/apiFeatures.js";
 import { escapeRegex } from "../../shared/utils/escapeRegex.js";
@@ -295,6 +297,7 @@ export async function listSubstitutionCandidatesService({
   if (!sourceLine || getFulfillmentQuantity(sourceLine) <= 0) {
     throw substitutionError("Order line not found", 404, "ORDER_LINE_NOT_FOUND");
   }
+  assertBundleLineCanSubstitute(sourceLine);
 
   const [sourceProduct] = await findProductsByIdsWithOptions(
     [sourceLine.product],
@@ -492,6 +495,7 @@ export async function createSubstitutionOfferService({
           );
         }
 
+        assertBundleLineCanSubstitute(line);
         const currentFulfillment = getFulfillmentQuantity(line);
         const deliverable = submitted.deliverableOriginalQuantity;
         if (
@@ -686,6 +690,7 @@ export async function createSubstitutionOfferService({
       order.substitutionState = orderSubstitutionStateEnum.AWAITING_CUSTOMER;
       order.requiresCustomerAction = true;
       order.substitutionRevision = requestSequence;
+      bindPendingBundleSubstitution(order, createdRequest);
       order.history.push({
         at: new Date(),
         description: `Substitute choices offered for order ${order.orderNumber}`,

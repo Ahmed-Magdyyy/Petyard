@@ -1,0 +1,3 @@
+{"type":"approval","version":2,"approvalId":"petyard-catalog-intent-pilot-2026-10-20","capMicroUsd":1000000,"snapshotId":"openai-luna-standard-2026-10-20-catalog-v1","maxCalls":12,"model":"gpt-6-luna","pricingHash":"a30d45af78ff6a617502a0b8de57c2a322d3c7ab7a855ca1d224b75e34e8986a"}
+{"type":"reserve","id":"b3c48bd4-fa01-4ca4-b45b-f9e5bb88a147","maximumMicroUsd":578345}
+{"type":"settle","id":"b3c48bd4-fa01-4ca4-b45b-f9e5bb88a147","estimatedTokenCostMicroUsd":857,"retainedUpperMicroUsd":943,"actualBilledCostMicroUsd":null,"usage":{"inputTokens":2875,"cachedInputTokens":0,"cacheWriteInputTokens":2872,"outputTokens":276,"reasoningTokens":65,"totalTokens":3151}}
