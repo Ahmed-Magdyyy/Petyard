@@ -16,7 +16,8 @@
     "start:substitution-expiration-worker": "NODE_ENV=production node src/workers/substitutionExpiration.worker.js",
     "substitution:backfill": "node scripts/backfillSubstitutionReadiness.js",
     "substitution:audit": "node scripts/auditSubstitutionReadiness.js",
-    "fcm:canary": "node scripts/checkFcmTopicMigration.mjs"
+    "fcm:canary": "node scripts/checkFcmTopicMigration.mjs",
+    "postinstall": "node src/shared/jobs/patchNodeCronDst.cjs"
   },
   "author": "",
   "license": "ISC",
@@ -54,7 +55,7 @@
     "mongoose": "^9.0.1",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
-    "node-cron": "^4.2.1",
+    "node-cron": "4.6.0",
     "nodemailer": "^7.0.10",
     "pdfjs-dist": "6.4.299",
     "saxes": "^5.0.1",
