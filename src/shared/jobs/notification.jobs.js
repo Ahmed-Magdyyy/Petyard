@@ -244,7 +244,7 @@ export function startNotificationJobs() {
   // Reservation reminders - every hour
   cron.schedule("0 * * * *", async () => {
     await sendReservationReminders();
-  });
+  }, { timezone: "UTC" });
 
   // Pet birthdays - daily at 9 AM Cairo (7 AM UTC)
   cron.schedule("0 7 * * *", async () => {
@@ -260,7 +260,7 @@ export function startNotificationJobs() {
   // 8 PM Cairo delivery window and claims make this safe across instances.
   cron.schedule("*/5 * * * *", async () => {
     await sendSubcategoryProductDigests();
-  });
+  }, { timezone: "UTC" });
 
   // Catch up promptly after downtime instead of waiting for the next tick.
   sendSubcategoryProductDigests();

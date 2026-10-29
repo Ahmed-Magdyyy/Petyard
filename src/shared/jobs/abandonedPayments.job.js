@@ -5,6 +5,7 @@ const TIMEOUT_MINUTES = 10;
 
 export function startAbandonedPaymentsJob() {
   // Run every minute (abandoned timeout is 5 min, so worst case ~6 min)
+  // UTC keeps this interval running throughout Cairo's repeated winter-time hour.
   cron.schedule("* * * * *", async () => {
     try {
       const { cancelledCount } =
@@ -17,7 +18,7 @@ export function startAbandonedPaymentsJob() {
     } catch (err) {
       console.error("[AbandonedPayments] Job error:", err.message);
     }
-  });
+  }, { timezone: "UTC" });
 
   console.log(
     `[AbandonedPayments] Cron started — cancels unpaid card orders after ${TIMEOUT_MINUTES}min`,
