@@ -10,7 +10,7 @@ import {
 
 export const getActiveBanners = asyncHandler(async (req, res) => {
   const banners = await getActiveBannersService();
-  res.status(200).json({ data: banners, enabelBarcode: false });
+  res.status(200).json({ data: banners, enabelBarcode: true });
 });
 
 export const getAllBanners = asyncHandler(async (req, res) => {
