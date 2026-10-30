@@ -4,6 +4,7 @@ import { ApiError } from "../../../shared/utils/ApiError.js";
 import { pagination } from "../video.validators.js";
 import { pickLocalizedField } from "../../../shared/utils/i18n.js";
 import { validatePlayerError } from "./publicVideo.validators.js";
+import { createVideoFeedService } from "./videoFeed.service.js";
 
 function videoError(message, statusCode, code) {
   return new ApiError(message, statusCode, [{ code }]);
@@ -14,8 +15,10 @@ let productionService;
 export async function getPublicVideoService() {
   if (!productionService) {
     const { createPublicVideoRepository } = await import("./publicVideo.repository.js");
+    const repository = createPublicVideoRepository();
     productionService = createPublicVideoService({
-      repository: createPublicVideoRepository(),
+      repository,
+      feed: createVideoFeedService({ repository }),
       isEnabled: () => String(process.env.VIDEOS_PUBLIC_ENABLED).trim().toLowerCase() === "true",
       isProductEnabled: () => String(process.env.PRODUCT_VIDEOS_PUBLIC_ENABLED).trim().toLowerCase() === "true",
     });
@@ -84,7 +87,7 @@ function requireIdentity(identity) {
   }
 }
 
-export function createPublicVideoService({ repository, isEnabled = () => false,
+export function createPublicVideoService({ repository, feed = null, isEnabled = () => false,
   isProductEnabled = () => false, now = Date.now }) {
   if (!repository?.listYouTube || !repository?.listReels || !repository?.listProducts ||
       !repository?.listMixed || !repository?.getPublished || !repository?.savedIds ||
@@ -128,7 +131,7 @@ export function createPublicVideoService({ repository, isEnabled = () => false,
       return pageResponse({ totalResults: result.totalResults,
         data: result.data.map((v) => publicVideo(v, lang, saved.has(v.id))) }, paging);
     },
-    async listFeed({ page, limit, lang = "en", identity = null, kind = videoContentKindEnum.REEL }) {
+    async listFeed({ page, limit, lang = "en", identity = null, feedScope = "", kind = videoContentKindEnum.REEL }) {
       const paging = pagination(page, limit);
       if (![videoContentKindEnum.REEL, videoContentKindEnum.PRODUCT, "all"].includes(kind)) {
         throw videoError("Invalid feed kind", 422, "VIDEO_INVALID_KIND");
@@ -138,11 +141,12 @@ export function createPublicVideoService({ repository, isEnabled = () => false,
       if (!includeReels && !includeProducts) {
         return pageResponse({ totalResults: 0, data: [] }, paging);
       }
-      const result = kind === videoContentKindEnum.REEL
+      const ranked = feed ? await feed.list({ ...paging, kind, identity, feedScope, includeReels, includeProducts }) : null;
+      const result = ranked ?? (kind === videoContentKindEnum.REEL
         ? await repository.listReels(paging)
         : kind === videoContentKindEnum.PRODUCT
           ? await repository.listProducts(paging)
-          : await repository.listMixed({ ...paging, includeReels, includeProducts });
+          : await repository.listMixed({ ...paging, includeReels, includeProducts }));
       const saved = await repository.savedIds({ identity,
         videoIds: result.data.filter((v) => v.kind === videoContentKindEnum.REEL).map((v) => v.id) });
       return pageResponse({ totalResults: result.totalResults,

@@ -5,6 +5,7 @@ import {
   videoAssetTechnicalStateEnum,
   editorialCoverStateEnum,
   reelUploadSessionStatusEnum,
+  videoContentKindEnum,
 } from "../../../shared/constants/enums.js";
 import mongoose from "mongoose";
 
@@ -100,8 +101,47 @@ export function createPublicVideoRepository({ videos = EditorialVideoModel,
     const result = pageResult(facets);
     return { ...result, data: await hydrateCovers(result.data) };
   }
+  function feedStages({ includeReels, includeProducts, reelIds, productIds }) {
+    const stages = includeReels ? [
+      { $match: { kind: editorialVideoKindEnum.REEL, status: editorialVideoStatusEnum.PUBLISHED,
+        ...(reelIds ? { _id: { $in: reelIds } } : {}) } },
+      ...currentMediaStages({ assets, sessions }),
+      { $match: readyReelMatch },
+      { $addFields: { feedAt: "$publishedAt" } },
+    ] : [{ $match: { _id: { $exists: false } } }];
+    if (includeProducts) stages.push({ $unionWith: {
+      coll: placements.collection.name,
+      pipeline: [...(productIds ? [{ $match: { _id: { $in: productIds } } }] : []),
+        ...productEligibleStages({ products, assets, feedOnly: true })],
+    } });
+    return stages;
+  }
   return Object.freeze({
     ...createPublicVideoErrorPersistence({ videos, users, outbox, connection }),
+    async listFeedCandidates({ includeReels, includeProducts }) {
+      // shortcut: rank eligible metadata in memory; use indexed candidate windows if measured feed size requires it.
+      const rows = await videos.aggregate([
+        ...feedStages({ includeReels, includeProducts }),
+        { $project: { _id: 1, kind: 1, activeAssetId: 1, feedAt: 1 } },
+      ]);
+      return rows.map(present);
+    },
+    async seenFeedGenerations({ identity, candidates, now }) {
+      if (!identity || !candidates.length) return new Set();
+      const rows = await analyticsEvents.find({ identityType: identity.type, identityId: identity.id,
+        qualifiedViewCounted: true, expiresAt: { $gt: new Date(now) },
+        kind: { $in: [videoContentKindEnum.REEL, videoContentKindEnum.PRODUCT] }, contentId: { $in: candidates.map(video => video.id) } })
+        .select("kind contentId +assetId").lean();
+      return new Set(rows.filter(row => row.assetId).map(row => `${row.kind}:${row.contentId}:${row.assetId}`));
+    },
+    async loadFeedRows({ candidates, includeReels, includeProducts }) {
+      if (!candidates.length) return [];
+      const ids = kind => candidates.filter(video => video.kind === kind)
+        .map(video => new mongoose.Types.ObjectId(video.id));
+      const rows = await videos.aggregate(feedStages({ includeReels, includeProducts,
+        reelIds: ids("reel"), productIds: ids("product") }));
+      return hydrateCovers(rows.map(present));
+    },
     async listYouTube({ page, limit }) {
       const facets = await videos.aggregate([
         { $match: publishedFilter },
@@ -137,17 +177,7 @@ export function createPublicVideoRepository({ videos = EditorialVideoModel,
       return pageResult(facets);
     },
     async listMixed({ page, limit, includeReels = true, includeProducts = true }) {
-      const reelStages = includeReels ? [
-        { $match: { kind: editorialVideoKindEnum.REEL, status: editorialVideoStatusEnum.PUBLISHED } },
-        ...currentMediaStages({ assets, sessions }),
-        { $match: readyReelMatch },
-        { $addFields: { feedAt: "$publishedAt" } },
-      ] : [{ $match: { _id: { $exists: false } } }];
-      const stages = [...reelStages];
-      if (includeProducts) stages.push({ $unionWith: {
-        coll: placements.collection.name,
-        pipeline: productEligibleStages({ products, assets, feedOnly: true }),
-      } });
+      const stages = feedStages({ includeReels, includeProducts });
       stages.push({ $facet: { count: [{ $count: "total" }],
         rows: [{ $sort: { feedAt: -1, kind: 1, _id: -1 } },
           { $skip: (page - 1) * limit }, { $limit: limit }] } });

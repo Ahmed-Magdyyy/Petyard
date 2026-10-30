@@ -1,4 +1,4 @@
-import { videoContentKindEnum, videoAnalyticsEventTypeEnum, videoPlaybackErrorReasonEnum } from "../../../shared/constants/enums.js";
+import { videoContentKindEnum, videoAnalyticsEventTypeEnum, videoPlaybackErrorReasonEnum, videoIdentityTypeEnum } from "../../../shared/constants/enums.js";
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
@@ -16,6 +16,10 @@ const eventSchema = new Schema({
   positionSeconds: { type: Number, min: 0, immutable: true },
   durationMs: { type: Number, min: 1, max: 300000, validate: Number.isSafeInteger, immutable: true },
   qualifiedViewCounted: { type: Boolean, immutable: true },
+  // Qualified native views retain viewer/generation history for the existing event TTL.
+  identityType: { type: String, enum: Object.values(videoIdentityTypeEnum), immutable: true, select: false },
+  identityId: { type: String, maxlength: 256, immutable: true, select: false },
+  assetId: { type: Schema.Types.ObjectId, immutable: true, select: false },
   occurredAt: { type: Date, required: true, immutable: true },
   reason: { type: String, enum: Object.values(videoPlaybackErrorReasonEnum),
     immutable: true },
@@ -28,5 +32,7 @@ const eventSchema = new Schema({
 eventSchema.index({ playbackSessionId: 1, eventId: 1 }, { unique: true });
 eventSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 eventSchema.index({ kind: 1, contentId: 1, occurredAt: 1 });
+eventSchema.index({ identityType: 1, identityId: 1, kind: 1, contentId: 1 },
+  { partialFilterExpression: { qualifiedViewCounted: true } });
 
 export const VideoAnalyticsEventModel = model("VideoAnalyticsEvent", eventSchema);

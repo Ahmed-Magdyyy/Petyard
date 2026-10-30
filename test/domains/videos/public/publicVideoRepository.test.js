@@ -7,6 +7,44 @@ import { replacementDatabase } from "../productVideos/fixtures/replacementDataba
 const id = "507f1f77bcf86cd799439011";
 const identity = { type: "guest", id: "guest-1" };
 
+test("viewer history is scoped, qualified, unexpired and generation-specific; anonymous requests read no history", async () => {
+  let filter; let projection; let reads = 0;
+  const asset = "507f1f77bcf86cd799439031";
+  const repository = createPublicVideoRepository({ analyticsEvents: { find(query) {
+    reads++; filter = query;
+    return { select(value) { projection = value; return this; }, async lean() {
+      return [{ kind: "reel", contentId: id, assetId: asset }];
+    } };
+  } } });
+  const candidates = [{ id, activeAssetId: asset }];
+  const now = Date.parse("2026-10-30T12:00:00Z");
+  assert.deepEqual(await repository.seenFeedGenerations({ identity, candidates, now }), new Set([`reel:${id}:${asset}`]));
+  assert.deepEqual(filter, { identityType: "guest", identityId: "guest-1", qualifiedViewCounted: true,
+    expiresAt: { $gt: new Date(now) }, kind: { $in: ["reel", "product"] }, contentId: { $in: [id] } });
+  assert.equal(projection, "kind contentId +assetId");
+  assert.deepEqual(await repository.seenFeedGenerations({ identity: null, candidates, now }), new Set());
+  assert.deepEqual(await repository.seenFeedGenerations({ identity, candidates: [], now }), new Set());
+  assert.equal(reads, 1);
+});
+
+test("ranked candidate reads retain the ready/ownership filters and page hydration restricts both content families", async () => {
+  const pipelines = [];
+  const repository = createPublicVideoRepository({
+    videos: { aggregate: async pipeline => { pipelines.push(pipeline); return []; } },
+    placements: { collection: { name: "productvideos" } }, products: { collection: { name: "products" } },
+    assets: { collection: { name: "assets" } }, sessions: { collection: { name: "sessions" } },
+  });
+  await repository.listFeedCandidates({ includeReels: true, includeProducts: false });
+  assert.equal(pipelines[0][5].$match["asset.deletionRequestedAt"].$exists, false);
+  assert.equal(pipelines[0].some(stage => stage.$unionWith), false);
+  assert.deepEqual(pipelines[0].at(-1), { $project: { _id: 1, kind: 1, activeAssetId: 1, feedAt: 1 } });
+  await repository.loadFeedRows({ candidates: [{ kind: "reel", id }], includeReels: true, includeProducts: true });
+  assert.deepEqual(pipelines[1][0].$match._id.$in.map(String), [id]);
+  assert.deepEqual(pipelines[1].find(stage => stage.$unionWith).$unionWith.pipeline[0], { $match: { _id: { $in: [] } } });
+  await repository.loadFeedRows({ candidates: [], includeReels: true, includeProducts: true });
+  assert.equal(pipelines.length, 2);
+});
+
 test("every public editorial read bulk-loads only attached active covers and verifies ownership", async () => {
   const active = "507f1f77bcf86cd799439021";
   const pending = "507f1f77bcf86cd799439022";

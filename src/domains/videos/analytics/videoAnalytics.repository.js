@@ -103,7 +103,9 @@ export function createVideoAnalyticsRepository({
             const existing = await events.find({ playbackSessionId: id,
               eventId: { $in: items.map(event => event.eventId) } }).session(transaction).lean();
             const processed = processSession({ session, media, events: items, existing });
-            await totals.recordEvents(processed.documents, transaction);
+            await totals.recordEvents(processed.documents.map(document => document.qualifiedViewCounted
+              ? { ...document, identityType: identity.type, identityId: identity.id, assetId: media.assetId }
+              : document), transaction);
             await playbackSessions.updateOne({ _id: id }, { $set: processed.state }, { session: transaction });
             result.accepted += processed.documents.length;
             result.duplicates += processed.duplicates;
