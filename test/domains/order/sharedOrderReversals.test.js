@@ -17,6 +17,7 @@ import { InAppNotificationModel } from "../../../src/domains/notification/inAppN
 import { NotificationDeviceModel } from "../../../src/domains/notification/notification.model.js";
 import { NotificationOutboxModel } from "../../../src/domains/notification/notificationOutbox.model.js";
 import { SubstitutionRequestModel } from "../../../src/domains/substitution/substitutionRequest.model.js";
+import { OrderPaymentAttemptModel } from "../../../src/domains/payment/orderPaymentAttempt.model.js";
 import { buildBundleCartPurchasePlan } from "../../../src/domains/bundle/bundle.purchase-plan.js";
 import { buildBundleOrderMerchandise } from "../../../src/domains/bundle/bundle.order-snapshot.js";
 import { bindPendingBundleSubstitution } from "../../../src/domains/bundle/bundle.substitution-pending.js";
@@ -30,7 +31,7 @@ const clone=value=>mongoose.mongo.BSON.deserialize(mongoose.mongo.BSON.serialize
 const query=read=>{ let session; return { session(value){session=value;return this;},select(){return this;},lean(){return this;},
   then(resolve,reject){return Promise.resolve().then(()=>read(session)).then(resolve,reject);} };};
 
-async function fixture(t,{paymentMethod="card",ordinary=true,status="accepted",committed=true,loyalty=false}={}) {
+async function fixture(t,{paymentMethod="card",ordinary=true,status="accepted",committed=true,loyalty=false,guest=false}={}) {
   const s={active:false,audits:[],stockWrites:[],ledger:[],loyaltyLedger:[],outbox:[],orderSaves:0,requestSaves:0,
     user:{walletBalance:100,loyaltyPoints:loyalty?10:0},returnRequest:null};
   const oldRedis=process.env.REDIS_URL; process.env.REDIS_URL="";
@@ -43,14 +44,15 @@ async function fixture(t,{paymentMethod="card",ordinary=true,status="accepted",c
       components:[{productId:P,productType:"SIMPLE",quantity:2},{productId:V,productType:"VARIANT",variantId:Q,quantity:1}]}}]});
   const items=ordinary?[{product:P,productType:"SIMPLE",productName:"Food",quantity:2,fulfillmentQuantity:2,finalizedUnavailableQuantity:0,
     lineId:"ordinary",lineKind:"original",itemPrice:10,itemPricePiastres:1000,lineTotal:20,lineTotalPiastres:2000}]:[];
-  const merchandise=buildBundleOrderMerchandise({plan,ordinaryItems:items,userId:U});
-  const subtotal=merchandise.subtotal,total=subtotal+40;
-  s.order=new OrderModel({_id:O,user:U,warehouse:W,orderNumber:"REVERSAL-FIXTURE",currency:"EGP",...merchandise,shippingFee:50,
-    discountAmount:0,total,walletUsed:10,paymentMethod,paymentStatus:paymentMethod==="cod"||paymentMethod==="pos_on_delivery"?"pending":"paid",
+  const identity=guest?{userId:null,guestId:"guest-reversal-fixture"}:{userId:U};
+  const merchandise=buildBundleOrderMerchandise({plan,ordinaryItems:items,...identity});
+  const subtotal=merchandise.subtotal,walletUsed=guest?0:10,total=subtotal+50-walletUsed;
+  s.order=new OrderModel({_id:O,user:guest?null:U,guestId:identity.guestId,warehouse:W,orderNumber:"REVERSAL-FIXTURE",currency:"EGP",...merchandise,shippingFee:50,
+    discountAmount:0,total,walletUsed,paymentMethod,paymentStatus:paymentMethod==="cod"||paymentMethod==="pos_on_delivery"?"pending":"paid",
     status,sideEffectsCommitted:committed,loyaltyPointsAwarded:loyalty?60:0,updatedAt:new Date(),history:[],
     settlement:{schemaVersion:1,revision:0,currency:"EGP",migrationState:"native",currentMerchandiseGrossPiastres:subtotal*100,
       originalCouponDiscountPiastres:0,preservedCouponDiscountPiastres:0,lockedNetShippingPiastres:5000,currentOrderValuePiastres:(subtotal+50)*100,
-      walletDebitedPiastres:1000,walletCreditedPiastres:0,cardCapturedPiastres:paymentMethod==="card"?total*100:0,cardRefundedPiastres:0,cardDuePiastres:0,
+      walletDebitedPiastres:walletUsed*100,walletCreditedPiastres:0,cardCapturedPiastres:paymentMethod==="card"?total*100:0,cardRefundedPiastres:0,cardDuePiastres:0,
       instapaySubmittedPiastres:0,instapayConfirmedPiastres:paymentMethod==="instapay"?total*100:0,
       deliveryDuePiastres:paymentMethod==="cod"||paymentMethod==="pos_on_delivery"?total*100:0,pendingRefundLiabilityPiastres:0}}).toObject();
   await new OrderModel(s.order).validate();
@@ -83,8 +85,8 @@ async function fixture(t,{paymentMethod="card",ordinary=true,status="accepted",c
   });
   t.mock.method(InventoryAuditModel,"findOne",filter=>query(session=>{assertSession(session);return s.audits.find(a=>a.operationId===filter.operationId&&a.skuKey===filter.skuKey&&a.action===filter.action)??null;}));
   t.mock.method(InventoryAuditModel,"create",async([row],{session})=>{assertSession(session);const doc=new InventoryAuditModel(row);await doc.validate();s.audits.push(doc.toObject());return[doc];});
-  t.mock.method(UserModel,"findById",()=>query(session=>{if(session)assertSession(session);return clone(s.user);}));
-  t.mock.method(UserModel,"updateOne",async(filter,update,{session})=>{assertSession(session);assert.equal(String(filter._id),U);for(const[key,value]of Object.entries(update.$inc))s.user[key]+=value;return{matchedCount:1};});
+  t.mock.method(UserModel,"findById",()=>{assert.equal(guest,false,"Guest reversals must not read a user account");return query(session=>{if(session)assertSession(session);return clone(s.user);});});
+  t.mock.method(UserModel,"updateOne",async(filter,update,{session})=>{assert.equal(guest,false,"Guest reversals must not write a user account");assertSession(session);assert.equal(String(filter._id),U);for(const[key,value]of Object.entries(update.$inc))s.user[key]+=value;return{matchedCount:1};});
   t.mock.method(UserModel,"find",()=>query(()=>[]));
   t.mock.method(WarehouseModel,"findById",()=>query(()=>({moderators:[]})));
   for(const[model,target]of [[WalletTransactionModel,"ledger"],[LoyaltyTransactionModel,"loyaltyLedger"],[NotificationOutboxModel,"outbox"]])
@@ -93,6 +95,7 @@ async function fixture(t,{paymentMethod="card",ordinary=true,status="accepted",c
   t.mock.method(RestockSubscriptionModel,"updateMany",async()=>({modifiedCount:0}));
   t.mock.method(RestockSubscriptionModel,"find",()=>query(()=>[]));
   t.mock.method(NotificationDeviceModel,"distinct",async()=>[]);
+  t.mock.method(NotificationDeviceModel,"find",()=>query(()=>[]));
   t.mock.method(InAppNotificationModel,"create",async rows=>rows);
   t.mock.method(ReturnRequestModel,"findOne",()=>query(()=>s.returnRequest));
   t.mock.method(ReturnRequestModel,"create",async row=>{const doc=new ReturnRequestModel(row);await doc.validate();s.returnRequest=doc.toObject();return doc;});
@@ -104,9 +107,10 @@ async function fixture(t,{paymentMethod="card",ordinary=true,status="accepted",c
     assertSession(session);if(!s.substitution)return null;const doc=new SubstitutionRequestModel(s.substitution);
     doc.save=async({session})=>{assertSession(session);await doc.validate();s.substitution=doc.toObject();return doc;};return doc;
   }));
+  t.mock.method(OrderPaymentAttemptModel,"find",()=>query(session=>{assertSession(session);return [];}));
   s.errors=[];t.mock.method(console,"error",(...values)=>s.errors.push(values));
   s.change=(newStatus,args={})=>updateOrderStatusService({orderId:O,newStatus,actorUserId:A,actorRole:"superAdmin",warehouseScope:[W],...args});
-  s.createReturn=()=>createReturnRequestService({userId:U,orderId:O,reason:"Return the whole order"});
+  s.createReturn=()=>createReturnRequestService({...identity,orderId:O,reason:"Return the whole order"});
   s.processReturn=(args={})=>processReturnRequestService({returnId:s.returnRequest._id,action:"approved",adminUserId:A,...args});
   s.flush=()=>new Promise(resolve=>setImmediate(resolve));
   return s;
@@ -120,6 +124,43 @@ function assertRestored(s,ordinary=true){
   assert.equal(s.products[1].variants[1].warehouseStocks[0].quantity,1000);
   assert.equal(s.audits.length,2);assert.equal(s.stockWrites.length,2);
   assert.ok(s.audits.every(row=>String(row.warehouse)===W));
+}
+
+function guestCardRefundFixture(t,s){
+  const previous=process.env.PAYMOB_API_KEY;process.env.PAYMOB_API_KEY="fixture-only";
+  t.after(()=>{if(previous===undefined)delete process.env.PAYMOB_API_KEY;else process.env.PAYMOB_API_KEY=previous;});
+  s.order.paymobTransactionId="fixture-capture";s.refunds=[];
+  t.mock.method(globalThis,"fetch",async(url,options)=>{
+    if(url==="https://accept.paymob.com/api/auth/tokens")return{ok:true,json:async()=>({token:"fixture-token"})};
+    assert.equal(url,"https://accept.paymob.com/api/acceptance/void_refund/refund");
+    const body=JSON.parse(options.body);assert.equal(body.transaction_id,"fixture-capture");
+    s.refunds.push(body.amount_cents);return{ok:true,json:async()=>({success:true,id:"fixture-refund"})};
+  });
+  t.mock.method(OrderModel,"updateOne",async(filter,update)=>{
+    assert.equal(String(filter._id),O);assert.equal(update.paymobRefundTransactionId,"fixture-refund");
+    s.order.paymobRefundTransactionId=update.paymobRefundTransactionId;return{modifiedCount:1};
+  });
+  t.mock.method(ReturnRequestModel,"updateOne",async(filter,update)=>{
+    assert.equal(String(filter._id),String(s.returnRequest._id));assert.equal(update.paymobRefundTransactionId,"fixture-refund");
+    s.returnRequest.paymobRefundTransactionId=update.paymobRefundTransactionId;return{modifiedCount:1};
+  });
+}
+
+for(const paymentMethod of ["cod","pos_on_delivery","instapay","card"])for(const ordinary of [false,true]){
+  for(const mode of ["cancelled","returned","request"])test(`guest ${mode}: existing ${paymentMethod} refund rules, ${ordinary?"mixed":"bundle-only"}`,async t=>{
+    const s=await fixture(t,{guest:true,paymentMethod,ordinary,status:mode==="cancelled"?"accepted":"delivered"});
+    if(paymentMethod==="card")guestCardRefundFixture(t,s);
+    if(mode==="request"){
+      await s.createReturn();await s.flush();assert.equal(s.returnRequest.refundMethod,paymentMethod==="card"?"card":"manual");
+      await s.processReturn();
+    }else await s.change(mode);
+    await s.flush();assertRestored(s,ordinary);assert.deepEqual(s.ledger,[]);assert.deepEqual(s.loyaltyLedger,[]);
+    assert.equal(s.user.walletBalance,100);assert.deepEqual(s.errors,[]);
+    if(paymentMethod==="card")assert.deepEqual(s.refunds,[(mode==="cancelled"?s.order.total:s.order.subtotal)*100]);
+    if(mode==="request")await assert.rejects(s.processReturn(),{statusCode:400});else await s.change(mode);
+    await s.flush();assertRestored(s,ordinary);if(paymentMethod==="card")assert.equal(s.refunds.length,1);
+    assert.deepEqual(s.errors,[]);
+  });
 }
 
 for(const paymentMethod of ["cod","pos_on_delivery","instapay","card"])for(const ordinary of [false,true]){

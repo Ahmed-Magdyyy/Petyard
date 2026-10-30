@@ -2,7 +2,8 @@ import mongoose from "mongoose";
 import { validateCheckoutDeliveryAddress } from "../checkout/checkout.service.js";
 import { assertOrdinaryCart } from "../cart/cart.bundle-compatibility.js";
 import { assertBundleOrderCanReorder, buildBundleOrderMerchandise } from "../bundle/bundle.order-snapshot.js";
-import { loadBundleCartUser, loadBundleCartViewSources } from "../bundle/bundle.cart-transaction.js";
+import { loadBundleCartActor, loadBundleCartViewSources } from "../bundle/bundle.cart-transaction.js";
+import { bundleCartIdentity, bundleCartOwnerFilter, bundleCartMatchesOwner } from "../bundle/bundle.cart-identity.js";
 import { savedBundleCartGroups } from "../bundle/bundle.cart-state.js";
 import { buildBundleCartPurchasePlan } from "../bundle/bundle.purchase-plan.js";
 import { randomUUID } from "crypto";
@@ -399,14 +400,15 @@ export async function queueManualGuestMultiCaptureRefund({
 
 async function buildOrderItemsWithBundles({ session, cart, lang }) {
   if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(cart);
-  if (cart.guestId != null) assertOrdinaryCart(cart);
+  if (cart.guestId != null && cart.user != null) assertOrdinaryCart(cart);
   if (!session?.inTransaction?.()) throw new ApiError("An active order transaction is required", 503);
   const conflict = () => { throw new ApiError("Your cart changed. Refresh it before placing the order.", 409); };
-  const owner = String(cart.user?._id ?? cart.user);
-  const actor = await loadBundleCartUser(owner, session);
+  const identity = bundleCartIdentity({ userId: cart.user?._id ?? cart.user, guestId: cart.guestId });
+  const owner = identity.owner;
+  const actor = await loadBundleCartActor({ userId: owner, guestId: identity.guestId }, session);
   const { raw, slice, warehouse, products, definitions } = await loadBundleCartViewSources(actor,
     { warehouseId: String(cart.warehouse), language: lang }, { session });
-  if (!raw || raw.guestId != null || String(raw._id) !== String(cart._id) || raw.__v !== cart.__v ||
+  if (!raw || !bundleCartMatchesOwner(raw, identity) || String(raw._id) !== String(cart._id) || raw.__v !== cart.__v ||
       String(raw.warehouse) !== String(cart.warehouse) || raw.currency !== "EGP" ||
       !Number.isSafeInteger(raw.__v) || raw.__v < 0 || raw.__v >= Number.MAX_SAFE_INTEGER) conflict();
   const material = rows => rows.map(row => ({ id: String(row.id), productId: String(row.productId),
@@ -427,7 +429,7 @@ async function buildOrderItemsWithBundles({ session, cart, lang }) {
   const ordinaryProducts = ordinaryItems.length ? await ProductModel.find({
     _id: { $in: [...new Set(ordinaryItems.map(row => String(row.product)))] },
   }).session(session).select("_id type price discountedPrice subcategory brand variants images") : [];
-  const merchandise = buildBundleOrderMerchandise({ plan, ordinaryItems, userId: owner });
+  const merchandise = buildBundleOrderMerchandise({ plan, ordinaryItems, userId: owner, guestId: identity.guestId });
   const ordinaryPiastres = ordinaryItems.reduce((sum, row) => sum + BigInt(row.lineTotalPiastres), 0n);
   if (BigInt(toPiastres(merchandise.subtotal)) !== ordinaryPiastres + BigInt(plan.bundleSubtotalPiastres)) conflict();
   return { orderItems: merchandise.items, subtotal: merchandise.subtotal, bundleGroups: merchandise.bundleGroups,
@@ -993,7 +995,9 @@ export async function processOrderCreationWithCart({
 }) {
   const hasBundles = cart.bundles !== undefined && (!Array.isArray(cart.bundles) || cart.bundles.length > 0);
   if (hasBundles) {
-    if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true" || !orderUserId || orderGuestId != null || String(orderUserId) !== String(cart.user?._id ?? cart.user)) assertOrdinaryCart(cart);
+    if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true" ||
+        Boolean(orderUserId) === Boolean(orderGuestId) ||
+        !bundleCartMatchesOwner(cart, bundleCartIdentity({ userId: orderUserId, guestId: orderGuestId }))) assertOrdinaryCart(cart);
     validateCheckoutDeliveryAddress(cart.deliveryAddress, lang);
   } else await resolveOrderCartWarehouse(cart);
 
@@ -1168,6 +1172,21 @@ export async function processOrderCreationWithCart({
 
   // ── Stock: read-only check for card, decrement deferred to webhook ──
   if (isCard) {
+    if (sourceCart) {
+      if (typeof sourceCart.checkoutKey !== "string" || !sourceCart.checkoutKey || sourceCart.checkoutKey !== cart.checkoutKey) {
+        throw new ApiError("Your cart changed. Refresh it before placing the order.", 409);
+      }
+      // Serialize pending-order creation on the existing cart; never call the provider inside this transaction.
+      const pending = await OrderModel.findOne({ checkoutKey: sourceCart.checkoutKey,
+        status: orderStatusEnum.AWAITING_PAYMENT }).session(session).select("_id");
+      if (pending) throw new ApiError("You have a payment in progress. Please check that order before retrying.", 409);
+      const claimed = await CartModel.collection.updateOne({ _id: sourceCart._id,
+        ...bundleCartOwnerFilter(bundleCartIdentity({ userId: sourceCart.user, guestId: sourceCart.guestId })), __v: sourceCart.__v,
+        $expr: { $eq: ["$$ROOT", { $literal: sourceCart }] } }, { $inc: { __v: 1 } }, { session });
+      if (claimed.matchedCount !== 1 || claimed.modifiedCount !== 1) {
+        throw new ApiError("Your cart changed. Refresh it before placing the order.", 409);
+      }
+    }
     await validateStockReadOnly({ session, cart: stockCart, lang });
   }
 
@@ -1299,7 +1318,8 @@ export async function processOrderCreationWithCart({
   if (sourceCart) {
     // The legacy model guard blocks saved bundle entries; consume their exact preimage in this transaction.
     const now = new Date();
-    const cleared = await CartModel.collection.updateOne({ _id: sourceCart._id, user: sourceCart.user, __v: sourceCart.__v,
+    const cleared = await CartModel.collection.updateOne({ _id: sourceCart._id,
+      ...bundleCartOwnerFilter(bundleCartIdentity({ userId: sourceCart.user, guestId: sourceCart.guestId })), __v: sourceCart.__v,
       $expr: { $eq: ["$$ROOT", { $literal: sourceCart }] } }, {
       $set: { items: [], totalCartPrice: 0, lastActivityAt: now, status: "ACTIVE", updatedAt: now },
       $unset: { bundles: "" }, $inc: { __v: 1 },
@@ -1367,6 +1387,22 @@ async function initializeCardPayment(order, cardTokens = []) {
   };
 }
 
+async function ensureOrderCartCheckoutKey(cart, identity) {
+  if (!cart || cart.checkoutKey) return;
+  cart.checkoutKey = generateCheckoutKey();
+  if (!cart.bundles?.length) { await cart.save(); return; }
+  const owner = bundleCartIdentity(identity);
+  const raw = await CartModel.findOne({ _id: cart._id, ...bundleCartOwnerFilter(owner) }).lean();
+  const conflict = () => { throw new ApiError("Your cart changed. Refresh it before placing the order.", 409); };
+  if (!raw || !bundleCartMatchesOwner(raw, owner) || raw.checkoutKey || raw.__v !== cart.__v ||
+      !Number.isSafeInteger(raw.__v) || raw.__v < 0 || raw.__v >= Number.MAX_SAFE_INTEGER) conflict();
+  const written = await CartModel.collection.updateOne({ _id: raw._id, ...bundleCartOwnerFilter(owner), __v: raw.__v,
+    $expr: { $eq: ["$$ROOT", { $literal: raw }] } }, {
+    $set: { checkoutKey: cart.checkoutKey, updatedAt: new Date() }, $inc: { __v: 1 },
+  });
+  if (written.matchedCount !== 1 || written.modifiedCount !== 1) conflict();
+}
+
 // ─── Order Creation ─────────────────────────────────────────────────────────
 
 export async function createOrderForUserService({
@@ -1400,23 +1436,7 @@ export async function createOrderForUserService({
     // Fetch cart to get checkoutKey (should always exist from getCart, fallback if not)
     const userCart = await CartModel.findOne({ user: userId });
     if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(userCart);
-    if (userCart && !userCart.checkoutKey) {
-      userCart.checkoutKey = generateCheckoutKey();
-      if (userCart.bundles?.length) {
-        const raw = await CartModel.findOne({ _id: userCart._id, user: userId }).lean();
-        const conflict = () => { throw new ApiError("Your cart changed. Refresh it before placing the order.", 409); };
-        if (!raw || String(raw.user) !== String(userId) || raw.guestId != null || raw.checkoutKey ||
-            raw.__v !== userCart.__v || !Number.isSafeInteger(raw.__v) || raw.__v < 0 || raw.__v >= Number.MAX_SAFE_INTEGER) conflict();
-        // Keep the existing key fallback without letting a model save prune bundle entries.
-        const written = await CartModel.collection.updateOne({ _id: raw._id, user: raw.user, __v: raw.__v,
-          $expr: { $eq: ["$$ROOT", { $literal: raw }] } }, {
-          $set: { checkoutKey: userCart.checkoutKey, updatedAt: new Date() }, $inc: { __v: 1 },
-        });
-        if (written.matchedCount !== 1 || written.modifiedCount !== 1) conflict();
-      } else {
-        await userCart.save();
-      }
-    }
+    await ensureOrderCartCheckoutKey(userCart, { userId });
 
     const checkoutKey = userCart?.checkoutKey;
 
@@ -1570,11 +1590,8 @@ export async function createOrderForGuestService({
   if (pm === paymentMethodEnum.CARD) {
     // Fetch cart to get checkoutKey (should always exist from getCart, fallback if not)
     const guestCart = await CartModel.findOne({ guestId });
-    assertOrdinaryCart(guestCart);
-    if (guestCart && !guestCart.checkoutKey) {
-      guestCart.checkoutKey = generateCheckoutKey();
-      await guestCart.save();
-    }
+    if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(guestCart);
+    await ensureOrderCartCheckoutKey(guestCart, { guestId });
 
     const checkoutKey = guestCart?.checkoutKey;
 
@@ -2298,9 +2315,11 @@ export async function updateOrderStatusService({
   const session = await mongoose.startSession();
   let updated;
   let stockWasRestored = false;
+  let statusChanged = false;
 
   try {
     await session.withTransaction(async () => {
+      statusChanged = false;
       const order = await OrderModel.findById(orderId).session(session);
       if (!order) {
         throw new ApiError(
@@ -2722,6 +2741,7 @@ export async function updateOrderStatusService({
       });
 
       updated = await order.save({ session });
+      statusChanged = true;
     });
   } finally {
     session.endSession();
@@ -2752,6 +2772,7 @@ export async function updateOrderStatusService({
   // manual branch above instead.
   if (
     updated &&
+    statusChanged &&
     !queuedManualMultiCaptureRefund &&
     (updated.status === orderStatusEnum.CANCELLED ||
       updated.status === orderStatusEnum.RETURNED) &&
@@ -2952,7 +2973,7 @@ async function commitOrderSideEffects(
         const now = new Date();
         // Saved bundle entries require a raw write; keep the same cart-clearing behavior.
         await CartModel.collection.updateOne(
-          { user: freshOrder.user, guestId: null },
+          freshOrder.user ? { user: freshOrder.user, guestId: null } : { user: null, guestId: freshOrder.guestId },
           {
             $set: { items: [], totalCartPrice: 0, lastActivityAt: now, status: "ACTIVE", updatedAt: now },
             $unset: { bundles: "" },

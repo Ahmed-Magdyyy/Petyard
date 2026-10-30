@@ -3,6 +3,7 @@ import { normalizeFixedBundleComponents, previewFixedBundle } from "./bundle.com
 import { bundleId, bundleInputError, exactBundleFields } from "./bundle.draft-input.js";
 import { fromPiastres, toPiastres } from "../../shared/utils/money.js";
 import { isWarehouseOperational } from "../warehouse/warehouse.fulfillment.js";
+import { bundleCartIdentity, bundleCartMatchesOwner } from "./bundle.cart-identity.js";
 
 const conflict = message => bundleInputError(message, "BUNDLE_CART_REVIEW_REQUIRED", 409);
 function positive(value) {
@@ -28,11 +29,12 @@ export function savedBundleCartGroups(cart) {
 }
 
 // Backend-loaded, privately refreshed cart only. Produces a patch/quote, never saves or reserves stock.
-function cartState({ ownerId, cart, warehouseId, warehouse, products, definitions, change, language = "en" }, inspectOnly = false) {
-  const owner = bundleId(ownerId), selectedWarehouse = bundleId(warehouseId);
+function cartState({ ownerId, guestId, cart, warehouseId, warehouse, products, definitions, change, language = "en" }, inspectOnly = false) {
+  const identity = bundleCartIdentity({ userId: ownerId, guestId });
+  const owner = identity.owner, selectedWarehouse = bundleId(warehouseId);
   if (!["en", "ar"].includes(language) || !Array.isArray(definitions) || !Array.isArray(products)) bundleInputError("Invalid bundle cart context");
   if (!isWarehouseOperational(warehouse) || String(warehouse?._id).toLowerCase() !== selectedWarehouse) conflict("Selected warehouse is unavailable");
-  if (cart && (String(cart.user).toLowerCase() !== owner || cart.guestId != null)) bundleInputError("Cart not found", "BUNDLE_CART_NOT_FOUND", 404);
+  if (cart && !bundleCartMatchesOwner(cart, identity)) bundleInputError("Cart not found", "BUNDLE_CART_NOT_FOUND", 404);
   if (cart && (String(cart.warehouse).toLowerCase() !== selectedWarehouse || cart.currency !== "EGP" ||
       !Number.isSafeInteger(cart.__v) || cart.__v < 0 || cart.__v >= Number.MAX_SAFE_INTEGER || !Array.isArray(cart.items))) {
     conflict("Cart context changed");

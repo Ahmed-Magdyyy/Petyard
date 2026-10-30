@@ -13,7 +13,7 @@ import { assertOrdinaryCart } from "../cart/cart.bundle-compatibility.js";
 const hasSavedBundles = cart => cart?.bundles !== undefined && (!Array.isArray(cart.bundles) || cart.bundles.length > 0);
 function checkoutWarehouse(cart, userId, selectedWarehouseId) {
   if (!hasSavedBundles(cart)) return cart.warehouse;
-  if (!userId || process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(cart);
+  if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") assertOrdinaryCart(cart);
   if (typeof selectedWarehouseId !== "string" || !/^[a-f\d]{24}$/i.test(selectedWarehouseId)) {
     throw new ApiError("The current selected warehouseId is required for bundle checkout pricing", 400);
   }

@@ -4,6 +4,7 @@ import { buildCartDeliveryAddressSnapshot } from "../cart/cartAddressSnapshot.js
 import { resolveEffectiveWarehouse } from "../warehouse/warehouse.fulfillment.js";
 import { bundleId, bundleInputError, exactBundleFields } from "./bundle.draft-input.js";
 import { prepareBundleReorder } from "./bundle.reorder.js";
+import { bundleCartOwnerFilter, bundleCartMatchesOwner } from "./bundle.cart-identity.js";
 
 export const bundleCartEditActions = ["ordinary_add", "ordinary_set", "ordinary_remove", "rebind", "address", "reorder"];
 const fail = message => bundleInputError(message, "BUNDLE_CART_REVIEW_REQUIRED", 409);
@@ -11,7 +12,8 @@ export function normalizeBundleCartEdit(value) {
   const action = value?.action;
   if (!bundleCartEditActions.includes(action)) bundleInputError("Invalid cart edit action");
   const extras = { ordinary_add: ["productId", "productType", "variantId", "quantity", "newItemId"],
-    ordinary_set: ["itemId", "quantity"], ordinary_remove: ["itemId"], rebind: [], address: ["userAddressId"], reorder: ["orderId"] };
+    ordinary_set: ["itemId", "quantity"], ordinary_remove: ["itemId"], rebind: [],
+    address: [value.guestAddressId !== undefined ? "guestAddressId" : "userAddressId"], reorder: ["orderId"] };
   exactBundleFields(value, ["action", "cartId", "expectedCartVersion", ...extras[action]]);
   if (!Number.isSafeInteger(value.expectedCartVersion) || value.expectedCartVersion < 0 || value.expectedCartVersion >= Number.MAX_SAFE_INTEGER) bundleInputError("Invalid cart version");
   const result = { action, cartId: bundleId(value.cartId), expectedCartVersion: value.expectedCartVersion };
@@ -25,7 +27,10 @@ export function normalizeBundleCartEdit(value) {
     Object.assign(result, { productId: bundleId(value.productId), productType: value.productType,
       variantId: value.productType === "VARIANT" ? bundleId(value.variantId) : null, newItemId: bundleId(value.newItemId) });
   }
-  if (action === "address") result.userAddressId = bundleId(value.userAddressId);
+  if (action === "address") {
+    const field = value.guestAddressId !== undefined ? "guestAddressId" : "userAddressId";
+    result[field] = bundleId(value[field]);
+  }
   if (action === "reorder") result.orderId = bundleId(value.orderId);
   return result;
 }
@@ -61,9 +66,10 @@ export async function prepareBundleCartEdit(raw, input, session) {
     else { matches[0].quantity = change.quantity; targetItemId = change.itemId; targetQuantity = change.quantity; }
   }
   if (change.action === "address") {
-    address = await AddressModel.findOne({ _id: new mongoose.Types.ObjectId(change.userAddressId), user: new mongoose.Types.ObjectId(input.owner) })
+    const addressId = bundleId(input.guestId != null ? change.guestAddressId : change.userAddressId);
+    address = await AddressModel.findOne({ _id: new mongoose.Types.ObjectId(addressId), ...bundleCartOwnerFilter(input) })
       .maxTimeMS(5000).session(session).lean();
-    if (!address || String(address._id) !== change.userAddressId || String(address.user) !== input.owner || address.guestId != null || !address.warehouse) bundleInputError("Owned address unavailable", "BUNDLE_CART_ADDRESS_NOT_FOUND", 404);
+    if (!address || String(address._id) !== addressId || !bundleCartMatchesOwner(address, input) || !address.warehouse) bundleInputError("Owned address unavailable", "BUNDLE_CART_ADDRESS_NOT_FOUND", 404);
     const resolved = await resolveEffectiveWarehouse(address.warehouse, { session });
     if (String(resolved.effectiveWarehouse._id) !== input.warehouseId) fail("Address no longer matches the selected warehouse");
     candidate.deliveryAddress = buildCartDeliveryAddressSnapshot(address);
@@ -76,7 +82,8 @@ export async function fenceBundleCartAddress(address, session) {
   if (!address) return;
   const version = address.__v;
   if (version !== undefined && (!Number.isSafeInteger(version) || version < 0 || version >= Number.MAX_SAFE_INTEGER)) fail("Address version is unavailable");
-  const result = await AddressModel.collection.updateOne({ _id: address._id, user: address.user,
+  const identity = address.guestId != null ? { user: null, guestId: address.guestId } : { user: address.user };
+  const result = await AddressModel.collection.updateOne({ _id: address._id, ...identity,
     $expr: { $eq: ["$$ROOT", { $literal: address }] } }, { $inc: { __v: 1 } }, { session });
   if (result.matchedCount !== 1 || result.modifiedCount !== 1) fail("Address changed during confirmation");
 }

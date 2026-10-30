@@ -76,14 +76,16 @@ async function payment(t, options) {
     const plan = buildBundleCartPurchasePlan({ warehouseId: W, warehouse: { _id: W, active: true }, products: [product],
       bundles: [{ groupId: G, bundle: definition, expectedRevision: 1, quantity: 2 }] });
     const ordinaryItems = options.ordinary === false ? [] : [mapCartItemToOrderItem({ ...s.cart.items[0], productName: "Food" })];
-    const merchandise = buildBundleOrderMerchandise({ plan, userId: U, ordinaryItems });
-    const discount = options.coupon ? 2 : 0, total = merchandise.subtotal + 40 - discount;
+    const merchandise = buildBundleOrderMerchandise({ plan, userId: options.guest ? null : U,
+      guestId: options.guest ? s.owner.guestId : undefined, ordinaryItems });
+    const walletUsed = options.guest ? 0 : 10;
+    const discount = options.coupon ? 2 : 0, total = merchandise.subtotal + 50 - walletUsed - discount;
     s.order = new OrderModel({ ...s.order, ...merchandise, orderNumber: "CARD-FIXTURE", shippingFee: 50,
-      walletUsed: 10, discountAmount: discount, total, couponCode: options.coupon ? "SAVE" : undefined,
+      walletUsed, discountAmount: discount, total, couponCode: options.coupon ? "SAVE" : undefined,
       settlement: { schemaVersion: 1, revision: 0, currency: "EGP", migrationState: "native",
         currentMerchandiseGrossPiastres: merchandise.subtotal * 100, originalCouponDiscountPiastres: discount * 100,
         preservedCouponDiscountPiastres: discount * 100, lockedNetShippingPiastres: 5000,
-        currentOrderValuePiastres: (merchandise.subtotal + 50 - discount) * 100, walletDebitedPiastres: 1000,
+        currentOrderValuePiastres: (merchandise.subtotal + 50 - discount) * 100, walletDebitedPiastres: walletUsed * 100,
         walletCreditedPiastres: 0, cardCapturedPiastres: 0, cardRefundedPiastres: 0, cardDuePiastres: total * 100,
         instapaySubmittedPiastres: 0, instapayConfirmedPiastres: 0, deliveryDuePiastres: 0, pendingRefundLiabilityPiastres: 0 } }).toObject();
     s.cart.items = options.ordinary === false ? [] : s.cart.items;
@@ -92,9 +94,10 @@ async function payment(t, options) {
     s.cart.deliveryAddress = { name: "Fixture", warehouse: oid(W) };
     t.mock.method(CartModel.collection, "updateOne", async (filter, update, { session }) => {
       assert.equal(session, s.session); assert.equal(s.active, true);
-      assert.equal(String(filter.user), U); assert.equal(filter.guestId, null);
+      if (options.guest) { assert.equal(filter.user, null); assert.equal(filter.guestId, s.owner.guestId); }
+      else { assert.equal(String(filter.user), U); assert.equal(filter.guestId, null); }
       s.bundleUpdates.push({ filter, update, session });
-      if (!s.cart || String(s.cart.user) !== U || s.cart.guestId != null) return { matchedCount: 0, modifiedCount: 0 };
+      if (!s.cart || (options.guest ? s.cart.user != null || s.cart.guestId !== s.owner.guestId : String(s.cart.user) !== U || s.cart.guestId != null)) return { matchedCount: 0, modifiedCount: 0 };
       s.writes++; Object.assign(s.cart, clone(update.$set));
       for (const field of Object.keys(update.$unset)) delete s.cart[field];
       s.cart.__v = (s.cart.__v ?? 0) + update.$inc.__v;
@@ -174,6 +177,19 @@ test("existing guest shopping retains the same payment confirmation and cart own
   await s.confirm(); assert.equal(s.order.paymentStatus, "paid"); assert.equal(s.legacyUpdates.length, 2);
   assert.deepEqual(s.legacyUpdates[0].update.items, []); assert.equal(s.legacyUpdates[0].options.session, s.session);
   assert.equal(typeof s.legacyUpdates[1].update.$set.checkoutKey, "string"); assert.equal(s.writes, 0);
+});
+
+for (const ordinary of [true, false]) test(`guest card confirmation consumes ${ordinary ? "mixed" : "bundle-only"} merchandise once through the existing flow`, async t => {
+  const s = await payment(t, { bundles: true, guest: true, ordinary });
+  await s.confirm();
+  assert.equal(s.order.paymentStatus, "paid"); assert.equal(s.order.sideEffectsCommitted, true);
+  assert.equal(s.product.warehouseStocks[0].quantity, ordinary ? 4 : 6);
+  assert.equal(s.walletDebits, 0); assert.deepEqual(s.walletLedger, []);
+  assert.equal(s.order.settlement.cardCapturedPiastres, ordinary ? 10000 : 8000);
+  assert.deepEqual(s.cart.items, []); assert.equal(s.cart.bundles, undefined);
+  assert.equal(s.bundleUpdates.length, 1); assert.equal(s.bundleUpdates[0].filter.guestId, s.owner.guestId);
+  const writes = s.writes, stock = s.product.warehouseStocks[0].quantity;
+  await s.confirm(); assert.equal(s.writes, writes); assert.equal(s.product.warehouseStocks[0].quantity, stock);
 });
 
 test("existing card confirmation clears mixed merchandise and retains its wallet, capture and key-rotation rules", async t => {

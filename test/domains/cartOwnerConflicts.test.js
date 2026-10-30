@@ -37,7 +37,7 @@ function fixture(t) {
   t.mock.method(CollectionModel, "updateMany", async () => ({ acknowledged: true }));
   t.mock.method(CartModel.collection, "insertOne", async (row) => {
     state.insertAttempts.push(clone(row));
-    if (state.createError) { state.user = state.winner; throw state.createError; }
+    if (state.createError) { if(row.user)state.user=state.winner;else state.guest=state.winner;throw state.createError; }
     if (row.user) state.user = clone(row); else state.guest = clone(row);
     return { acknowledged: true, insertedId: row._id };
   });
@@ -95,6 +95,14 @@ test("guest-only cart creation keeps its error behavior instead of recovering an
   const s = fixture(t); const error = duplicate(); s.createError = error;
   await assert.rejects(s.add({ userId: null, guestId: "guest-test" }), (received) => received === error);
   assert.equal(s.lookups.length, 1); assert.equal(s.updates.length, 0);
+});
+
+test("a duplicate first-guest-cart insert reuses only the winning guest cart",async t=>{
+  const s=fixture(t);s.winner=cart({user:undefined,guestId:"guest-test"});
+  s.createError=duplicate({keyPattern:{guestId:1},keyValue:{guestId:"guest-test"}});
+  const result=await s.add({userId:null,guestId:"guest-test"});
+  assert.equal(result.guestId,"guest-test");assert.equal(result.userId,null);assert.equal(result.items[0].quantity,5);
+  assert.equal(s.insertAttempts.length,1);assert.equal(s.lookups.length,2);assert.equal(s.user,null);
 });
 
 test("a recovered legacy cart still receives the existing checkout-key backfill", async (t) => {

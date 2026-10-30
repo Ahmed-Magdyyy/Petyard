@@ -44,7 +44,7 @@ test("the existing disabled flag rejects catalog and management before data acce
   assert.equal(s.authReads, 0); assert.deepEqual(s.calls, []);
 });
 
-test("management mounts before customer IDs while catalog remains authenticated and warehouse-scoped", async t => {
+test("management mounts before customer IDs while the public catalog stays warehouse-scoped", async t => {
   const s = await fixture(t);
   assert.equal((await s.request("/admin")).status, 200);
   assert.equal((await s.request("/admin", { method: "POST", body: { name_en: "Pair", price: 15, components: [{ productId: B, productType: "SIMPLE", quantity: 2 }] } })).status, 201);
@@ -54,12 +54,13 @@ test("management mounts before customer IDs while catalog remains authenticated 
   assert.equal((await s.request("?language=en")).status, 400); assert.equal(s.calls.length, 4);
 });
 
-test("normal JWT and SuperAdmin boundaries remain effective on the mounted paths", async t => {
+test("public catalog access preserves JWT and SuperAdmin requirements on management paths", async t => {
   const s = await fixture(t);
-  for (const path of ["/admin", `?warehouseId=${W}&language=en`]) assert.equal((await s.request(path, { headers: { Authorization: "", "x-guest-id": "guest" } })).status, 401);
+  assert.equal((await s.request("/admin", { headers: { Authorization: "", "x-guest-id": "guest" } })).status, 401);
+  assert.equal((await s.request(`?warehouseId=${W}&language=en`, { headers: { Authorization: "" } })).status, 200);
   for (const role of ["user", "admin", "moderator"]) { s.actor.role = role; assert.equal((await s.request("/admin")).status, 403); }
   s.actor.role = "user"; assert.equal((await s.request(`?warehouseId=${W}&language=en`)).status, 200);
-  assert.deepEqual(s.calls, ["catalog:list"]);
+  assert.deepEqual(s.calls, ["catalog:list", "catalog:list"]);
 });
 
 test("the pre-parser enforces 16 KiB before the app's larger parser and safely maps malformed JSON", async t => {

@@ -12,7 +12,7 @@ import { checkoutSummaryValidator } from "./checkout.validators.js";
 
 const router = Router();
 
-router.get("/guest/summary", guestLimiter, getCheckoutSummaryForGuest);
+router.get("/guest/summary", guestLimiter, checkoutSummaryValidator, getCheckoutSummaryForGuest);
 
 router.get(
   "/me/summary",

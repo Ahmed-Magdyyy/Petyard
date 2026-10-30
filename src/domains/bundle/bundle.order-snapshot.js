@@ -20,7 +20,10 @@ export function assertBundleOrderSnapshot(order) {
   if (groups === undefined) { if ((order?.items ?? []).some(associated)) fail(); return; }
   if (!Array.isArray(groups)) fail();
   if (!groups.length) { if ((order?.items ?? []).some(associated)) fail(); return; }
-  if (!id(referenceId(order.user)) || order.guestId != null || order.currency !== "EGP" || !Array.isArray(order.items)) fail();
+  const validOwner = order.user == null
+    ? typeof order.guestId === "string" && Boolean(order.guestId.trim())
+    : id(referenceId(order.user)) && order.guestId == null;
+  if (!validOwner || order.currency !== "EGP" || !Array.isArray(order.items)) fail();
   const groupIds = new Set(), definitionIds = new Set(), expected = new Map();
   for (const group of groups) {
     if (!id(group.id) || !id(group.bundleId) || groupIds.has(group.id) || definitionIds.has(group.bundleId) ||
@@ -80,14 +83,14 @@ export function assertBundleOrderSnapshot(order) {
 }
 
 // Backend-priced source only; this copies snapshots but performs no reservation or order save.
-export function buildBundleOrderMerchandise({ plan, ordinaryItems = [], userId }) {
+export function buildBundleOrderMerchandise({ plan, ordinaryItems = [], userId, guestId }) {
   if (!plan || !Array.isArray(plan.groups) || !plan.groups.length || !Array.isArray(plan.itemDrafts) ||
     !Array.isArray(ordinaryItems) || ordinaryItems.some(associated)) fail();
   const bundleGroups = copy(plan.groups);
   const items = [...copy(ordinaryItems), ...copy(plan.itemDrafts).map(row => ({ ...row, lineId: randomUUID(), lineKind: orderLineKindEnum.ORIGINAL }))];
   let subtotal;
   try { subtotal = fromPiastres(calculateMerchandiseGrossPiastres(items)); } catch { fail(); }
-  assertBundleOrderSnapshot({ user: userId, warehouse: plan.warehouseId, currency: plan.currency, subtotal, items, bundleGroups });
+  assertBundleOrderSnapshot({ user: userId, guestId, warehouse: plan.warehouseId, currency: plan.currency, subtotal, items, bundleGroups });
   return { items, bundleGroups, subtotal };
 }
 

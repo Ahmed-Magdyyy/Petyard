@@ -12,8 +12,8 @@ import { UserModel } from "../../../src/domains/user/user.model.js";
 import { OrderModel } from "../../../src/domains/order/order.model.js";
 import { CartModel } from "../../../src/domains/cart/cart.model.js";
 
-function setup(t, { ordinary = true } = {}) {
-  const s = fixture(t, { ordinary });
+function setup(t, { ordinary = true, guest = false } = {}) {
+  const s = fixture(t, { ordinary, guest });
   const previous = process.env.ASSISTANT_BUNDLE_CART_ENABLED;
   process.env.ASSISTANT_BUNDLE_CART_ENABLED = "true";
   t.after(() => { if (previous === undefined) delete process.env.ASSISTANT_BUNDLE_CART_ENABLED; else process.env.ASSISTANT_BUNDLE_CART_ENABLED = previous; });
@@ -42,7 +42,7 @@ function setup(t, { ordinary = true } = {}) {
   t.mock.method(globalThis, "fetch", () => assert.fail("No provider calls"));
   s.prepare = changes => buildOrderItemsWithPromotions({ cart: clone(s.cart), session: s.session, lang: "en", ...changes });
   s.capture = () => clone({ cart: s.cart, user: s.user, products: s.products, definitions: s.definitions, receipts: s.receipts });
-  s.order = result => ({ _id: new mongoose.Types.ObjectId(OTHER), user: U, warehouse: s.cart.warehouse,
+  s.order = result => ({ _id: new mongoose.Types.ObjectId(OTHER), ...(guest ? { guestId: s.guestId } : { user: U }), warehouse: s.cart.warehouse,
     currency: "EGP", items: result.orderItems, subtotal: result.subtotal, bundleGroups: result.bundleGroups });
   return s;
 }
@@ -154,7 +154,7 @@ test("variant components require the selected variant in the selected warehouse"
   await assert.rejects(s.prepare(), { statusCode: 409 });
 });
 
-test("the disabled gate, guests and inactive or unverified accounts cannot prepare bundle merchandise", async t => {
+test("the disabled gate, ambiguous ownership and inactive or unverified accounts cannot prepare bundle merchandise", async t => {
   const s = setup(t); process.env.ASSISTANT_BUNDLE_CART_ENABLED = "false";
   await assert.rejects(s.prepare(), { code: "BUNDLE_CART_FLOW_REQUIRED", statusCode: 409 });
   process.env.ASSISTANT_BUNDLE_CART_ENABLED = "true";
@@ -163,6 +163,20 @@ test("the disabled gate, guests and inactive or unverified accounts cannot prepa
     s.user[field] = false; await assert.rejects(s.prepare(), { statusCode: 403 }); s.user[field] = true;
   }
   assert.deepEqual(s.writes, []);
+});
+
+test("guest mixed and bundle-only orders reuse merchandise snapshots and exact warehouse stock checks", async t => {
+  for (const ordinary of [true, false]) await t.test(ordinary ? "mixed cart" : "bundle-only cart", async t => {
+    const s = setup(t, { ordinary, guest: true });
+    const result = await s.prepare();
+    assert.equal(result.subtotal, ordinary ? 50 : 30);
+    const order = s.order(result);
+    assert.doesNotThrow(() => assertBundleOrderSnapshot(order));
+    assert.equal(presentOrder(order).bundles.length, 1);
+    assert.deepEqual(s.writes, []);
+    s.products[0].warehouseStocks = [{ warehouse: OTHER, quantity: 1000 }];
+    await assert.rejects(s.prepare(), { statusCode: 409 });
+  });
 });
 
 test("stale carts, fallback warehouses and calls outside the order transaction fail before writes", async t => {

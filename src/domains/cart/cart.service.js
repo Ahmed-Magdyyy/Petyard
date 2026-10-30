@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import mongoose from "mongoose";
 import { CartModel } from "./cart.model.js";
 import { assertOrdinaryCart } from "./cart.bundle-compatibility.js";
+import { bundleCartIdentity, bundleCartOwnerFilter } from "../bundle/bundle.cart-identity.js";
 import {
   findProductById,
   findProductsByIds,
@@ -100,10 +101,11 @@ function buildIdentityFilter({ userId, guestId }) {
   throw new ApiError("Either userId or guestId must be provided", 400);
 }
 
-function isUserCartConflict(error, userId) {
-  return Boolean(userId && error?.code === 11000 && error.keyPattern?.user === 1 &&
+function isCartCreationConflict(error, userId, guestId) {
+  const key = userId ? "user" : "guestId", owner = userId || guestId;
+  return Boolean(owner && error?.code === 11000 && error.keyPattern?.[key] === 1 &&
     Object.keys(error.keyPattern).length === 1 &&
-    (error.keyValue == null || String(error.keyValue.user) === String(userId)));
+    (error.keyValue == null || String(error.keyValue[key]) === String(owner)));
 }
 
 async function saveCart(cart) {
@@ -134,7 +136,7 @@ async function getOrCreateCart({ userId, guestId, warehouseId }) {
         checkoutKey: generateCheckoutKey(),
       });
     } catch (error) {
-      if (!isUserCartConflict(error, userId)) throw error;
+      if (!isCartCreationConflict(error, userId, guestId)) throw error;
       cart = await findCart(identityFilter);
       if (!cart) throw new ApiError("Your cart changed. Please try again.", 409);
     }
@@ -590,10 +592,10 @@ export async function getCartService({
     throw new ApiError("Warehouse ID is required", 400);
   }
   // Bundle reads use the requested warehouse directly; legacy fallback must not supply another stock pool.
-  if (userId && !guestId && process.env.ASSISTANT_BUNDLE_CART_ENABLED === "true") {
-    const existing = await findCart({ user: userId }).select("bundles").lean();
+  if (process.env.ASSISTANT_BUNDLE_CART_ENABLED === "true") {
+    const existing = await findCart(bundleCartOwnerFilter(bundleCartIdentity({ userId, guestId }))).select("bundles").lean();
     if (existing?.bundles !== undefined && (!Array.isArray(existing.bundles) || existing.bundles.length)) {
-      return readCartWithBundles({ userId, warehouseId, lang: normalizeLang(lang) });
+      return readCartWithBundles({ userId, guestId, warehouseId, lang: normalizeLang(lang) });
     }
   }
   warehouseId = await resolveCartWarehouseId(warehouseId);
@@ -621,15 +623,15 @@ export async function getCartService({
 }
 
 // Read projection only. Existing mutation/order guards stay active until shared purchasing is complete.
-export async function readCartWithBundles({ userId, warehouseId, lang, session: callerSession }) {
-  const { loadBundleCartUser } = await import("../bundle/bundle.cart-transaction.js");
+export async function readCartWithBundles({ userId, guestId, warehouseId, lang, session: callerSession }) {
+  const { loadBundleCartActor } = await import("../bundle/bundle.cart-transaction.js");
   const { getBundleCartView } = await import("../bundle/bundle.cart-service.js");
   const read = async session => {
-      const actor = await loadBundleCartUser(String(userId), session);
+      const actor = await loadBundleCartActor({ userId, guestId }, session);
       // The existing cart owner selects this projection; no new client capability header is required.
       const view = await getBundleCartView(actor, { warehouseId: String(warehouseId), language: lang },
         { bundleCartEnabled: true }, { session });
-      const raw = await findCart({ user: userId }).session(session).lean();
+      const raw = await findCart(bundleCartOwnerFilter(bundleCartIdentity({ userId, guestId }))).session(session).lean();
       if (!raw || String(raw._id) !== view.id || raw.__v !== view.version) {
         throw new ApiError("Your cart changed. Please try again.", 409);
       }
@@ -660,8 +662,8 @@ export async function readCartWithBundles({ userId, warehouseId, lang, session: 
 }
 
 async function usesBundleCart(userId, guestId) {
-  if (!userId || guestId || process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") return false;
-  const cart = await findCart({ user: userId }).select("bundles").lean();
+  if ((!userId && !guestId) || process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") return false;
+  const cart = await findCart(bundleCartOwnerFilter(bundleCartIdentity({ userId, guestId }))).select("bundles").lean();
   return cart?.bundles !== undefined && (!Array.isArray(cart.bundles) || cart.bundles.length > 0);
 }
 
@@ -670,18 +672,18 @@ async function changeBundleCart(input) {
   return changeCartWithBundles(input);
 }
 
-export async function upsertCartBundleService({ userId, warehouseId, bundleId, expectedRevision, quantity, lang = "en" }) {
-  return changeBundleCart({ userId, warehouseId, lang, change: { action: "add", bundleId, expectedRevision, quantity } });
+export async function upsertCartBundleService({ userId, guestId, warehouseId, bundleId, expectedRevision, quantity, lang = "en" }) {
+  return changeBundleCart({ userId, guestId, warehouseId, lang, change: { action: "add", bundleId, expectedRevision, quantity } });
 }
-export async function updateCartBundleService({ userId, warehouseId, groupId, quantity, lang = "en" }) {
-  return changeBundleCart({ userId, warehouseId, lang, change: { action: "set", groupId, quantity } });
+export async function updateCartBundleService({ userId, guestId, warehouseId, groupId, quantity, lang = "en" }) {
+  return changeBundleCart({ userId, guestId, warehouseId, lang, change: { action: "set", groupId, quantity } });
 }
-export async function removeCartBundleService({ userId, warehouseId, groupId, lang = "en" }) {
-  return changeBundleCart({ userId, warehouseId, lang, change: { action: "remove", groupId } });
+export async function removeCartBundleService({ userId, guestId, warehouseId, groupId, lang = "en" }) {
+  return changeBundleCart({ userId, guestId, warehouseId, lang, change: { action: "remove", groupId } });
 }
-export async function rebindCartWithBundlesService({ userId, warehouseId, lang = "en" }) {
-  if (!await usesBundleCart(userId, null)) throw new ApiError("A bundle cart is required for this action", 409);
-  return changeBundleCart({ userId, warehouseId, lang, change: { action: "rebind" } });
+export async function rebindCartWithBundlesService({ userId, guestId, warehouseId, lang = "en" }) {
+  if (!await usesBundleCart(userId, guestId)) throw new ApiError("A bundle cart is required for this action", 409);
+  return changeBundleCart({ userId, guestId, warehouseId, lang, change: { action: "rebind" } });
 }
 
 export async function setCartAddressFromUserService({
@@ -733,10 +735,16 @@ export async function setCartAddressFromUserService({
 export async function setCartAddressForGuestService({
   guestId,
   guestAddressId,
+  warehouseId: selectedWarehouseId,
   lang = "en",
 }) {
   if (!guestId) {
     throw new ApiError("guestId is required for setting cart address", 400);
+  }
+
+  if (await usesBundleCart(null, guestId)) {
+    if (!selectedWarehouseId) throw new ApiError("The current selected warehouseId is required for a bundle cart", 400);
+    return changeBundleCart({ guestId, warehouseId: selectedWarehouseId, lang, change: { action: "address", guestAddressId: String(guestAddressId) } });
   }
 
   const { findAddressByIdForGuest } =
@@ -796,7 +804,7 @@ export async function upsertCartItemService({
   }
 
   if (await usesBundleCart(userId, guestId)) {
-    return changeBundleCart({ userId, warehouseId, lang, change: { action: "ordinary_add", productId: String(productId),
+    return changeBundleCart({ userId, guestId, warehouseId, lang, change: { action: "ordinary_add", productId: String(productId),
       productType: normalizeProductType(productType), variantId: variantId == null ? null : String(variantId), quantity: Number(quantity) } });
   }
   warehouseId = await resolveCartWarehouseId(warehouseId);
@@ -1167,7 +1175,7 @@ export async function updateCartItemQuantityService({
   }
 
   if (await usesBundleCart(userId, guestId)) {
-    return changeBundleCart({ userId, warehouseId, lang, change: { action: "ordinary_set", itemId: String(itemId), quantity: Number(quantity) } });
+    return changeBundleCart({ userId, guestId, warehouseId, lang, change: { action: "ordinary_set", itemId: String(itemId), quantity: Number(quantity) } });
   }
   warehouseId = await resolveCartWarehouseId(warehouseId);
   const cart = await getExistingCartOrThrow({ userId, guestId, warehouseId });
@@ -1259,7 +1267,7 @@ export async function removeCartItemService({
   lang = "en",
 }) {
   if (await usesBundleCart(userId, guestId)) {
-    return changeBundleCart({ userId, warehouseId, lang, change: { action: "ordinary_remove", itemId: String(itemId) } });
+    return changeBundleCart({ userId, guestId, warehouseId, lang, change: { action: "ordinary_remove", itemId: String(itemId) } });
   }
   warehouseId = await resolveCartWarehouseId(warehouseId);
   const cart = await getExistingCartOrThrow({ userId, guestId, warehouseId });
@@ -1280,7 +1288,7 @@ export async function removeCartItemService({
 
 export async function clearCartService({ userId, guestId, warehouseId }) {
   if (await usesBundleCart(userId, guestId)) {
-    return changeBundleCart({ userId, warehouseId, change: { action: "clear" } });
+    return changeBundleCart({ userId, guestId, warehouseId, change: { action: "clear" } });
   }
   const identityFilter = buildIdentityFilter({ userId, guestId });
   const existing = await findCart(identityFilter);
@@ -1327,7 +1335,7 @@ export async function mergeGuestCartService({ userId, guestId, warehouseId }) {
     try {
       await guestCart.save();
     } catch (error) {
-      if (!isUserCartConflict(error, userId)) throw error;
+      if (!isCartCreationConflict(error, userId, null)) throw error;
       // The rejected adoption wrote nothing; retain guest items for a fresh merge attempt.
       throw new ApiError("Your cart changed. Please try again.", 409);
     }

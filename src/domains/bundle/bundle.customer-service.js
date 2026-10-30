@@ -1,5 +1,4 @@
 import * as repository from "./bundle.repository.js";
-import { requireBundleUser } from "./bundle.access.js";
 import { bundleId, bundleInputError, exactBundleFields } from "./bundle.draft-input.js";
 import { normalizeFixedBundleComponents } from "./bundle.components.js";
 import { buildBundleProductCard } from "./bundle.product-card.js";
@@ -51,16 +50,16 @@ export function createBundleCatalogService(db = repository) {
     return ids.length ? db.findBundleProducts(ids, warehouseId) : [];
   }
   return {
-    async list(actor, query) {
-      requireBundleUser(actor); const input = request(query, true), warehouse = await warehouseFor(input.warehouseId);
+    async list(_actor, query) {
+      const input = request(query, true), warehouse = await warehouseFor(input.warehouseId);
       const rows = await db.listPublishedBundles(input.cursor, input.limit + 1);
       const scanned = rows.slice(0, input.limit), eligible = scanned.map(eligibleDefinition).filter(Boolean);
       const products = await productsFor(eligible, input.warehouseId);
       return { bundles: eligible.map(row => card(row, warehouse, products, input.language)).filter(Boolean),
         nextCursor: rows.length > input.limit ? bundleId(String(scanned[scanned.length - 1]._id)) : null };
     },
-    async get(actor, id, query) {
-      requireBundleUser(actor); const input = request(query, false), idValue = bundleId(id), warehouse = await warehouseFor(input.warehouseId);
+    async get(_actor, id, query) {
+      const input = request(query, false), idValue = bundleId(id), warehouse = await warehouseFor(input.warehouseId);
       const row = eligibleDefinition(await db.findPublishedBundle(idValue));
       const result = row && String(row._id).toLowerCase() === idValue ? card(row, warehouse, await productsFor([row], input.warehouseId), input.language) : null;
       if (!result) bundleInputError("Bundle is unavailable in the selected warehouse", "BUNDLE_NOT_FOUND", 404);

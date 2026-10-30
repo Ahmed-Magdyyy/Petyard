@@ -35,15 +35,12 @@ function fixture() {
   f.service = createBundleCatalogService(db); return f;
 }
 
-test("catalog admits only active verified authenticated non-guest accounts before any storage read", async () => {
-  for (const invalid of [null, { ...actor, _id: "bad" }, { ...actor, active: false }, { ...actor, phoneVerified: false },
-    { ...actor, role: "guest" }, { ...actor, role: "unknown" }, { ...actor, deletedAt: new Date() },
-    { ...actor, account_status: "banned" }, { ...actor, account_status: "deleted" }]) {
+test("published warehouse-scoped catalog is public for guests and signed-in shoppers", async () => {
+  for (const customer of [null, undefined, { guestId: "guest-browser" }, actor]) {
     const f = fixture();
-    await assert.rejects(f.service.list(invalid, query())); await assert.rejects(f.service.get(invalid, id(1), query()));
-    assert.deepEqual(f.calls, []);
+    assert.equal((await f.service.list(customer, query())).bundles.length, 1);
+    assert.equal((await f.service.get(customer, id(1), query())).bundle.id, id(1));
   }
-  for (const role of ["user", "moderator", "admin", "superAdmin"]) assert.equal((await fixture().service.list({ ...actor, role }, query())).bundles.length, 1);
 });
 
 test("catalog requires explicit warehouse/language and rejects unsupported filters before any read", async () => {

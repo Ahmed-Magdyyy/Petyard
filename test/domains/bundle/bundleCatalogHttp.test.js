@@ -55,18 +55,15 @@ async function fixture(t) {
   return f;
 }
 
-test("real authentication rejects missing/invalid tokens, guest accounts and ineligible users before catalog reads", async t => {
+test("public catalog list/detail work without a login or guest identity and never load an account", async t => {
   const f = await fixture(t);
+  t.mock.method(UserModel, "findById", () => assert.fail("Public catalog must not load user accounts"));
   for (const path of [`?${parameters}`, `/${id(1)}?${parameters}`]) {
-    assert.equal((await f.request(path, { authorization: "", "x-guest-id": "guest" })).status, 401);
-    assert.equal((await f.request(path, { authorization: "Bearer invalid" })).status, 401);
-    for (const change of [{ role: "guest" }, { active: false }, { phoneVerified: false }, { deletedAt: new Date() },
-      { account_status: "banned" }, { account_status: "deleted" }]) {
-      const saved = { ...f.actor }; Object.assign(f.actor, change);
-      assert.ok([401, 403].includes((await f.request(path)).status)); f.actor = saved;
-    }
+    assert.equal((await f.request(path, { authorization: "" })).status, 200);
+    assert.equal((await f.request(path, { authorization: "", "x-guest-id": "guest" })).status, 200);
+    assert.equal((await f.request(path, { authorization: "Bearer invalid" })).status, 200);
   }
-  assert.deepEqual(f.reads, []);
+  assert.ok(f.reads.includes("products"));
 });
 
 test("customer HTTP strictly validates required warehouse/language, IDs, filters and body absence", async t => {

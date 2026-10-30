@@ -16,12 +16,13 @@ export const getCheckoutSummaryForGuest = asyncHandler(async (req, res) => {
     throw new ApiError("x-guest-id header is required", 400);
   }
 
-  const { couponCode } = req.query;
+  const { couponCode, warehouseId } = req.query;
 
   const result = await getCheckoutSummaryService({
     userId: null,
     guestId,
     couponCode,
+    warehouseId,
     lang: req.lang,
   });
 

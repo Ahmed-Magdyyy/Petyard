@@ -5,6 +5,7 @@ import { bundleInputError } from "./bundle.draft-input.js";
 import { savedBundleCartGroups, inspectBundleCartState } from "./bundle.cart-state.js";
 import { loadBundleCartViewSources } from "./bundle.cart-transaction.js";
 import { fromPiastres } from "../../shared/utils/money.js";
+import { bundleCartActorIdentity } from "./bundle.cart-identity.js";
 
 export async function runBundleCartRead(callback, session) {
   if (session != null) {
@@ -41,7 +42,8 @@ export async function getBundleCartView(actor, args, config, { session } = {}) {
       bundleInputError("Cart context is unavailable", "BUNDLE_CART_REVIEW_REQUIRED", 409);
     }
     const base = raw ? mapCartToResponse(CartModel.hydrate({ ...raw, bundles: undefined })) : null;
-    const input = { ownerId: String(actor._id), cart: raw ? { ...raw, items: slice.items } : null,
+    const identity = bundleCartActorIdentity(actor);
+    const input = { ownerId: identity.owner, guestId: identity.guestId, cart: raw ? { ...raw, items: slice.items } : null,
       warehouseId: args.warehouseId.toLowerCase(), warehouse, products, definitions, language: args.language };
     const warehouseChangeRequired = raw != null && String(raw.warehouse).toLowerCase() !== input.warehouseId;
     let quote = null, reason = warehouseChangeRequired ? "BUNDLE_CART_WAREHOUSE_CHANGED" : null;
@@ -54,7 +56,7 @@ export async function getBundleCartView(actor, args, config, { session } = {}) {
       } catch (error) { return bundleCartGroupView(ref, null, unavailable(error)); }
     });
     const ordinaryRefreshRequired = JSON.stringify(material(slice.before)) !== JSON.stringify(material(slice.after));
-    const result = { id: raw ? String(raw._id) : null, userId: String(actor._id).toLowerCase(), warehouseId: args.warehouseId.toLowerCase(),
+    const result = { id: raw ? String(raw._id) : null, userId: identity.owner, warehouseId: args.warehouseId.toLowerCase(),
       storedWarehouseId: raw ? String(raw.warehouse).toLowerCase() : null, warehouseChangeRequired,
       version: raw?.__v ?? null, currency: "EGP", pricingScope: "items_only", deliveryAddress: base?.deliveryAddress ?? null,
       items: slice.after, removedItems: slice.removedItems, bundles: groups,

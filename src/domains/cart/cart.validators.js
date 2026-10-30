@@ -83,6 +83,7 @@ export const setUserCartAddressValidator = [
 ];
 
 export const setGuestCartAddressValidator = [
+  body("warehouseId").optional().isString().isMongoId().withMessage("warehouseId must be a valid id"),
   body("guestAddressId")
     .notEmpty()
     .withMessage("guestAddressId is required")

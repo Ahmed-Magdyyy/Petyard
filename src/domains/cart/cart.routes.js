@@ -20,6 +20,10 @@ import {
   updateMyCartBundle,
   removeMyCartBundle,
   rebindMyBundleCart,
+  addGuestCartBundle,
+  updateGuestCartBundle,
+  removeGuestCartBundle,
+  rebindGuestBundleCart,
 } from "./cart.controller.js";
 import {
   warehouseIdParamValidator,
@@ -37,6 +41,10 @@ import {
 const router = Router();
 
 router.get("/guest/:warehouseId", warehouseIdParamValidator, getGuestCart);
+router.post("/guest/:warehouseId/bundles", warehouseIdParamValidator, upsertCartBundleValidator, addGuestCartBundle);
+router.patch("/guest/:warehouseId/bundles/:groupId", warehouseIdParamValidator, cartBundleIdValidator, updateCartBundleValidator, updateGuestCartBundle);
+router.delete("/guest/:warehouseId/bundles/:groupId", warehouseIdParamValidator, cartBundleIdValidator, emptyBundleCartBodyValidator, removeGuestCartBundle);
+router.post("/guest/:warehouseId/rebind", warehouseIdParamValidator, emptyBundleCartBodyValidator, rebindGuestBundleCart);
 
 router.patch(
   "/guest/address",

@@ -8,6 +8,7 @@ import { ProductModel } from "../product/product.model.js";
 import { ManualBundle } from "./bundle.model.js";
 import { AssistantCartReceipt } from "../assistant/shared/assistant.cart-receipt.model.js";
 import { requireBundleUser } from "./bundle.access.js";
+import { bundleCartIdentity, bundleCartActorIdentity, bundleCartOwnerFilter, bundleCartMatchesOwner } from "./bundle.cart-identity.js";
 import { bundleId, bundleInputError, exactBundleFields } from "./bundle.draft-input.js";
 import { calculateBundleCartChange, inspectBundleCartState } from "./bundle.cart-state.js";
 import { bundleCartEditActions, normalizeBundleCartEdit, prepareBundleCartEdit, fenceBundleCartAddress } from "./bundle.cart-edits.js";
@@ -28,13 +29,13 @@ function transaction(session) {
   if (!session || typeof session.inTransaction !== "function" || !session.inTransaction()) fail("An active caller transaction is required", "BUNDLE_CART_TRANSACTION_REQUIRED", 503);
 }
 function request(actor, args) {
-  const owner = bundleId(requireBundleUser(actor));
+  const identity = bundleCartActorIdentity(actor);
   exactBundleFields(args, ["warehouseId", "language", "change"]);
   const warehouseId = bundleId(args.warehouseId);
   if (!["en", "ar"].includes(args.language)) fail("Invalid language", "BUNDLE_INVALID_REQUEST", 400);
   // Use the same strict action guards before any source reads, including on receipt recovery.
   const change = args.change;
-  if (change && bundleCartEditActions.includes(change.action)) return { owner, warehouseId, language: args.language, change: normalizeBundleCartEdit(change) };
+  if (change && bundleCartEditActions.includes(change.action)) return { ...identity, warehouseId, language: args.language, change: normalizeBundleCartEdit(change) };
   if (!change || !["add", "set", "remove"].includes(change.action)) fail("Invalid cart action", "BUNDLE_INVALID_REQUEST", 400);
   exactBundleFields(change, change.action === "add" ? ["action", "bundleId", "expectedRevision", "quantity", "newGroupId"] :
     change.action === "set" ? ["action", "groupId", "quantity"] : ["action", "groupId"]);
@@ -45,7 +46,7 @@ function request(actor, args) {
     normalized = { action: "add", bundleId: bundleId(change.bundleId), expectedRevision: change.expectedRevision,
       quantity: change.quantity, newGroupId: bundleId(change.newGroupId) };
   } else normalized = { action: change.action, groupId: bundleId(change.groupId), ...(change.action === "set" ? { quantity: change.quantity } : {}) };
-  return { owner, warehouseId, language: args.language, change: normalized };
+  return { ...identity, warehouseId, language: args.language, change: normalized };
 }
 async function userFor(owner, session) {
   const user = await UserModel.findById(oid(owner)).select("_id role active phoneVerified deletedAt account_status __v")
@@ -64,6 +65,10 @@ async function fenceUser(user, session) {
   if (result.matchedCount !== 1 || result.modifiedCount !== 1) fail("Account context changed");
 }
 export { userFor as loadBundleCartUser, fenceUser as fenceBundleCartUser };
+export async function loadBundleCartActor({ userId, guestId }, session) {
+  const identity = bundleCartIdentity({ userId, guestId });
+  return identity.guestId != null ? { guestId: identity.guestId } : userFor(identity.owner, session);
+}
 async function readiness() {
   let cartIndexes, receiptIndexes;
   try { cartIndexes = await CartModel.collection.indexes(); receiptIndexes = await AssistantCartReceipt.collection.indexes(); }
@@ -78,9 +83,9 @@ async function readiness() {
   }
 }
 async function sources(input, session, { forView = false } = {}) {
-  const user = await userFor(input.owner, session);
-  const raw = await CartModel.findOne({ user: oid(input.owner) }).maxTimeMS(5000).session(session).lean();
-  if (raw && (String(raw.user).toLowerCase() !== input.owner || raw.guestId != null ||
+  const user = input.guestId != null ? null : await userFor(input.owner, session);
+  const raw = await CartModel.findOne(bundleCartOwnerFilter(input)).maxTimeMS(5000).session(session).lean();
+  if (raw && (!bundleCartMatchesOwner(raw, input) ||
       !forView && !["rebind", "address"].includes(input.change?.action) && String(raw.warehouse).toLowerCase() !== input.warehouseId)) fail("Cart ownership or warehouse changed");
   if (raw?.bundles !== undefined && (!Array.isArray(raw.bundles) || raw.bundles.some(row => !row || row.constructor !== Object))) fail("Saved bundle groups are unavailable");
   const warehouse = await WarehouseModel.findById(oid(input.warehouseId)).select("_id active fulfillment").maxTimeMS(5000).session(session).lean();
@@ -120,7 +125,7 @@ async function calculate(input, session) {
   const { raw, slice, user, warehouse, definitions, products, edit } = await sources(input, session);
   const context = raw ? { ...(edit?.candidate ?? raw), items: slice.items } : null;
   const calculateState = edit ? inspectBundleCartState : calculateBundleCartChange;
-  const result = calculateState({ ownerId: input.owner, cart: context, warehouseId: input.warehouseId, warehouse,
+  const result = calculateState({ ownerId: input.owner, guestId: input.guestId, cart: context, warehouseId: input.warehouseId, warehouse,
     products, definitions, change: input.change, language: input.language });
   if (edit) result.action = input.change.action;
   const quote = { ...result, ordinaryItemsBefore: slice.before, ordinaryItemsAfter: slice.after, removedOrdinaryItems: slice.removedItems };
@@ -142,7 +147,7 @@ export async function loadBundleCartViewSources(actor, args, { session } = {}) {
   if (session != null) transaction(session);
   exactBundleFields(args, ["warehouseId", "language"]);
   if (!["en", "ar"].includes(args.language)) fail("Invalid language", "BUNDLE_INVALID_REQUEST", 400);
-  return sources({ owner: bundleId(requireBundleUser(actor)), warehouseId: bundleId(args.warehouseId), language: args.language }, session, { forView: true });
+  return sources({ ...bundleCartActorIdentity(actor), warehouseId: bundleId(args.warehouseId), language: args.language }, session, { forView: true });
 }
 
 // Internal preview only: no durable proposal or public confirmation route is supplied here.
@@ -151,6 +156,7 @@ export async function previewBundleCartChange(actor, args, { session = null } = 
   return (await calculate(request(actor, args), session)).quote;
 }
 function operation(actor, args, review) {
+  requireBundleUser(actor);
   const input = request(actor, args);
   exactBundleFields(review, ["proposalId", "proposalFingerprint", "quote"]);
   const proposalId = oid(review.proposalId);

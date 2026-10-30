@@ -20,8 +20,8 @@ import { CouponModel } from "../../../src/domains/coupon/coupon.model.js";
 import { WalletTransactionModel } from "../../../src/domains/wallet/walletTransaction.model.js";
 import { presentOrder } from "../../../src/domains/order/order.presenter.js";
 
-function setup(t, { ordinary = true } = {}) {
-  const s = fixture(t, { ordinary });
+function setup(t, { ordinary = true, guest = false } = {}) {
+  const s = fixture(t, { ordinary, guest });
   const previous = process.env.ASSISTANT_BUNDLE_CART_ENABLED;
   process.env.ASSISTANT_BUNDLE_CART_ENABLED = "true";
   t.after(() => { if (previous === undefined) delete process.env.ASSISTANT_BUNDLE_CART_ENABLED; else process.env.ASSISTANT_BUNDLE_CART_ENABLED = previous; });
@@ -43,8 +43,9 @@ function setup(t, { ordinary = true } = {}) {
   }));
   t.mock.method(WarehouseModel, "findOne", () => assert.fail("A bundle purchase must not select a fallback warehouse"));
   t.mock.method(OrderModel, "create", async ([row], { session }) => {
-    assert.equal(session, s.session); const doc = new OrderModel(row); await doc.validate(); s.orders.push(doc.toObject()); return [doc];
+    assert.equal(session, s.session); const doc = new OrderModel({ ...row, createdAt: new Date() }); await doc.validate(); s.orders.push(doc.toObject()); return [doc];
   });
+  t.mock.method(OrderModel, "findOne", filter => query(() => s.orders.find(row => row.checkoutKey === filter.checkoutKey && row.status === filter.status) ?? null));
   t.mock.method(UserModel, "updateOne", async (filter, update, { session }) => {
     assert.equal(session, s.session); assert.equal(String(filter._id), U);
     assert.equal(filter.walletBalance.$gte, -update.$inc.walletBalance);
@@ -64,11 +65,26 @@ function setup(t, { ordinary = true } = {}) {
   s.place = async changes => {
     const before = s.snapshot();
     try { return await processOrderCreationWithCart({ session: s.session, cart: CartModel.hydrate(s.cart),
-      orderUserId: U, orderGuestId: null, couponUserId: U, paymentMethod: "cod", lang: "en", addressUser: s.user, historyByUserId: U, ...changes }); }
+      orderUserId: guest ? null : U, orderGuestId: guest ? s.guestId : null, couponUserId: guest ? null : U,
+      paymentMethod: "cod", lang: "en", addressUser: guest ? null : s.user, historyByUserId: guest ? undefined : U, ...changes }); }
     catch (error) { Object.assign(s, before); throw error; }
   };
   return s;
 }
+
+function assertPendingCartPreserved(cart, before) {
+  assert.equal(cart.__v, before.__v + 1);
+  assert.deepEqual({ ...cart, __v: before.__v }, before);
+}
+
+for (const guest of [false, true]) test(`${guest ? "guest" : "user"} bundle card preparation rechecks pending orders inside the transaction`, async t => {
+  const s = setup(t, { guest });
+  await s.place({ paymentMethod: "card" });
+  const before = s.snapshot();
+  await assert.rejects(s.place({ paymentMethod: "card" }), { statusCode: 409 });
+  assert.equal(s.orders.length, 1); assert.equal(s.stockSaves, 0);
+  assert.deepEqual(s.cart, before.cart); assert.deepEqual(s.ledger, []);
+});
 
 for (const method of ["cod", "pos_on_delivery", "instapay"]) test(`existing ${method} assembly prices mixed merchandise, decrements shared stock and clears one cart`, async t => {
   const s = setup(t), key = s.cart.checkoutKey;
@@ -89,11 +105,33 @@ test("the existing assembler accepts a bundle as the only merchandise", async t 
   assert.deepEqual(presentOrder(order).items, []); assert.equal(presentOrder(order).bundles.length, 1);
 });
 
+for (const method of ["cod", "pos_on_delivery", "instapay", "card"]) {
+  for (const ordinary of [true, false]) test(`guest ${method} uses shared ${ordinary ? "mixed" : "bundle-only"} order assembly`, async t => {
+    const s = setup(t, { guest: true, ordinary }), before = s.snapshot();
+    const order = await s.place({ paymentMethod: method,
+      ...(method === "instapay" ? { instapayScreenshotUrls: ["https://proof.invalid/fixture.webp"] } : {}) });
+    assert.equal(order.guestId, s.guestId); assert.equal(order.user, null);
+    assert.equal(order.walletUsed, 0); assert.equal(order.total, ordinary ? 100 : 80);
+    assert.equal(presentOrder(order).bundles.length, 1); assert.equal(presentOrder(order).items.length, ordinary ? 1 : 0);
+    assert.deepEqual(s.ledger, []); assert.equal(s.user.walletBalance, 10);
+    if (method === "card") {
+      assert.equal(order.status, "awaiting_payment"); assert.equal(order.sideEffectsCommitted, false);
+      assert.deepEqual({ ...s.cart, __v: before.cart.__v }, before.cart);
+      assert.equal(s.cart.__v, before.cart.__v + 1);
+      assert.deepEqual(s.snapshot().products, before.products); assert.equal(s.stockSaves, 0);
+    } else {
+      assert.equal(s.products[0].warehouseStocks[0].quantity, ordinary ? 24 : 26);
+      assert.deepEqual(s.cart.items, []); assert.equal(s.cart.bundles, undefined); assert.equal(s.cart.__v, 8);
+    }
+  });
+}
+
 for (const ordinary of [true, false]) test(`existing card skeleton assembly leaves stock, money and cart unchanged (${ordinary ? "mixed" : "bundle only"})`, async t => {
   const s = setup(t, { ordinary }), before = s.snapshot(), order = await s.place({ paymentMethod: "card" });
   assert.equal(order.status, "awaiting_payment"); assert.equal(order.sideEffectsCommitted, false);
   assert.equal(order.total, ordinary ? 90 : 70); assert.equal(order.settlement.cardDuePiastres, order.total * 100);
-  assert.deepEqual(s.cart, before.cart); assert.deepEqual(s.snapshot().products, before.products); assert.equal(s.user.walletBalance, 10);
+  assert.deepEqual({ ...s.cart, __v: before.cart.__v }, before.cart); assert.equal(s.cart.__v, before.cart.__v + 1);
+  assert.deepEqual(s.snapshot().products, before.products); assert.equal(s.user.walletBalance, 10);
   assert.deepEqual(s.ledger, []); assert.equal(s.stockSaves, 0); assert.equal(s.orders.length, 1);
 });
 
@@ -157,14 +195,17 @@ async function publicFixture(t, options) {
     try { return await callback(); } catch (error) { Object.assign(s, before); throw error; } finally { s.active = false; }
   };
   t.mock.method(mongoose, "startSession", async () => { s.starts++; return s.session; });
-  t.mock.method(UserModel, "findById", () => query(() => clone(s.user)));
+  t.mock.method(UserModel, "findById", () => { if (options?.guest) assert.fail("Guest checkout must not load an account"); return query(() => clone(s.user)); });
   t.mock.method(UserModel, "find", () => query(() => []));
-  t.mock.method(CartModel, "findOne", () => query((session, populated) => populated ? CartModel.hydrate(s.cart) : clone(s.cart)));
+  t.mock.method(CartModel, "findOne", filter => query((session, populated) => {
+    if (options?.guest && (filter.user != null || filter.guestId !== s.guestId)) return null;
+    return populated ? CartModel.hydrate(s.cart) : clone(s.cart);
+  }));
   const clearCart = CartModel.collection.updateOne;
   s.keyWrites = 0;
   t.mock.method(CartModel.collection, "updateOne", async (filter, update, options) => {
     if (update.$set?.checkoutKey) {
-      assert.equal(options, undefined); assert.equal(String(filter.user), U); assert.equal(filter.__v, s.cart.__v);
+      assert.equal(options, undefined); s.assertOwnerFilter(filter); assert.equal(filter.__v, s.cart.__v);
       assert.deepEqual(filter.$expr.$eq[1].$literal, s.cart);
       if (s.keyConflict) return { matchedCount: 0, modifiedCount: 0 };
       s.keyWrites++; Object.assign(s.cart, update.$set); s.cart.__v += update.$inc.__v;
@@ -173,7 +214,8 @@ async function publicFixture(t, options) {
     return clearCart(filter, update, options);
   });
   t.mock.method(OrderModel, "findOne", filter => query(() => {
-    assert.equal(filter.checkoutKey, s.cart.checkoutKey); assert.equal(filter.status, "awaiting_payment"); return s.pending;
+    assert.equal(filter.checkoutKey, s.cart.checkoutKey); assert.equal(filter.status, "awaiting_payment");
+    return s.pending ?? s.orders.find(row => row.checkoutKey === filter.checkoutKey && row.status === filter.status) ?? null;
   }));
   t.mock.method(OrderModel, "updateOne", async (filter, update) => {
     const order = s.orders.find(row => String(row._id) === String(filter._id)); assert.ok(order); Object.assign(order, update); return { matchedCount: 1 };
@@ -189,8 +231,10 @@ async function publicFixture(t, options) {
   const token = jwt.sign({ userId: U }, process.env.JWT_ACCESS_SECRET);
   s.request = (body = { paymentMethod: "cod", notes: "Call first" }, headers = {}) => new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
-    const req = http.request({ host: "127.0.0.1", port: server.address().port, path: "/api/v1/orders/me", method: "POST",
-      headers: Object.fromEntries(Object.entries({ authorization: `Bearer ${token}`, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload), ...headers }).filter(([, value]) => value != null)) }, res => {
+    const identityHeaders = options?.guest ? { "x-guest-id": s.guestId } : { authorization: `Bearer ${token}` };
+    const req = http.request({ host: "127.0.0.1", port: server.address().port,
+      path: options?.guest ? "/api/v1/orders/guest" : "/api/v1/orders/me", method: "POST",
+      headers: Object.fromEntries(Object.entries({ ...identityHeaders, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload), ...headers }).filter(([, value]) => value != null)) }, res => {
       let body = ""; res.on("data", chunk => { body += chunk; }); res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(body) }));
     }); req.on("error", reject); req.end(payload);
   });
@@ -216,6 +260,47 @@ for (const method of ["cod", "pos_on_delivery"]) for (const ordinary of [true, f
   for (const field of ["bundleCheckout", "bundleGroups", "sourceCart", "checkoutKey"]) assert.equal(result.body.data[field], undefined);
 });
 
+for (const ordinary of [true, false]) test(`guest HTTP order route buys ${ordinary ? "mixed" : "bundle-only"} merchandise without signing in`, async t => {
+  const s = await publicFixture(t, { guest: true, ordinary });
+  const result = await s.request({ paymentMethod: "cod" });
+  assert.equal(result.status, 201, JSON.stringify(result.body));
+  assert.equal(result.body.data.total, ordinary ? 100 : 80);
+  assert.equal(result.body.data.bundles.length, 1); assert.equal(s.stockSaves, 1);
+  assert.deepEqual(s.ledger, []);
+});
+
+test("guest card checkout key backfill uses the owned cart and retains the existing retry window", async t => {
+  const s = await publicFixture(t, { guest: true }); delete s.cart.checkoutKey;
+  s.pending = { _id: OTHER, createdAt: new Date(), orderNumber: "PENDING" };
+  const result = await s.request({ paymentMethod: "card" });
+  assert.equal(result.status, 409); assert.match(result.body.message, /payment in progress/);
+  assert.equal(s.keyWrites, 1); assert.equal(s.starts, 0); assert.equal(s.stockSaves, 0);
+  assert.deepEqual(s.ledger, []); assert.deepEqual(s.providerCalls, []);
+});
+
+test("a guest pending order appearing after the initial lookup stops before provider initialization", async t => {
+  const s = await publicFixture(t, { guest: true }), before = s.snapshot();
+  t.mock.method(OrderModel, "findOne", filter => {
+    let session;
+    return { session(value) { session = value; return this; }, select() { return this; },
+      then(resolve, reject) { return Promise.resolve(session ? { _id: OTHER } : null).then(resolve, reject); } };
+  });
+  const result = await s.request({ paymentMethod: "card" });
+  assert.equal(result.status, 409); assert.match(result.body.message, /payment in progress/);
+  assert.equal(s.orders.length, 0); assert.deepEqual(s.cart, before.cart); assert.deepEqual(s.providerCalls, []);
+});
+
+for (const ordinary of [true, false]) test(`guest card initialization charges only the shared ${ordinary ? "mixed" : "bundle-only"} total`, async t => {
+  if (!process.env.PETYARD_TEST_PAYMENT_SIM_URL) { t.skip("Run with the local Postman payment simulation"); return; }
+  const s = await publicFixture(t, { guest: true, ordinary }); s.usePaymentSimulation();
+  const before = s.snapshot(), result = await s.request({ paymentMethod: "card" });
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.action, "requires_payment"); assert.equal(s.providerCalls.length, 1);
+  const call = s.providerCalls[0]; assert.equal(call.amount, ordinary ? 10000 : 8000);
+  assert.equal(call.items.length, 1); assert.equal(call.items[0].amount, call.amount);
+  assertPendingCartPreserved(s.cart, before.cart); assert.equal(s.stockSaves, 0); assert.deepEqual(s.ledger, []);
+});
+
 for (const ordinary of [true, false]) test(`existing HTTP card initialization sends one order total for ${ordinary ? "mixed" : "bundle-only"} merchandise`, async t => {
   if (!process.env.PETYARD_TEST_PAYMENT_SIM_URL) { t.skip("Run with the local Postman payment simulation; no external provider requests are allowed"); return; }
   const s = await publicFixture(t, { ordinary }), before = s.snapshot(); s.usePaymentSimulation();
@@ -225,7 +310,7 @@ for (const ordinary of [true, false]) test(`existing HTTP card initialization se
   assert.equal(result.body.data.bundles.length, 1); assert.equal(result.body.data.items.length, ordinary ? 1 : 0);
   assert.equal(s.providerCalls.length, 1); const call = s.providerCalls[0]; assert.equal(call.amount, ordinary ? 9000 : 7000);
   assert.equal(call.items.length, 1); assert.equal(call.items[0].quantity, 1); assert.equal(call.items[0].amount, call.amount);
-  assert.deepEqual(s.cart, before.cart); assert.equal(s.stockSaves, 0); assert.equal(s.user.walletBalance, 10); assert.deepEqual(s.ledger, []);
+  assertPendingCartPreserved(s.cart, before.cart); assert.equal(s.stockSaves, 0); assert.equal(s.user.walletBalance, 10); assert.deepEqual(s.ledger, []);
   assert.equal(s.orders[0].paymobOrderId, "fixture-provider-order"); assert.equal(s.orders[0].checkoutKey, before.cart.checkoutKey);
 });
 
@@ -239,7 +324,7 @@ test("existing card initialization failure keeps stock, money and cart unchanged
   const s = await publicFixture(t), before = s.snapshot(); delete process.env.PAYMOB_SECRET_KEY;
   const result = await s.request({ paymentMethod: "card" }); assert.equal(result.status, 502); assert.equal(s.orders.length, 1);
   assert.equal(s.orders[0].status, "cancelled"); assert.equal(s.orders[0].paymentStatus, "failed");
-  assert.deepEqual(s.cart, before.cart); assert.equal(s.stockSaves, 0); assert.equal(s.user.walletBalance, 10); assert.deepEqual(s.ledger, []);
+  assertPendingCartPreserved(s.cart, before.cart); assert.equal(s.stockSaves, 0); assert.equal(s.user.walletBalance, 10); assert.deepEqual(s.ledger, []);
 });
 
 test("disabled or missing gate rejects a saved bundle purchase without changing data", async t => {
@@ -272,7 +357,7 @@ test("existing card checkout initializes a missing internal key without changing
   const result = await s.request({ paymentMethod: "card" }); assert.equal(result.status, 200, JSON.stringify({ body: result.body, errors: s.errors }));
   assert.equal(s.keyWrites, 1); assert.equal(typeof s.cart.checkoutKey, "string"); assert.ok(s.cart.checkoutKey);
   assert.deepEqual(s.cart.items, before.cart.items); assert.deepEqual(s.cart.bundles, before.cart.bundles);
-  assert.equal(s.cart.__v, before.cart.__v + 1); assert.equal(s.orders[0].checkoutKey, s.cart.checkoutKey);
+  assert.equal(s.cart.__v, before.cart.__v + 2); assert.equal(s.orders[0].checkoutKey, s.cart.checkoutKey);
   assert.equal(s.user.walletBalance, 10); assert.equal(s.stockSaves, 0); assert.equal(s.providerCalls.length, 1);
 });
 

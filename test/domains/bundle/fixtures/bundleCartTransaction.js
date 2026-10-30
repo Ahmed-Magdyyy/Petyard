@@ -16,7 +16,7 @@ export const OTHER = "777777777777777777777777";
 export const clone = value => mongoose.mongo.BSON.deserialize(mongoose.mongo.BSON.serialize(value));
 export const plain = value => JSON.parse(JSON.stringify(value));
 
-export function fixture(t, { existing = true, ordinary = false } = {}) {
+export function fixture(t, { existing = true, ordinary = false, guest = false } = {}) {
   const s = { active: true, reads: [], writes: [], receipts: [],
     user: { _id: new mongoose.Types.ObjectId(U), role: "user", active: true, phoneVerified: true, __v: 3 },
     warehouse: { _id: W, active: true },
@@ -27,7 +27,14 @@ export function fixture(t, { existing = true, ordinary = false } = {}) {
     cartIndexes: [{ key: { user: 1 }, unique: true, partialFilterExpression: { user: { $type: "objectId" } } }],
     receiptIndexes: [{ name: "_id_", key: { _id: 1 } }],
   };
-  s.cart = existing ? new CartModel({ user: U, warehouse: W, __v: 7, checkoutKey: "keep-key", currency: "EGP",
+  s.guestId = guest ? "guest-bundle-fixture" : undefined;
+  s.assertOwnerFilter = filter => {
+    if (guest) { assert.equal(filter.user, null); assert.equal(filter.guestId, s.guestId); }
+    else assert.equal(String(filter.user), U);
+  };
+  if (guest) s.cartIndexes.push({ key: { guestId: 1 }, unique: true,
+    partialFilterExpression: { guestId: { $type: "string" }, user: null } });
+  s.cart = existing ? new CartModel({ ...(guest ? { user: null, guestId: s.guestId } : { user: U }), warehouse: W, __v: 7, checkoutKey: "keep-key", currency: "EGP",
     deliveryAddress: { name: "Keep address", area: "Keep area" }, abandonedAt: new Date(),
     items: ordinary ? [{ product: P, productType: "SIMPLE", quantity: 2, itemPrice: 7 }] : [], totalCartPrice: ordinary ? 14 : 0 }).toObject() : null;
   s.session = { inTransaction: () => s.active };
@@ -41,12 +48,12 @@ export function fixture(t, { existing = true, ordinary = false } = {}) {
         }).then(resolve, reject);
       } };
   }
-  t.mock.method(UserModel, "findById", () => query("user", () => clone(s.user)));
+  t.mock.method(UserModel, "findById", () => { if (guest) assert.fail("Guest shopping must not load a user account"); return query("user", () => clone(s.user)); });
   t.mock.method(WarehouseModel, "findById", id => query("warehouse", () => {
     if (s.warehouses) return s.warehouses.find(row => String(row._id) === String(id)) ?? null;
     assert.equal(String(id), W); return s.warehouse;
   }));
-  t.mock.method(CartModel, "findOne", filter => query("cart", () => { assert.equal(String(filter.user), U);
+  t.mock.method(CartModel, "findOne", filter => query("cart", () => { s.assertOwnerFilter(filter);
     return s.cart && (filter._id == null || String(filter._id) === String(s.cart._id)) ? clone(s.cart) : null; }));
   t.mock.method(ManualBundle, "find", filter => query("definitions", () => s.definitions.filter(row => filter._id.$in.some(id => String(id) === String(row._id)))));
   t.mock.method(ProductModel, "find", filter => query("products", () => {
@@ -64,6 +71,7 @@ export function fixture(t, { existing = true, ordinary = false } = {}) {
   t.mock.method(CartModel.collection, "indexes", async () => s.cartIndexes);
   t.mock.method(AssistantCartReceipt.collection, "indexes", async () => s.receiptIndexes);
   t.mock.method(UserModel.collection, "updateOne", async (filter, update, options) => {
+    if (guest) assert.fail("Guest shopping must not write a user account");
     assert.equal(options.session, s.session);
     assert.deepEqual(filter.deletedAt, { $exists: false });
     assert.deepEqual(filter.account_status, { $exists: false });
@@ -72,11 +80,11 @@ export function fixture(t, { existing = true, ordinary = false } = {}) {
     s.user.__v += update.$inc.__v; return { matchedCount: 1, modifiedCount: 1 };
   });
   t.mock.method(CartModel.collection, "updateOne", async (filter, update, options) => {
-    assert.equal(options.session, s.session); assert.equal(String(filter.user), U); assert.equal(filter.__v, s.expectedCartVersion ?? 7);
+    assert.equal(options.session, s.session); s.assertOwnerFilter(filter); assert.equal(filter.__v, s.expectedCartVersion ?? s.cart?.__v ?? 7);
     assert.equal(filter.$expr.$eq[0], "$$ROOT"); assert.doesNotThrow(() => mongoose.mongo.BSON.serialize(filter));
     s.onWrite?.(); s.writes.push("cart");
     if (s.forceMismatch || JSON.stringify(plain(filter.$expr.$eq[1].$literal)) !== JSON.stringify(plain(s.cart))) return { matchedCount: 0, modifiedCount: 0 };
-    Object.assign(s.cart, update.$set); for (const key of Object.keys(update.$unset)) delete s.cart[key];
+    Object.assign(s.cart, update.$set); for (const key of Object.keys(update.$unset ?? {})) delete s.cart[key];
     s.cart.__v += update.$inc.__v; return { matchedCount: 1, modifiedCount: 1 };
   });
   t.mock.method(CartModel.collection, "insertOne", async (row, options) => {
@@ -92,7 +100,7 @@ export function fixture(t, { existing = true, ordinary = false } = {}) {
     const doc = new AssistantCartReceipt(row); assert.equal(doc.validateSync(), undefined);
     s.receipts.push(doc.toObject()); return [doc];
   });
-  s.actor = { ...s.user };
+  s.actor = guest ? { guestId: s.guestId } : { ...s.user };
   s.args = { warehouseId: W, language: "en", change: { action: "add", bundleId: B, expectedRevision: 2, quantity: 3, newGroupId: G } };
   s.prepare = async () => { s.review = { proposalId: R, proposalFingerprint: "a".repeat(64),
     quote: await previewBundleCartChange(s.actor, s.args, { session: s.session }) }; };
