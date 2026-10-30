@@ -1,5 +1,6 @@
 import { videoIdentityTypeEnum } from "../../../shared/constants/enums.js";
 import asyncHandler from "express-async-handler";
+import { createHash } from "node:crypto";
 
 import { getPublicVideoService } from "./publicVideo.service.js";
 import { getPublicReelPlaybackService } from "./publicReelPlayback.service.js";
@@ -34,8 +35,12 @@ export function createPublicVideoController({
     listFeed: asyncHandler(async (req, res) => {
       res.set("Cache-Control", "private, no-store");
       const app = await getService();
+      const identity = identityFromRequest(req);
       const data = await app.listFeed({ page: req.query.page, limit: req.query.limit,
-        kind: req.query.kind, lang: req.lang, identity: identityFromRequest(req) });
+        kind: req.query.kind, lang: req.lang, identity,
+        // Existing bearer tokens separate devices without introducing a client parameter.
+        feedScope: req.user?._id ? createHash("sha256")
+          .update(req.get("authorization") || String(req.user._id)).digest("hex") : "" });
       res.status(200).json({ data });
     }),
     listSaved: asyncHandler(async (req, res) => {

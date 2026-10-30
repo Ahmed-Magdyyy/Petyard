@@ -48,7 +48,33 @@ test("admitted watch intervals derive one qualified view in the chunk crossing t
   await ingest([event("watch_time", { durationMs: 5000 })]);
   assert.deepEqual(stored.filter(row => row.type === "watch_time").map(row => row.qualifiedViewCounted),
     [false, true, false]);
+  const qualified = stored.find(row => row.qualifiedViewCounted);
+  assert.equal(qualified.identityType, guest.type);
+  assert.equal(qualified.identityId, guest.id);
+  assert.equal(qualified.assetId, assetId);
+  assert.equal(stored.filter(row => row.identityId).length, 1);
   assert.deepEqual(await ingest([first, crossing]), { accepted: 0, duplicates: 2 });
+});
+
+test("qualified viewer history rolls back with rejected analytics and retries persist it once", async () => {
+  for (const kind of ["reel", "product"]) {
+    const { clock, event, ingest, daily, db } = await playback(kind);
+    clock.time += 2000;
+    const watched = event("watch_time", { durationMs: 2000 });
+    const update = daily.updateOne;
+    daily.updateOne = async () => { throw Error("daily storage failure"); };
+    await assert.rejects(ingest([watched]), error => error.statusCode === 503);
+    assert.equal((await db.attempts.find({})).length, 0);
+    daily.updateOne = update;
+    assert.deepEqual(await ingest([watched]), { accepted: 1, duplicates: 0 });
+    assert.deepEqual(await ingest([watched]), { accepted: 0, duplicates: 1 });
+    const history = await db.attempts.find({ qualifiedViewCounted: true });
+    assert.equal(history.length, 1);
+    assert.equal(history[0].identityType, "guest");
+    assert.equal(history[0].identityId, guest.id);
+    assert.equal(String(history[0].assetId), assetId);
+    assert.equal(history[0].expiresAt.getTime(), clock.time + 30 * 24 * 60 * 60 * 1000);
+  }
 });
 
 test("uploaded progress and completion require admitted watch time and count each metric once", async () => {
