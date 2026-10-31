@@ -47,7 +47,7 @@ export function loadAssistantConfig(env = process.env, now = new Date()) {
   const bounds = {
     monthlyBudgetMicroUsd: [1, MONTHLY_CEILING_MICRO_USD], dailyBudgetMicroUsd: [1, MONTHLY_CEILING_MICRO_USD],
     dailyMessageLimit: [1, 100000], rateMax: [1, 10000], rateWindowSeconds: [1, 86400],
-    maxMessageChars: [1, 8000], maxContextBytes: [1024, 18000],
+    maxMessageChars: [1, 8000], maxContextBytes: [1024, 32768],
     maxOutputTokens: [16, 2048], maxOutputChars: [512, 16000], timeoutMs: [1, 30000],
     maxHistoryMessages: [1, 29], maxSubjects: [1, 100], maxMemoryEntries: [1, 200], memoryValueChars: [1, 1000],
     historyDays: [1, 3650], memoryDays: [1, 3650], runDays: [1, 3650], auditDays: [1, 3650],
