@@ -58,6 +58,7 @@ app.use(
     origin: [
       "https://petyard.netlify.app",
       "http://localhost:8080", "https://petyard-92e76.web.app",
+      "https://petyard-storefront-test--petyard-dev.us-east4.hosted.app",
       ...(process.env.NODE_ENV === "development"
         ? ["http://localhost:3002", "http://localhost:3001"]
         : []),
