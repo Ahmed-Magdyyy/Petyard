@@ -331,6 +331,7 @@ export const mergeGuest = asyncHandler(async (req, res) => {
     await import(
       "../subcategorySubscription/subcategorySubscription.service.js"
     );
+  const { mergeGuestOrdersService } = await import("../order/order.guest-merge.js");
 
   // Move devices first. Restock subscription merging immediately processes
   // products that became available during login, so their push lookup must
@@ -346,12 +347,14 @@ export const mergeGuest = asyncHandler(async (req, res) => {
     addresses,
     restockSubscriptions,
     subcategorySubscriptions,
+    orders,
   ] = await Promise.all([
     mergeGuestCartService({ userId, guestId, warehouseId: warehouse }),
     mergeGuestFavoriteService({ userId, guestId }),
     mergeGuestAddressesService({ userId, guestId }),
     mergeGuestRestockSubscriptions({ userId, guestId }),
     mergeGuestSubcategorySubscriptions({ userId, guestId }),
+    mergeGuestOrdersService({ userId, guestId }),
   ]);
 
   res.status(200).json({
@@ -363,6 +366,7 @@ export const mergeGuest = asyncHandler(async (req, res) => {
       notificationDevices,
       restockSubscriptions,
       subcategorySubscriptions,
+      orders,
     },
   });
 });

@@ -218,7 +218,7 @@ function refundMethod(order, required) {
   if (order.paymentMethod === paymentMethodEnum.CARD) return order.paymobTransactionId ? "card" : "manual";
   return order.paymentMethod === paymentMethodEnum.INSTAPAY ? "manual" : null;
 }
-export async function ensureExpiredSubstitutionRefundOperation({ order, request, refundRequired, dependencies }) {
+export async function ensureExpiredSubstitutionRefundOperation({ order, request, refundRequired, session = null, dependencies }) {
   const d = currentDeps(dependencies);
   const value = Number(refundRequired?.amountPiastres ?? request?.pricingSnapshot?.refundOrCreditPiastres ?? 0);
   const method = refundMethod(order, refundRequired);
@@ -234,6 +234,7 @@ export async function ensureExpiredSubstitutionRefundOperation({ order, request,
     orderId: order._id, substitutionRequestId: request._id, guestId: order.guestId,
     method, amountPiastres: value, currency: order.currency || "EGP",
     originalTransactionId: method === "card" ? order.paymobTransactionId || null : null,
+    session,
   });
   request.refundOperation = result.operation._id;
   if (typeof request.save === "function") await request.save();
