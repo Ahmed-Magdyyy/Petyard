@@ -114,7 +114,7 @@ router.post(
   oauthSetPassword,
 );
 
-// Merge all guest data (cart + favorites + addresses) into user
+// Merge supported guest data, including order ownership, into the user.
 router.post("/merge-guest", protect, mergeGuest);
 
 export default router;
