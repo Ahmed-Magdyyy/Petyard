@@ -13,8 +13,11 @@ export async function previewUserCheckoutService({ userId, warehouseId, lang = "
   const base = { status: cart ? "empty_cart" : "missing_cart", cartId: cart ? String(cart.id) : null,
     warehouseId: String(warehouse._id), currency: cart?.currency ?? "EGP", dataMode: "estimate", requiresCheckoutRefresh: true,
     couponState: "checkout_managed", items: cart?.items ?? [], removedItems: cart?.removedItems ?? [],
+    ...(cart?.stockIssues?.length ? { stockIssues: cart.stockIssues } : {}),
     ...(cart?.bundles?.length ? { bundles: cart.bundles } : {}),
     cartChanged: changed, addressComplete: false, isPrimeLocation: null, pricing: null, action: null };
+  if (cart?.stockIssues?.length) return { ...base, status: "review_cart", cartChanged: true,
+    action: { type: "open_cart", cartId: base.cartId, warehouseId: base.warehouseId } };
   if (!cart?.items.length && !cart?.bundles?.length) return { ...base, status: changed ? "review_cart" : base.status,
     action: changed ? { type: "open_cart", cartId: base.cartId, warehouseId: base.warehouseId } : null };
   if (cart.totalCartPrice <= 0) return { ...base, status: "review_cart",

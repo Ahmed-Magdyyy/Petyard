@@ -59,7 +59,7 @@ export async function getBundleCartView(actor, args, config, { session } = {}) {
     const result = { id: raw ? String(raw._id) : null, userId: identity.owner, warehouseId: args.warehouseId.toLowerCase(),
       storedWarehouseId: raw ? String(raw.warehouse).toLowerCase() : null, warehouseChangeRequired,
       version: raw?.__v ?? null, currency: "EGP", pricingScope: "items_only", deliveryAddress: base?.deliveryAddress ?? null,
-      items: slice.after, removedItems: slice.removedItems, bundles: groups,
+      items: slice.after, removedItems: slice.removedItems, bundles: groups, ...(slice.stockIssues?.length ? { stockIssues: slice.stockIssues } : {}),
       pricingStatus: quote ? ordinaryRefreshRequired ? "review_required" : "ready" : "unavailable", reason,
       ordinaryRefreshRequired, ordinarySubtotal: quote ? fromPiastres(quote.ordinarySubtotalPiastres) : null,
       bundleSubtotal: quote ? fromPiastres(quote.bundleSubtotalPiastres) : null,

@@ -460,7 +460,7 @@ export async function buildOrderItemsWithPromotions({ session, cart, lang = "en"
 
   const products = await ProductModel.find({ _id: { $in: productIds } })
     .session(session)
-    .select("_id type price discountedPrice subcategory brand variants images");
+    .select("_id type isActive price discountedPrice subcategory brand warehouseStocks variants images");
 
   const productById = new Map(products.map((p) => [String(p._id), p]));
   const promotionByProductId = new Map();
@@ -488,6 +488,7 @@ export async function buildOrderItemsWithPromotions({ session, cart, lang = "en"
   let hasPromotionalItems = false;
 
   const orderItems = [];
+  const requestedBySku = new Map();
 
   for (const item of items) {
     const product = productById.get(String(item.product));
@@ -519,6 +520,17 @@ export async function buildOrderItemsWithPromotions({ session, cart, lang = "en"
         400,
       );
     }
+
+    const source = product.type === "SIMPLE" ? product : (product.variants ?? []).find(row => String(row._id) === String(item.variantId));
+    const rows = (source?.warehouseStocks ?? []).filter(row => String(row.warehouse) === String(cart.warehouse));
+    const key = `${item.product}:${item.variantId ?? ""}`;
+    const requested = (requestedBySku.get(key) ?? 0) + quantity;
+    if (product.isActive !== true || rows.length !== 1 || !Number.isSafeInteger(rows[0].quantity) ||
+        !Number.isSafeInteger(requested) || rows[0].quantity < requested) {
+      throw new ApiError("Adjust unavailable cart quantities before placing the order.", 409,
+        [{ code: "CART_STOCK_REVIEW_REQUIRED" }]);
+    }
+    requestedBySku.set(key, requested);
 
     const promotion = await getPromotionForProduct(product);
     const promoPercent =

@@ -395,8 +395,8 @@ export async function mergeGuestFavoriteService({ userId, guestId, lang = "en" }
     });
   }
 
-  await FavoriteModel.deleteOne({ _id: guestFavorite._id });
   await userFavorite.save();
+  await FavoriteModel.deleteOne({ _id: guestFavorite._id });
 
   return getFavoriteService({ userId, lang: normalizedLang });
 }

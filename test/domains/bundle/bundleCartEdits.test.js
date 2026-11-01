@@ -92,10 +92,10 @@ test("rebind never borrows old warehouse stock or silently drops an unavailable 
   await assert.rejects(s.prepare(), { code: "BUNDLE_STOCK_CONFLICT" }); assert.equal(String(s.cart.warehouse), W); assert.equal(s.cart.bundles.length, 1);
 });
 
-test("unavailable ordinary lines removed on rebind appear before/after and in the removal review", async t => {
+test("rebind cannot remove unavailable ordinary lines without the customer's explicit removal", async t => {
   const s = edits(t); s.cart.items[0].product = new mongoose.Types.ObjectId(Q); s.toOther(); s.edit("rebind");
-  await s.prepare(); assert.equal(s.review.quote.ordinaryItemsBefore.length, 1); assert.equal(s.review.quote.ordinaryItemsAfter.length, 0);
-  assert.equal(s.review.quote.removedOrdinaryItems.length, 1); await s.stage(); assert.deepEqual(s.cart.items, []); assert.equal(s.cart.totalCartPrice, 30);
+  await assert.rejects(s.prepare(), { code: "BUNDLE_CART_REVIEW_REQUIRED" });
+  assert.equal(s.cart.items.length, 1); assert.deepEqual(s.writes, []);
 });
 
 test("same-warehouse rebind retains the saved address", async t => {

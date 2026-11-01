@@ -69,8 +69,10 @@ test("malformed persisted component definitions remain visible for removal witho
 
 test("unavailable ordinary items are reported in the private view and never pruned from storage", async t => {
   const s = cart(t, { ordinary: true }); s.cart.items[0].product = new mongoose.Types.ObjectId(OTHER);
-  const view = await s.view(); assert.deepEqual(view.items, []); assert.equal(view.removedItems.length, 1);
-  assert.equal(view.ordinaryRefreshRequired, true); assert.equal(s.cart.items.length, 1); assert.deepEqual(s.writes, []);
+  const view = await s.view(); assert.equal(view.items.length, 1); assert.equal(view.removedItems.length, 0);
+  assert.equal(view.stockIssues[0].reason, "product_unavailable");
+  assert.equal(view.pricingStatus, "unavailable"); assert.equal(view.checkoutSupported, false);
+  assert.equal(s.cart.items.length, 1); assert.deepEqual(s.writes, []);
 });
 
 test("empty and ordinary-only views create no cart and invent no bundle field in stored carts", async t => {

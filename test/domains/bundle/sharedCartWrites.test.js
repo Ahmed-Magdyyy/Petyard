@@ -131,11 +131,13 @@ test("four warehouse cart additions qualify only for the intersection of exact c
   }
 });
 
-test("exact variant, published revision and saved fixed price are revalidated on every edit", async t => {
+test("a reduction retains unavailable offers for review; increasing them still requires current pricing", async t => {
   const s = cart(t); await s.add(); const before = s.capture();
   for (const change of [() => { s.definitions[0].status = "paused"; }, () => { s.definitions[0].revision = 3; }, () => { s.definitions[0].pricePiastres = 1400; }]) {
-    const definition = clone({ definitions: s.definitions }).definitions; change(); await assert.rejects(s.set(1), { statusCode: 409 });
-    assert.deepEqual(s.capture(), before); s.definitions = definition;
+    const definition = clone({ definitions: s.definitions }).definitions; change(); await assert.rejects(s.set(3), { statusCode: 409 });
+    assert.deepEqual(s.capture(), before);
+    const view = await s.set(1); assert.equal(view.checkoutSupported, false); assert.equal(view.bundles[0].quantity, 1);
+    s.cart = clone(before.cart); s.user = clone(before.user); s.definitions = definition;
   }
   s.definitions[0].status = "paused"; await s.remove(); assert.equal(s.cart.bundles, undefined);
 });

@@ -23,7 +23,7 @@ function fixture(t, changes = {}) {
     ...changes }, writes: [], reads: 0, failAt: 1, creates: 0 };
   const query = (read) => ({ select() { return this; }, lean() { return Promise.resolve().then(read); },
     then(resolve, reject) { return Promise.resolve().then(read).then(resolve, reject); } });
-  const product = { _id: P, type: "SIMPLE", price: 100, name_en: "Toy", images: [], warehouseStocks: [{ warehouse: W, quantity: 20 }] };
+  const product = { _id: P, type: "SIMPLE", isActive: true, price: 100, name_en: "Toy", images: [], warehouseStocks: [{ warehouse: W, quantity: 20 }] };
   t.mock.method(ProductModel, "findById", () => query(() => product));
   t.mock.method(ProductModel, "find", () => query(() => [product]));
   t.mock.method(WarehouseModel, "findById", () => query(() => ({ _id: W, active: true })));

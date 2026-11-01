@@ -93,6 +93,7 @@ async function sources(input, session, { forView = false } = {}) {
   const edit = bundleCartEditActions.includes(input.change?.action) ? await prepareBundleCartEdit(raw, input, session) : null;
   const slice = raw ? await refreshOrdinaryCartSliceForBundle(edit?.candidate ?? raw, input.warehouseId, input.language, { session }) :
     { items: [], before: [], after: [], removedItems: [] };
+  if (!forView && slice.stockIssues?.length) fail("Adjust unavailable cart quantities before adding or repricing items");
   if (edit) {
     slice.before = cartItemSnapshots(CartModel.hydrate({ ...raw, bundles: undefined }));
     if (edit.targetItemId && !slice.items.some(row => String(row._id) === edit.targetItemId && row.quantity === edit.targetQuantity)) fail("Requested ordinary item is unavailable");

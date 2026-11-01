@@ -166,7 +166,7 @@ test("preview requires stock for the full resulting quantity in this exact wareh
   const state = fixture(t, savedCart(), product({ warehouseStocks: [{ warehouse: W, quantity: 4 }, { warehouse: F, quantity: 100 }] }));
   await assert.rejects(state.preview(), { statusCode: 400 });
   state.products[0].warehouseStocks = [{ warehouse: F, quantity: 100 }];
-  await assert.rejects(state.preview(), { statusCode: 400 });
+  await assert.rejects(state.preview(), { statusCode: 409 });
   assert.equal(state.writes, 0);
 });
 
@@ -205,12 +205,11 @@ test("inactive/missing products and stale cart or routing context cannot become 
   assert.equal(state.productReads, before);
 });
 
-test("before/after snapshots expose removed stale items without persisting removals", async (t) => {
+test("a preview refuses unavailable existing lines instead of proposing a silently reduced cart", async (t) => {
   const original = savedCart(); const old = { ...product(), _id: new mongoose.Types.ObjectId(R), warehouseStocks: [] };
   original.items.push({ _id: new mongoose.Types.ObjectId(), product: old._id, productType: "SIMPLE", quantity: 1, itemPrice: 50 });
   const before = JSON.stringify(original); const state = fixture(t, original); state.products.push(old);
-  const result = await state.preview();
-  assert.equal(result.itemsBefore.length, 2); assert.equal(result.itemsAfter.length, 1);
+  await assert.rejects(state.preview(), { statusCode: 409 });
   assert.equal(JSON.stringify(original), before); assert.equal(state.writes, 0);
 });
 

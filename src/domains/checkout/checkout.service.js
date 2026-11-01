@@ -20,6 +20,10 @@ function checkoutWarehouse(cart, userId, selectedWarehouseId) {
   return selectedWarehouseId;
 }
 function requireCurrentBundlePricing(cart) {
+  if (cart.stockIssues?.length) {
+    throw new ApiError("Adjust unavailable cart quantities before checkout.", 409,
+      [{ code: "CART_STOCK_REVIEW_REQUIRED", stockIssues: cart.stockIssues }]);
+  }
   if (cart.bundles?.length && cart.pricingStatus !== "ready") {
     throw new ApiError("Cart contents or the selected warehouse changed. Refresh the cart before checkout.", 409);
   }

@@ -28,6 +28,26 @@ async function requireUniqueCartStore(identity) {
   }
 }
 
+function reduceUnavailableCart(raw, change, warehouseId) {
+  if (!raw || String(raw.warehouse) !== warehouseId) return null;
+  const candidate = CartModel.hydrate(raw);
+  const ordinary = ["ordinary_set", "ordinary_remove"].includes(change.action);
+  const rows = ordinary ? candidate.items : candidate.bundles;
+  if (!Array.isArray(rows) || !["set", "remove", "ordinary_set", "ordinary_remove"].includes(change.action)) return null;
+  const id = bundleId(ordinary ? change.itemId : change.groupId);
+  const index = rows.findIndex(row => String(ordinary ? row._id : row.id) === id);
+  if (index < 0) return null;
+  if (["set", "ordinary_set"].includes(change.action)) {
+    if (!Number.isSafeInteger(change.quantity) || change.quantity < 1 || change.quantity >= rows[index].quantity) return null;
+    rows[index].quantity = change.quantity;
+  } else rows.splice(index, 1);
+  const items = candidate.items.toObject(), bundles = candidate.bundles?.toObject() ?? [];
+  const totalCartPrice = items.reduce((sum, row) => sum + row.quantity * row.itemPrice, 0) +
+    bundles.reduce((sum, row) => sum + row.quantity * row.unitPricePiastres / 100, 0);
+  if (!Number.isFinite(totalCartPrice) || totalCartPrice < 0 || !Number.isSafeInteger(Math.round(totalCartPrice * 100))) conflict();
+  return { raw, slice: { items }, quote: { patch: { bundles, totalCartPrice } } };
+}
+
 // Direct app cart writes share bundle validation; assistant confirmations keep their own authorization boundary.
 export async function changeCartWithBundles({ userId, guestId, warehouseId, change, lang = "en" }) {
   if (process.env.ASSISTANT_BUNDLE_CART_ENABLED !== "true") {
@@ -58,8 +78,16 @@ export async function changeCartWithBundles({ userId, guestId, warehouseId, chan
       }
       if (edit.action === "add") edit.newGroupId = String(new mongoose.Types.ObjectId());
       if (edit.action === "ordinary_add") edit.newItemId = String(new mongoose.Types.ObjectId());
-      const prepared = await prepareBundleCartChange(actor,
-        { warehouseId: selectedWarehouse, language, change: edit }, { session });
+      let prepared;
+      try {
+        prepared = await prepareBundleCartChange(actor,
+          { warehouseId: selectedWarehouse, language, change: edit }, { session });
+      } catch (error) {
+        // Removing/reducing a line must remain possible while other saved lines still block checkout.
+        if (error.statusCode !== 409 || !["BUNDLE_CART_REVIEW_REQUIRED", "BUNDLE_STOCK_CONFLICT", "BUNDLE_PURCHASE_UNAVAILABLE", "BUNDLE_REVISION_CONFLICT"].includes(error.code)) throw error;
+        prepared = reduceUnavailableCart(raw, edit, selectedWarehouse);
+        if (!prepared) throw error;
+      }
       if (raw && (!prepared.raw || !mongoose.mongo.BSON.serialize(raw).equals(mongoose.mongo.BSON.serialize(prepared.raw)))) conflict();
       const { quote, slice } = prepared, now = new Date();
       const draft = raw ? CartModel.hydrate(raw) : new CartModel({ ...bundleCartOwnerFilter(identity), warehouse: selectedWarehouse, currency: "EGP", __v: 0, createdAt: now });

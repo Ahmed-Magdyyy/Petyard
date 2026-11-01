@@ -143,15 +143,12 @@ test("an exact variant cannot borrow stock from a sibling variant or another war
   assert.equal(s.receipts[0] && s.review.quote.demands[0].variantId, OTHER); assert.equal(s.cart.totalCartPrice, 45);
 });
 
-test("ordinary removals must appear in the review and cannot change silently on confirmation", async t => {
+test("a bundle proposal cannot silently drop an unavailable ordinary line", async t => {
   const s = fixture(t, { ordinary: true });
   const missing = new mongoose.Types.ObjectId(OTHER);
-  s.cart.items[0].product = missing; await s.prepare();
-  assert.equal(s.review.quote.ordinaryItemsBefore.length, 1); assert.equal(s.review.quote.ordinaryItemsAfter.length, 0);
-  assert.equal(s.review.quote.removedOrdinaryItems.length, 1); assert.equal(s.cart.items.length, 1);
-  const review = s.review; s.cart.items[0].product = new mongoose.Types.ObjectId(P);
-  await assert.rejects(s.stage(review), { code: "BUNDLE_CART_REVIEW_REQUIRED" }); assert.deepEqual(s.writes, []);
-  s.cart.items[0].product = missing; await s.stage(review); assert.equal(s.cart.items.length, 0); assert.equal(s.cart.totalCartPrice, 45);
+  s.cart.items[0].product = missing;
+  await assert.rejects(s.prepare(), { code: "BUNDLE_CART_REVIEW_REQUIRED" });
+  assert.equal(s.cart.items.length, 1); assert.deepEqual(s.writes, []);
 });
 
 test("unavailable warehouse, malformed definition and unsafe ordinary data fail without a write", async t => {

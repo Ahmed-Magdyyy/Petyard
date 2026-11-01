@@ -84,12 +84,13 @@ test("free shipping threshold and wallet deduction remain item-only", async (t) 
   result = await s.preview(); assert.equal(result.pricing.walletUsed, 300); assert.equal(result.pricing.finalTotal, 50);
 });
 
-test("remote-only stock and inactive products are removed from the draft with a cart-review action", async (t) => {
+test("remote-only stock and inactive products remain visible without a partial checkout estimate", async (t) => {
   const s = fixture(t);
   for (const change of [() => { s.product.warehouseStocks = [{ warehouse: OTHER, quantity: 100 }]; },
     () => { s.product.warehouseStocks = [{ warehouse: W, quantity: 100 }]; s.product.isActive = false; }]) {
     change(); const result = await s.preview(); assert.equal(result.status, "review_cart"); assert.equal(result.cartChanged, true);
-    assert.equal(result.items.length, 0); assert.equal(result.removedItems.length, 1); assert.equal(result.pricing, null);
+    assert.equal(result.items.length, 1); assert.equal(result.removedItems.length, 0); assert.equal(result.pricing, null);
+    assert.equal(result.stockIssues.length, 1);
     assert.equal(result.action.type, "open_cart");
   }
 });
@@ -111,9 +112,21 @@ test("warehouse mismatches and invalid quantities/prices fail closed within the 
   const s = fixture(t); const original = s.cart.warehouse;
   s.cart.warehouse = new mongoose.Types.ObjectId(OTHER); await assert.rejects(s.preview(), { statusCode: 409 }); s.cart.warehouse = original;
   s.cart.items[0].quantity = 1.5; await assert.rejects(s.preview(), { statusCode: 409 }); s.cart.items[0].quantity = 3;
-  s.product.price = -1; await assert.rejects(s.preview(), { statusCode: 409 });
-  s.product.price = 100; s.product.discountedPrice = 101; await assert.rejects(s.preview(), { statusCode: 409 });
+  s.product.price = -1; let result = await s.preview(); assert.equal(result.status, "review_cart"); assert.equal(result.pricing, null); assert.equal(result.stockIssues[0].reason, "price_unavailable");
+  s.product.price = 100; s.product.discountedPrice = 101; result = await s.preview(); assert.equal(result.status, "review_cart"); assert.equal(result.pricing, null);
   await assert.rejects(s.preview({ warehouseId: "bad" }), { statusCode: 400 });
+});
+
+test("a mixed available/unavailable basket keeps both lines and has no partial assistant checkout estimate", async t => {
+  const s = fixture(t);
+  s.cart.items.push({ _id: new mongoose.Types.ObjectId(), product: new mongoose.Types.ObjectId(OTHER), productType: "SIMPLE", quantity: 2, itemPrice: 50 });
+  t.mock.method(ProductModel, "find", filter => {
+    assert.deepEqual(filter._id.$in.map(String).sort(), [P, OTHER].sort());
+    return { select() { return this; }, lean() { return this; }, then(resolve, reject) { return Promise.resolve([s.product]).then(resolve, reject); } };
+  });
+  const result = await s.preview();
+  assert.equal(result.items.length, 2); assert.equal(result.status, "review_cart"); assert.equal(result.pricing, null);
+  assert.equal(result.stockIssues.length, 1); assert.equal(result.action.type, "open_cart"); assert.equal(s.cart.items.length, 2);
 });
 
 test("missing loyalty settings produce an unknown estimate without creating defaults", async (t) => {
@@ -136,7 +149,7 @@ test("variant pricing and stock use only the cart's exact variant in the request
   s.cart.totalCartPrice = 500;
   let result = await s.preview(); assert.equal(result.pricing.subtotal, 500); assert.equal(String(result.items[0].variantId), V);
   s.product.variants[0].warehouseStocks = [{ warehouse: OTHER, quantity: 10 }];
-  result = await s.preview(); assert.equal(result.items.length, 0); assert.equal(result.status, "review_cart");
+  result = await s.preview(); assert.equal(result.items.length, 1); assert.equal(result.status, "review_cart"); assert.equal(result.pricing, null);
 });
 
 test("saved checkout examples match actual response field shapes and the local request has no stored credentials", async (t) => {
