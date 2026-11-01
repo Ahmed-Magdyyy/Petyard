@@ -13,6 +13,12 @@ import { isPrimeLocation as qualifiesForPrime, selectShippingPrice } from "../wa
  * Build the structures that validateAndApplyCoupon needs from cart items.
  * Fetches product brands in a single query.
  */
+
+function requireCartStock(cart) {
+  if (cart.stockIssues?.length) throw new ApiError("Adjust unavailable cart quantities before checkout.", 409,
+    [{ code: "CART_STOCK_REVIEW_REQUIRED", stockIssues: cart.stockIssues }]);
+}
+
 async function buildCouponContext(items) {
   const productIds = [
     ...new Set(
@@ -153,6 +159,7 @@ export async function applyCouponAtCheckoutService({
   });
 
   warehouseId = cart.warehouseId;
+  requireCartStock(cart);
 
   const items = Array.isArray(cart.items) ? cart.items : [];
   if (!items.length) {
@@ -255,6 +262,7 @@ export async function getCheckoutSummaryService({
   });
 
   warehouseId = cartResponse.warehouseId;
+  requireCartStock(cartResponse);
 
   const subtotal =
     typeof cartResponse.totalCartPrice === "number" &&
