@@ -26,7 +26,7 @@ test("empty reference evidence keeps general education available without fabrica
 test("current model request carries the agreed combination, attribution and conflict instructions", async t => {
   const s = customerChatFixture(t);
   const request = await buildContext(s.run, s.chat, [s.subject], s.config, {}, new Date(), batchFor(s, [evidence()]));
-  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v6");
+  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v7");
   assert.equal(s.config.promptVersion, PROMPT_VERSION);
   assert.match(request.instructions, /combine relevant passages with compatible learned knowledge/);
   assert.match(request.instructions, /never invent citations or attribute added learned knowledge to a book/);
@@ -49,8 +49,8 @@ test("source excerpts are serialized alongside explicit untrusted-data and attri
 test("reference availability cannot bypass existing personalized-health response controls", async t => {
   const s = customerChatFixture(t, "A personalized health question");
   await s.finish(structuredReply({ scope: "health", reply: "UNSUPPORTED_TREATMENT_TEXT" }));
-  assert.match(s.messages[0].text, /consult a veterinarian/); assert.doesNotMatch(s.messages[0].text, /UNSUPPORTED_TREATMENT_TEXT/);
-  assert.match(s.messages[0].text, /what changed, and when\?/i);
+  assert.match(s.messages[0].text, /Share the changes you've noticed with your veterinarian/);
+  assert.doesNotMatch(s.messages[0].text, /UNSUPPORTED_TREATMENT_TEXT|what changed, and when\?/i);
   assert.match(instructions, /Personalized health\/nutrition claims, diagnosis, treatment, drug doses and suitability certification remain unsupported even with references/);
   assert.match(instructions, /Use current authorized backend data for Petyard prices, stock, appointments and action outcomes/);
 });

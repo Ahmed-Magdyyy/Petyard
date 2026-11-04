@@ -85,7 +85,7 @@ test("a diagnosis boundary offers a clinic only with verified coverage and a cli
     if (mode === "stale_location") s.run.bookingContext = { location: { governorateCode: "cairo" } };
     await s.complete(answer, batch);
     const dto = messageDto(s.messages[0]);
-    assert.match(dto.text, mode === "urgent" ? /immediate veterinary attention/ : /consult a veterinarian/);
+    assert.match(dto.text, mode === "urgent" ? /immediate veterinary attention/ : /with your veterinarian/);
     assert.equal(dto.text.includes("Petyard clinic in Alexandria"), mode === "eligible");
     assert.doesNotMatch(dto.text, /INVENTED/);
     assert.equal(dto.booking, undefined);
