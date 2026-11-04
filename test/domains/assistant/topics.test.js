@@ -12,7 +12,7 @@ const config = testConfig();
 
 test("versioned topic observations share one bounded enum and cannot leak through the public run DTO", () => {
   assert.equal(config.promptVersion, PROMPT_VERSION);
-  assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v8");
+  assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v9");
   assert.ok(outputSchema.required.includes("primaryTopic"));
   assert.deepEqual(outputSchema.properties.primaryTopic.enum, topicKeys);
   assert.equal(outputSchema.required.length, 21);
