@@ -109,10 +109,17 @@ export async function externalWorkScope(snapshot, config, status, includeSubject
   const account = await AssistantAccount.findOne({ owner: snapshot.owner }).session(session).lean();
   if (!account) reject("assistant_accounting_unavailable", 503);
   assertAccess(account, config);
-  await eligibleUser(snapshot.owner, snapshot, session);
-  const run = await AssistantRun.findOne(status === "queued" ? queuedWorkFilter(snapshot._id, snapshot)
+  const readRun = () => AssistantRun.findOne(status === "queued" ? queuedWorkFilter(snapshot._id, snapshot)
     : customerRunFilter({ _id: snapshot._id, status, attempt: snapshot.attempt })).session(session).lean();
-  const chat = await AssistantChat.findById(snapshot.chat).session(session).lean();
+  const readChat = () => AssistantChat.findById(snapshot.chat).session(session).lean();
+  let run, chat;
+  if (session) {
+    await eligibleUser(snapshot.owner, snapshot, session);
+    run = await readRun();
+    chat = await readChat();
+  } else {
+    [, run, chat] = await Promise.all([eligibleUser(snapshot.owner, snapshot, null), readRun(), readChat()]);
+  }
   if (!run || !chat || chat.contextVersion !== snapshot.contextVersion || String(account.activeRun) !== String(run._id)) reject("context_changed", 409);
   if (run.deadline <= new Date()) reject("queue_expired", 503);
   if (run.referenceFlowVersion !== snapshot.referenceFlowVersion) reject("context_changed", 409);

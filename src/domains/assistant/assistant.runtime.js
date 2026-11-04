@@ -9,8 +9,32 @@ import { loadReferenceConfig, loadReferenceIndexingConfig } from "./references/a
 import { referenceWorker } from "./references/assistant.reference-worker.js";
 import { catalogIndexer } from "./products/assistant.catalog-indexer.js";
 
+async function drainQueuedWork(config, options) {
+  if (!config.enabled) return { enabled: false, processed: 0, failed: 0 };
+  requireEnabled(config);
+  const candidates = await AssistantRun.find({ $or: [customerRunFilter({ status: "queued" }),
+    { purpose: runPurposes.adminBusiness, status: "queued", phase: { $in: ["plan", "reports"] } },
+    ...(config.bundleGenerationEnabled === true ? [{ purpose: runPurposes.automaticBundles, status: "queued" }] : [])] })
+    .sort({ createdAt: 1 }).limit(25).select("_id purpose phase").maxTimeMS(5000).lean();
+  let failed = 0;
+  for (const candidate of candidates) {
+    try {
+      if (isCustomerRun(candidate)) await processAssistantRun(candidate._id, options);
+      else if (candidate.purpose === runPurposes.automaticBundles) await processBundleGeneration(candidate._id, options);
+      else if (candidate.phase === "reports") await processBusinessReports(candidate._id, options);
+      else {
+        const result = await processBusinessPlan(candidate._id, options);
+        if (result.phase === "reports") await processBusinessReports(candidate._id, options);
+      }
+    } catch { failed++; } // One failed run must not stop the queue.
+  }
+  return { enabled: true, processed: candidates.length, failed };
+}
+
 export async function drainAssistantWork(options = {}) {
   const config = (options.getConfig ?? loadAssistantConfig)();
+  const queue = await drainQueuedWork(config, options);
+  if (options.runMaintenance === false) return queue;
   let bookingNotifications;
   let bookingRetention;
   let queryVectorRetention;
@@ -29,7 +53,6 @@ export async function drainAssistantWork(options = {}) {
   if (!config.enabled) return { enabled: false, processed: 0, failed: (bookingRetention?.failed ?? 0) + (queryVectorRetention?.failed ?? 0),
     ...(queryVectorRetention ? { queryVectorRetention } : {}),
     ...(bookingRetention ? { bookingRetention } : {}) };
-  requireEnabled(config);
   if (config.bookingNotificationsEnabled === true) {
     try {
       const { drainBookingNotifications } = await import("./customer/assistant.booking-notifications.js");
@@ -44,22 +67,8 @@ export async function drainAssistantWork(options = {}) {
   let bundleGeneration;
   try { bundleGeneration = await enqueueWeeklyBundleGeneration(config); }
   catch { bundleGeneration = { enabled: true, failed: 1 }; }
-  const candidates = await AssistantRun.find({ $or: [customerRunFilter({ status: "queued" }),
-    { purpose: runPurposes.adminBusiness, status: "queued", phase: { $in: ["plan", "reports"] } },
-    ...(config.bundleGenerationEnabled === true ? [{ purpose: runPurposes.automaticBundles, status: "queued" }] : [])] })
-    .sort({ createdAt: 1 }).limit(25).select("_id purpose phase").maxTimeMS(5000).lean();
-  let failed = (bookingNotifications?.failed ?? 0) + (bookingRetention?.failed ?? 0) + (bundleGeneration?.failed ?? 0) + (queryVectorRetention?.failed ?? 0);
-  for (const candidate of candidates) {
-    try {
-      if (isCustomerRun(candidate)) await processAssistantRun(candidate._id, options);
-      else if (candidate.purpose === runPurposes.automaticBundles) await processBundleGeneration(candidate._id, options);
-      else if (candidate.phase === "reports") await processBusinessReports(candidate._id, options);
-      else {
-        const result = await processBusinessPlan(candidate._id, options);
-        if (result.phase === "reports") await processBusinessReports(candidate._id, options);
-      }
-    } catch { failed++; } // Durable per-run recovery must not prevent another owner's queued work from being processed.
-  }
+  let failed = queue.failed + (bookingNotifications?.failed ?? 0) + (bookingRetention?.failed ?? 0) +
+    (bundleGeneration?.failed ?? 0) + (queryVectorRetention?.failed ?? 0);
   let references;
   try {
     const referenceConfig = (options.getReferenceConfig ?? loadReferenceConfig)();
@@ -71,7 +80,7 @@ export async function drainAssistantWork(options = {}) {
     }
   } catch { references = { enabled: true, failed: 1 }; failed++; }
   const catalogIndexing = catalogIndexer.start(config);
-  return { enabled: true, processed: candidates.length, failed, ...(catalogIndexing.enabled ? { catalogIndexing } : {}), ...(references ? { references } : {}), ...(bookingNotifications ? { bookingNotifications } : {}),
+  return { ...queue, failed, ...(catalogIndexing.enabled ? { catalogIndexing } : {}), ...(references ? { references } : {}), ...(bookingNotifications ? { bookingNotifications } : {}),
     ...(queryVectorRetention ? { queryVectorRetention } : {}),
     ...(bookingRetention ? { bookingRetention } : {}) };
 }

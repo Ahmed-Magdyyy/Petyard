@@ -297,7 +297,8 @@ test("planner uses the real adapter over local HTTP, with the Postman fixture se
 
 test("runtime isolates a customer failure and completes business planning plus reports with one provider call", async (t) => {
   const state = fixture(t);
-  t.mock.method(AssistantMemory, "updateMany", async () => ({ modifiedCount: 0 }));
+  const order = [];
+  t.mock.method(AssistantMemory, "updateMany", async () => { order.push("maintenance"); return { modifiedCount: 0 }; });
   t.mock.method(OrderModel, "aggregate", () => Object.assign(Promise.resolve([]), { option() { return this; } }));
   const messages = [];
   t.mock.method(AssistantAdminMessage, "create", async ([value]) => {
@@ -312,7 +313,7 @@ test("runtime isolates a customer failure and completes business planning plus r
   const find = AssistantRun.findOne;
   let customerClaims = 0;
   t.mock.method(AssistantRun, "findOne", (filter) => {
-    if (filter.$and) { customerClaims++; throw new Error("Synthetic customer read outage"); }
+    if (filter.$and) { order.push("customer"); customerClaims++; throw new Error("Synthetic customer read outage"); }
     return find(filter);
   });
   const result = await drainAssistantWork(state.options);
@@ -321,6 +322,10 @@ test("runtime isolates a customer failure and completes business planning plus r
   assert.equal(state.run.phase, "reports"); assert.equal(state.account.activeRun, null); assert.equal(messages.length, 1);
   assert.equal(state.run.attempts.length, 1); assert.equal(state.run.accounting, "settled");
   assert.equal(unknown.status, "queued");
+  assert.deepEqual(order, ["customer", "maintenance"]);
+  order.length = 0;
+  assert.deepEqual(await drainAssistantWork({ ...state.options, runMaintenance: false }), { enabled: true, processed: 1, failed: 1 });
+  assert.deepEqual(order, ["customer"]);
   state.options.getConfig = () => ({ ...config, bookingNotificationsEnabled: true, bookingRetentionEnabled: true });
   t.mock.method(AssistantBookingReceipt.collection, "indexes", async () => { throw new Error("Synthetic booking outbox setup outage"); });
   const isolated = await drainAssistantWork(state.options);
