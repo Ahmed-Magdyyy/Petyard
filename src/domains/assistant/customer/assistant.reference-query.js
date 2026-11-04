@@ -8,7 +8,7 @@ export const normalizationSchema = Object.freeze({ type: "object", additionalPro
   properties: { status: { type: "string", enum: ["ready", "unclear"] }, query: { type: ["string", "null"] } } });
 
 export const referenceQueryInstructions = `Return {answer, referenceAction}; retain all safety, subject and action rules.
-Use prepare for a clear general-care question/request about the current pet, even if you know the answer.
+Use prepare for a clear general-care question about the resolved current pet, even if you know the answer. Use none for symptom triage, wellness check questions, follow-ups gathering observations, or routine guidance without a resolved pet. Shopping and shopping follow-ups are commerce, not reference preparation.
 For prepare, leave reply empty; the server separately normalizes, searches and answers. Do not rewrite the question here.
 Use clarify for materially ambiguous meaning, with a concise same-language clarification and no guessed advice.
 For prepare/clarify use scope pet_care, no shopping/checkout/booking, no warning or memory proposal.

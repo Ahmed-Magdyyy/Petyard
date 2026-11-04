@@ -85,6 +85,24 @@ test("publication saves one bounded allowlisted snapshot and backend text atomic
   assert.equal(await state.complete(result, batch), null); assert.equal(state.messages.length, 1); assert.equal(state.budgetUpdates.length, 2);
 });
 
+test("shopping follow-ups receive historical result names without IDs or prices", async t => {
+  const s = fixture(t);
+  const result = answer();
+  await s.complete(result, await s.prepare(result, async () => outcome({ products: [card({ name: "Naomi Cat Stick Toy", price: 12345 })] })));
+  const previous = { ...s.messages[0], createdAt: new Date() };
+  s.run.input = "فين المنتجات دي؟";
+  s.run.userSequence = previous.sequence + 1;
+  t.mock.method(AssistantMessage, "find", filter => ({
+    sort() { return this; }, limit() { return this; }, session() { return this; },
+    async lean() { return matchesQuery(previous, filter) ? [previous] : []; },
+  }));
+  const request = await s.context();
+  assert.equal(request.messages.at(-1).content, s.run.input);
+  const past = request.messages.at(-2).content;
+  assert.match(past, /Historical catalog result.*"status":"results".*"Naomi Cat Stick Toy"/);
+  assert.doesNotMatch(past, /12345|222222222222222222222222/);
+});
+
 test("exact public summary belongs to the qualifying variant and drops private source facts/extra combinations", () => {
   const data = answer({ productSearch: search({ minimumPackageWeightGrams: 3000, maximumPriceMinor: 100000, sourceQuote: "3kg under 1000 EGP",
     options: [{ name: "flavor", value: "Chicken", sourceQuote: "Chicken" }] }) }).structured;
@@ -156,14 +174,14 @@ test("the recorded health search cannot read a catalog or publish cards even wit
   assert.equal(data.dietaryWarningAction, "none"); assert.equal(data.productSearch.action, "general");
   const response = answer(data);
   const valid = validateResult(response, state.run, state.config, state.prepared.allowedSubjects, { allowProductSearch: true });
-  assert.equal(valid.productSearch, null); assert.match(valid.reply, /طبيب بيطري/);
+  assert.equal(valid.productSearch, null); assert.match(valid.reply, /(?:طبيب|دكتور) بيطري/);
   const batch = await prepareProductSearch(state.prepared, response, state.config, {
     readProducts: () => assert.fail("Health advice cannot read catalog"),
     readSemantic: () => assert.fail("Health advice cannot embed or search") });
   assert.equal(batch, null);
   await finishRun(state.prepared, response, null, { currentConfig: state.config, productSearchBatch: batch });
   assert.equal(state.run.status, "completed"); assert.equal(state.run.accounting, "settled");
-  assert.equal(state.messages.length, 1); assert.match(state.messages[0].text, /طبيب بيطري/);
+  assert.equal(state.messages.length, 1); assert.match(state.messages[0].text, /(?:طبيب|دكتور) بيطري/);
   assert.equal(state.messages[0].catalogJson, undefined); assert.equal(messageDto(state.messages[0]).catalog, undefined);
   assert.equal(state.warnings.length, 0); assert.equal(state.unlocked, 1);
 });

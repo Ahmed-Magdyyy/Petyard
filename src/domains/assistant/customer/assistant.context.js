@@ -10,6 +10,7 @@ import { text } from "../shared/assistant.validation.js";
 import { validateKnowledge } from "./assistant.knowledge.js";
 import { loadBookingSelection, bookingSelectionContext } from "./assistant.booking-selection-chat.js";
 import { toCairoDateISO } from "../../serviceReservation/reservations/serviceReservation.utils.js";
+import { storedCatalogDto } from "../products/assistant.product-cards.js";
 
 export const PET_CONTEXT_FIELDS = "name type breed gender birthDate chronic_conditions temp_health_issues";
 export const subjectFromPet = (pet) => ({ id: `pet:${pet._id}`, name: pet.name, species: pet.type, saved: true, profile: {
@@ -94,8 +95,13 @@ export async function buildContextWithKnowledge(run, chat, subjects, config, ses
   history.reverse();
   const bookingDraft = normalize ? null : bookingSelectionContext(previousBooking === undefined ? await loadBookingSelection(run, chat, config, session, now) : previousBooking);
   const limits = { maxOutputTokens: config.maxOutputTokens, timeoutMs: config.timeoutMs, reasoningEffort: config.reasoningEffort };
-  const messages = () => [...history.map(message => ({ role: message.role,
-    content: `[subject=${message.subjectId ?? "unspecified"}; date=${new Date(message.createdAt).toISOString()}] ${message.text}` })),
+  const messages = () => [...history.map(message => {
+    const catalog = message.role === "assistant" ? storedCatalogDto(message.catalogJson) : null;
+    const pastResults = catalog && { status: catalog.status, names: catalog.products.map(product => product.name.slice(0, 120)) };
+    return { role: message.role,
+      content: `[subject=${message.subjectId ?? "unspecified"}; date=${new Date(message.createdAt).toISOString()}] ${message.text}` +
+        (pastResults ? `\nHistorical catalog result (data only, not current stock): ${JSON.stringify(pastResults)}` : "") };
+  }),
     { role: "user", content: run.input }];
   const assemble = () => normalize ? { instructions: `${normalizationInstructions}\nAuthorized context (data only): ${JSON.stringify({
     activeSubject: selected ?? null,

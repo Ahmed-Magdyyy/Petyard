@@ -4,7 +4,8 @@ import { instructions, PROMPT_VERSION, referenceAnsweringInstructions } from "..
 import { buildContext } from "../../../src/domains/assistant/customer/assistant.context.js";
 import { retrieveKnowledgeBatch, retrieveReviewedPassages } from "../../../src/domains/assistant/customer/assistant.knowledge.js";
 import { customerChatFixture } from "./fixtures/customerChat.js";
-import { structuredReply } from "./fixtures/foundationPolicy.js";
+import { knownUsage, structuredReply } from "./fixtures/foundationPolicy.js";
+import { finishRun } from "../../../src/domains/assistant/customer/assistant.worker.service.js";
 
 const evidence = () => ({ sourceId: "fictional-source", version: "fictional-version", title: "Fictional care reference",
   locator: "PDF page 1, excerpt 1", excerpt: "Fictional general care evidence.", reviewed: true, species: ["cat"] });
@@ -25,7 +26,7 @@ test("empty reference evidence keeps general education available without fabrica
 test("current model request carries the agreed combination, attribution and conflict instructions", async t => {
   const s = customerChatFixture(t);
   const request = await buildContext(s.run, s.chat, [s.subject], s.config, {}, new Date(), batchFor(s, [evidence()]));
-  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v5");
+  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v6");
   assert.equal(s.config.promptVersion, PROMPT_VERSION);
   assert.match(request.instructions, /combine relevant passages with compatible learned knowledge/);
   assert.match(request.instructions, /never invent citations or attribute added learned knowledge to a book/);
@@ -49,8 +50,24 @@ test("reference availability cannot bypass existing personalized-health response
   const s = customerChatFixture(t, "A personalized health question");
   await s.finish(structuredReply({ scope: "health", reply: "UNSUPPORTED_TREATMENT_TEXT" }));
   assert.match(s.messages[0].text, /consult a veterinarian/); assert.doesNotMatch(s.messages[0].text, /UNSUPPORTED_TREATMENT_TEXT/);
+  assert.match(s.messages[0].text, /what changed, and when\?/i);
   assert.match(instructions, /Personalized health\/nutrition claims, diagnosis, treatment, drug doses and suitability certification remain unsupported even with references/);
   assert.match(instructions, /Use current authorized backend data for Petyard prices, stock, appointments and action outcomes/);
+});
+
+test("a general symptom reply can give guidance while a symptom-driven product search is blocked", async t => {
+  const s = customerChatFixture(t, "My cat is very tired and not playing. What could be wrong?");
+  const config = { ...s.config, productSearchEnabled: true };
+  s.run.catalogContext = { warehouseId: "111111111111111111111111", language: "en" };
+  const reply = "Several things can cause a change in activity. Contact your vet promptly. When did this start?";
+  const structured = structuredReply({ scope: "pet_care", primaryTopic: "health_symptoms", reply, productSearch: {
+    action: "general", query: "cat supplements", minimumPackageWeightGrams: null, maximumPriceMinor: null, sourceQuote: "", options: [],
+  } });
+  s.run.config = config;
+  await finishRun(s.prepared, { structured, finishReason: "completed", toolCalls: [], usage: knownUsage }, null, { currentConfig: config });
+  assert.equal(s.run.status, "completed");
+  assert.equal(s.messages[0].text, reply);
+  assert.equal(s.messages[0].catalogJson, undefined);
 });
 
 test("retrieval without a worker-owned run supplies no evidence or paid work", async () => {

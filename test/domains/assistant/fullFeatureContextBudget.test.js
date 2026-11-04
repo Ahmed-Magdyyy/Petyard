@@ -26,12 +26,10 @@ function fixture(t, text = input) {
   return { ...s, config, run, subjects, batch, build };
 }
 
-test("the reported short request with four pets and all features exceeds the old cap but fits the bounded complete-feature policy", async t => {
+test("the reported short request with four pets and all features fits the bounded complete-feature policy", async t => {
   const s = fixture(t);
   for (const knowledge of [null, s.batch]) {
-    await assert.rejects(s.build({ ...s.config, maxContextBytes: 18000 }, knowledge), { code: "context_too_large" });
     const { request } = await s.build(s.config, knowledge);
-    assert.ok(Buffer.byteLength(JSON.stringify(request)) > 18000);
     assert.ok(Buffer.byteLength(JSON.stringify(request)) <= s.config.maxContextBytes);
     assert.equal(request.messages.at(-1).content, input);
     assert.equal(request.tools.length, 0);

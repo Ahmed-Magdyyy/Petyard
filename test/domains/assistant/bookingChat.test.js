@@ -68,6 +68,29 @@ test("missing context/location avoids resolver reads and outside Alexandria show
     assert.equal(card.action, null); if (mode !== "empty") assert.deepEqual(card.services, []);
   });
 });
+test("a diagnosis boundary offers a clinic only with verified coverage and a clinic option", async t => {
+  for (const mode of ["eligible", "outside", "no_clinic", "missing", "read_failed", "stale_location", "disabled", "urgent"]) await t.test(mode, async t => {
+    const s = fixture(t, "Does my cat have kidney disease?");
+    const answer = response({ scope: mode === "urgent" ? "urgent" : "health", primaryTopic: "health_symptoms", bookingOptions: "none" });
+    if (mode === "missing") { delete s.run.bookingContext; s.prepared.run = { ...s.run }; }
+    if (mode === "disabled") s.config.bookingActionsEnabled = false;
+    let reads = 0;
+    const batch = await s.prepare(answer, async () => {
+      reads++;
+      if (mode === "read_failed") throw new Error("clinic catalog unavailable");
+      if (mode === "outside") return { eligible: false, reason: "booking_region_unavailable", services: [], locations: [] };
+      return { ...options(), services: options().services.filter(service => mode !== "no_clinic" || service.type !== "CLINIC") };
+    });
+    assert.equal(reads, ["missing", "disabled", "urgent"].includes(mode) ? 0 : 1);
+    if (mode === "stale_location") s.run.bookingContext = { location: { governorateCode: "cairo" } };
+    await s.complete(answer, batch);
+    const dto = messageDto(s.messages[0]);
+    assert.match(dto.text, mode === "urgent" ? /immediate veterinary attention/ : /consult a veterinarian/);
+    assert.equal(dto.text.includes("Petyard clinic in Alexandria"), mode === "eligible");
+    assert.doesNotMatch(dto.text, /INVENTED/);
+    assert.equal(dto.booking, undefined);
+  });
+});
 test("production booking reader resolves manual area, applies catalog/branch filters and its separate admission", async t => {
   const s = fixture(t), answer = response(), query = read => ({ select() { return this; }, sort() { return this; }, limit() { return this; },
     maxTimeMS() { return this; }, session() { return this; }, async lean() { return read(); },
@@ -200,11 +223,18 @@ test("the real worker uses one scripted provider result and one booking read, th
     deadline: new Date(Date.now() + 60000), toObject() { return { ...this }; } });
   t.mock.method(AssistantBudget, "findOneAndUpdate", async () => ({ frozen: false, billingTimezone: s.config.timezone, openingExposure: s.config.openingExposure }));
   let calls = 0, reads = 0;
+  const timings = [];
   const opts = { getConfig: () => s.config, adapterFactory: () => ({ async generate() { calls++; return response(); } }),
-    readBookingOptions: async () => { reads++; return options(); }, readProducts: () => assert.fail("No products"), readCheckout: () => assert.fail("No checkout") };
+    readBookingOptions: async () => { reads++; return options(); }, readProducts: () => assert.fail("No products"), readCheckout: () => assert.fail("No checkout"),
+    recordCustomerTiming: timing => timings.push(timing) };
   assert.deepEqual(await processAssistantRun(s.run._id, opts), { status: "completed" });
   assert.equal(calls, 1); assert.equal(reads, 1); assert.equal(s.run.accounting, "settled"); assert.equal(s.messages.length, 1);
   assert.deepEqual(await processAssistantRun(s.run._id, opts), { skipped: true }); assert.equal(calls, 1); assert.equal(reads, 1);
+  assert.equal(timings.length, 1);
+  const { runId, phase, attempt, status, catalogMs, ...durations } = timings[0];
+  assert.deepEqual({ runId, phase, attempt, status, catalogMs }, { runId: String(s.run._id), phase: "resolve", attempt: 1, status: "completed", catalogMs: null });
+  assert.deepEqual(Object.keys(durations), ["beforeWorkerMs", "referenceMs", "preparationMs", "providerMs", "settlementMs", "totalMs"]);
+  assert.ok(Object.values(durations).every(value => Number.isSafeInteger(value) && value >= 0));
 });
 test("actual message admission retains normalized location and binds its retry identity", async t => {
   const s = fixture(t); s.account.activeRun = null; s.account.save = async () => {};

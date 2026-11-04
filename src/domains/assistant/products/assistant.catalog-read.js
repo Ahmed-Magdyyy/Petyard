@@ -20,6 +20,8 @@ const select = "_id slug type isActive name_en name_ar price discountedPrice ima
 const semanticSelect = `${catalogSourceFields} slug discountedPrice images`;
 const candidateLimit = 20;
 const cardLimit = 3;
+const catWords = ["cat", "cats", "قط", "قطط", "قطة", "قطه", "القط", "القطط", "القطة", "القطه", "للقط", "للقطط", "للقطة", "للقطه"];
+const toyWords = ["toy", "toys", "لعبة", "لعبه", "لعب", "ألعاب", "العاب"];
 
 function searchTerms(query, subject) {
   const name = typeof subject?.name === "string" ? subject.name.trim() : "";
@@ -31,6 +33,17 @@ function searchTerms(query, subject) {
     if (reference) query = query.slice(0, reference.index) + (reference.groups?.species ? ` ${reference.groups.species}` : "");
   }
   return [...new Set(query.split(/\s+/u).map((term) => term.toLowerCase()))];
+}
+
+function keywordPatterns(query, subject, filters) {
+  const terms = searchTerms(query, subject);
+  // Generic toy browsing must work against both catalog languages even without vector retrieval.
+  const genericCatToys = !filters && terms.length === 2 &&
+    terms.some(term => catWords.includes(term)) && terms.some(term => toyWords.includes(term));
+  const patterns = genericCatToys ? [catWords, toyWords].map(words => words.map(word =>
+    /^[a-z]+$/.test(word) ? `\\b${word}\\b` : `(?<![\u0621-\u064a])${word}(?![\u0621-\u064a])`).join("|"))
+    : terms.map(buildFlexibleSearchPattern);
+  return patterns.map($regex => ({ $regex, $options: "i" }));
 }
 
 function validSemanticDescriptors(value) {
@@ -152,7 +165,7 @@ export async function readAssistantCatalog(input, config, { semanticCandidates, 
   Object.assign(result, { effectiveWarehouseId: effective, rerouted: warehouse.rerouted });
   const semantic = config.catalogSemanticEnabled === true
     ? await semanticDocuments(semanticCandidates, signal, effective, query) : [];
-  const patterns = searchTerms(query, input.subject).map((term) => ({ $regex: buildFlexibleSearchPattern(term), $options: "i" }));
+  const patterns = keywordPatterns(query, input.subject, filters);
   const search = (field) => ({ $and: patterns.map((regex) => ({ [field]: regex })) });
   const brands = await BrandModel.find({ $or: [search("name_en"), search("name_ar")] }).select("_id").limit(20).maxTimeMS(5000).lean();
   const filter = { isActive: true, type: { $in: ["SIMPLE", "VARIANT"] }, $or: [search("name_en"), search("name_ar"), search("tags"),

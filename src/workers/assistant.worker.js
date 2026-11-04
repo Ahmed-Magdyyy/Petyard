@@ -10,6 +10,7 @@ import { catalogIndexer } from "../domains/assistant/products/assistant.catalog-
 
 let stopping = false;
 let wake;
+const recordCustomerTiming = timing => console.info("[Assistant Timing]", JSON.stringify(timing));
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => { stopping = true; wake?.(); });
 
 async function start() {
@@ -24,7 +25,7 @@ async function start() {
   if (config.enabled) await initializeAssistantStore();
   while (!stopping) {
     try {
-      const result = await drainAssistantWork();
+      const result = await drainAssistantWork({ recordCustomerTiming });
       if (result.failed) console.error("[Assistant Worker] Some requests require durable recovery");
     }
     catch { console.error("[Assistant Worker] Poll failed; durable requests require recovery"); }

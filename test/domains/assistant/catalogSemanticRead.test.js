@@ -90,6 +90,20 @@ function fixture(t, rows = []) {
   return state;
 }
 
+test("generic Arabic and English cat-toy searches find both catalog languages without vectors or foreign stock", async t => {
+  const english = product({ name_en: "Naomi Cat Stick Toy", name_ar: "ناومي" });
+  const arabic = product({ _id: new mongoose.Types.ObjectId(), name_en: "Brand", name_ar: "لعبة للقطط" });
+  const wrongSpecies = product({ _id: new mongoose.Types.ObjectId(), name_en: "Educational Dog Toy" });
+  const wrongWarehouse = product({ _id: new mongoose.Types.ObjectId(), name_en: "Cat Plush Toy", warehouseStocks: [stock(W2)] });
+  const s = fixture(t, [english, arabic, wrongSpecies, wrongWarehouse]);
+  const config = { ...semanticConfig(), catalogSemanticEnabled: false };
+  for (const query of ["ألعاب قطط", "لعبة للقطة", "cat toys"]) {
+    const result = await s.read({ query }, {}, config);
+    assert.deepEqual(result.products.map(card => card.id), [String(english._id), String(arabic._id)]);
+    assert.equal(result.effectiveWarehouseId, W);
+  }
+});
+
 test("synonym semantic candidate appears without literal name match and is rechecked for the requested warehouse", async t => {
   const row = product({ warehouseStocks: [stock(W2), stock("333333333333333333333333"), stock("444444444444444444444444"), stock(W)] }); const state = fixture(t, [row]);
   const result = await state.read({}, { semanticCandidates: async ({ warehouseId, query }) => {

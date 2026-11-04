@@ -90,7 +90,7 @@ export function storedCatalogDto(json) {
 
 const replies = {
   en: {
-    results: "Here are matching products. Open product details to check current price, availability and options. These are not verified dietary recommendations.",
+    results: "Here are matching products. Open product details to check current price, availability and options.",
     empty: "No verified matches were found in this search. You can browse the store or change your request.",
     needs_subject: "Which pet do you mean? You can name or describe it without creating a profile.",
     needs_location: "Choose your delivery area in the app, then send your request again.",
@@ -101,7 +101,7 @@ const replies = {
     partial_food_withheld: "Some foods or unclassified products were withheld because dietary suitability is unverified.",
   },
   ar: {
-    results: "دي منتجات مطابقة للشروط. افتح تفاصيل المنتج علشان تتأكد من السعر والتوفر والاختيارات الحالية. دي مش توصية غذائية مؤكدة لحيوانك.",
+    results: "دي اختيارات من بيتيارد. افتح تفاصيل المنتج علشان تتأكد من السعر والتوفر والاختيارات الحالية.",
     empty: "ملقيتش منتجات مؤكدة مطابقة في البحث ده. ممكن تتصفح المتجر أو تغيّر طلبك.",
     needs_subject: "تقصد أنهي حيوان؟ ممكن تقول اسمه أو توصفه من غير ما تعمل له ملف.",
     needs_location: "اختار منطقة التوصيل في التطبيق، وبعدها ابعت طلبك تاني.",

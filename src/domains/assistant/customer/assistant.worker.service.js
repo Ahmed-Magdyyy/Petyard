@@ -251,6 +251,8 @@ export async function prepareCheckoutSummary(prepared, result, config, { readChe
 
 const bookingContext = run => bookingContextInput(run.bookingContext ?? { location: null });
 const bookingBinding = (run, language, intent, previous) => productSearchBinding(run, { action: "booking_options", language, intent, previous }, bookingContext(run), null);
+const clinicOfferAllowed = (valid, proposal, config) => valid.scope === "health" && valid.primaryTopic === "health_symptoms" &&
+  proposal.action === "none" && bookingActionsEnabled(config);
 
 export async function prepareBookingOptions(prepared, result, config, { readBookingOptions } = {}) {
   const run = prepared.run;
@@ -260,14 +262,21 @@ export async function prepareBookingOptions(prepared, result, config, { readBook
   const valid = validateResult(result, run, config, prepared.allowedSubjects, {
     allowProductSearch: config.productSearchEnabled === true && run.catalogContext !== undefined,
     allowCheckoutSummary: cartActionsEnabled(config) && run.catalogContext !== undefined, allowBookingOptions: bookingReadsEnabled(config) });
-  if (!valid.bookingOptions || !["keep", "select"].includes(result.structured.subjectAction) ||
+  const proposal = result.structured.bookingOptions;
+  const offerClinic = clinicOfferAllowed(valid, proposal, config);
+  if ((!valid.bookingOptions && !offerClinic) || !["keep", "select"].includes(result.structured.subjectAction) ||
     result.structured.subjectAction === "select" && result.structured.resolvedSubjectId !== run.subjectId ||
     dietaryWarningObservation(result.structured, run, { kind: "publish" })?.kind === "clarify") return null;
-  const chat = await AssistantChat.findById(run.chat).lean();
-  if (!chat) reject("context_changed", 409);
-  const previous = await loadBookingSelection(run, chat, config);
-  if (prepared.bookingPrevious !== undefined && JSON.stringify(previous) !== JSON.stringify(prepared.bookingPrevious)) reject("context_changed", 409);
-  const context = bookingContext(run), binding = bookingBinding(run, result.structured.replyLanguage, result.structured.bookingOptions, previous);
+  const context = bookingContext(run);
+  if (offerClinic && !context.location) return null;
+  let previous = null;
+  if (!offerClinic) {
+    const chat = await AssistantChat.findById(run.chat).lean();
+    if (!chat) reject("context_changed", 409);
+    previous = await loadBookingSelection(run, chat, config);
+    if (prepared.bookingPrevious !== undefined && JSON.stringify(previous) !== JSON.stringify(prepared.bookingPrevious)) reject("context_changed", 409);
+  }
+  const binding = bookingBinding(run, result.structured.replyLanguage, proposal, previous);
   const fallback = () => ({ binding, snapshot: buildBookingSnapshot({ status: "unavailable" }) });
   let timer, timedOut = false;
   const work = async () => {
@@ -402,8 +411,7 @@ export async function finishRun(prepared, result, error, { dispatched = true, cu
         if (!source || source.text !== run.input || (source.subjectId ?? null) !== run.subjectId) reject("context_changed", 409);
         if (productSearchBatch.result.products?.some(card => card.type === "BUNDLE") && (currentConfig ?? config).bundleCartEnabled !== true) reject("bundle_cart_actions_unavailable", 503);
         catalog = buildCatalogSnapshot(productSearchBatch.result, valid.productSearch, context, subjects.find((pet) => pet.id === run.subjectId), result.structured.replyLanguage);
-        const response = renderCatalogResponse(catalog, result.structured.replyLanguage);
-        valid.reply = valid.scope === "health" ? `${valid.reply}\n\n${response}` : response;
+        valid.reply = renderCatalogResponse(catalog, result.structured.replyLanguage);
       }
       if (valid.checkoutSummary && decision.kind === "publish" && warning?.kind !== "clarify") {
         const context = productSearchContext(run.catalogContext, result.structured.replyLanguage);
@@ -430,6 +438,15 @@ export async function finishRun(prepared, result, error, { dispatched = true, cu
         if (["collecting", "choice_unavailable", "selection_complete"].includes(selected.status) &&
           (proposal.action !== "read" || previous)) valid.reply = renderBookingSelection(selectionCard(bookingSelection, booking, run.subjectId), result.structured.replyLanguage);
         valid.memory = null;
+      }
+      if (decision.kind === "publish" && warning?.kind !== "clarify" &&
+        clinicOfferAllowed(valid, result.structured.bookingOptions, currentConfig ?? config) &&
+        bookingBatch?.binding === bookingBinding(run, result.structured.replyLanguage, result.structured.bookingOptions, null) &&
+        bookingBatch.snapshot.status === "ready" && bookingBatch.snapshot.services.some(service => service.type === "CLINIC" && service.options.length)) {
+        const offer = result.structured.replyLanguage === "ar"
+          ? "لو تحب، أقدر أساعدك تشوف خيارات حجز كشف في عيادة بيتيارد في إسكندرية."
+          : "If you'd like, I can show you how to book a vet visit at a Petyard clinic in Alexandria.";
+        if (valid.reply.length + 2 + offer.length <= config.maxOutputChars) valid.reply += `\n\n${offer}`;
       }
       if (!valid.reply.trim()) reject("invalid_assistant_result", 503);
       if (valid.reply.length > config.maxOutputChars) reject("invalid_assistant_result", 503);
@@ -492,16 +509,21 @@ export async function recoverAssistantRuns(config, now = new Date()) {
 }
 
 export async function processAssistantRun(id, { getConfig = loadAssistantConfig, adapterFactory = createAssistantAdapter,
-  retrieveKnowledge = retrieveReviewedPassages, readProducts, readSemantic, readCheckout, readBookingOptions } = {}) {
+  retrieveKnowledge = retrieveReviewedPassages, readProducts, readSemantic, readCheckout, readBookingOptions, recordCustomerTiming } = {}) {
+  const workerStartedAt = Date.now();
   // Only the marked resolve/normalize/answer sequence permits three attempts; no HTTP retries.
   for (let step = 0; step < 3; step += 1) {
+    const started = performance.now();
     const config = getConfig();
     if (!config.enabled) return { skipped: true };
     const queued = await AssistantRun.findOne(customerRunFilter({ _id: id, status: "queued" })).lean();
     if (!queued) return { skipped: true };
     let prepared;
+    let referenceMs;
     try {
+      const referenceStart = performance.now();
       const knowledgeBatch = await knowledgeForRun(id, config, retrieveKnowledge, queued);
+      referenceMs = performance.now() - referenceStart;
       if (!knowledgeBatch) return { skipped: true };
       prepared = await prepareRun(id, getConfig(), knowledgeBatch);
     } catch (error) { await failPreparation(id, error, queued); return { failedBeforeDispatch: true }; }
@@ -512,6 +534,7 @@ export async function processAssistantRun(id, { getConfig = loadAssistantConfig,
     catch (error) { await finishRun(prepared, null, error, { dispatched: false, currentConfig: { enabled: false } }); return { failedBeforeDispatch: true }; }
     let result;
     let error;
+    const providerStart = performance.now();
     try {
       result = await adapter.generate(prepared.request);
       if (result.serviceTier !== "default") {
@@ -519,17 +542,20 @@ export async function processAssistantRun(id, { getConfig = loadAssistantConfig,
         result = null;
       } else result = unwrapReferenceResult(result, prepared.run.referencePreparationRequested === true);
     } catch (failure) { error = failure; }
+    const providerMs = performance.now() - providerStart;
     // Settlement failure leaves durable dispatching/reservation state for recovery, never retries HTTP.
     let currentConfig;
     try { currentConfig = getConfig(); } catch { currentConfig = { enabled: false }; }
     let productSearchBatch = null;
     let checkoutBatch = null;
     let bookingBatch = null;
+    let catalogMs = null;
     let canReadTools = false;
     try { canReadTools = prepared.run.phase !== "normalize" && result?.referenceAction !== "prepare" && result?.referenceAction !== "clarify" &&
       boundReferenceQuery(prepared.run)?.status !== "unclear"; }
     catch (failure) { error ??= failure; }
     if (!error && result && canReadTools && currentConfig.productSearchEnabled === true && prepared.run.catalogContext !== undefined) {
+      const catalogStart = performance.now();
       try { productSearchBatch = await prepareProductSearch(prepared, result, currentConfig, { readProducts, readSemantic }); }
       catch (failure) {
         if (failure.code === "product_search_timeout") {
@@ -538,7 +564,7 @@ export async function processAssistantRun(id, { getConfig = loadAssistantConfig,
           const warning = dietaryWarningObservation(result.structured, prepared.run, { kind: "publish" });
           productSearchBatch = { binding: productSearchBinding(prepared.run, intent, context, warning), result: { status: "unavailable", products: [] } };
         } else error = failure;
-      }
+      } finally { catalogMs = performance.now() - catalogStart; }
     }
     if (!error && result && canReadTools && cartActionsEnabled(currentConfig) && prepared.run.catalogContext !== undefined) {
       try { checkoutBatch = await prepareCheckoutSummary(prepared, result, currentConfig, { readCheckout }); }
@@ -549,7 +575,20 @@ export async function processAssistantRun(id, { getConfig = loadAssistantConfig,
       catch (failure) { error = failure; }
     }
     try { currentConfig = getConfig(); } catch { currentConfig = { enabled: false }; }
+    const settlementStart = performance.now();
     const run = await finishRun(prepared, result, error, { currentConfig, productSearchBatch, checkoutBatch, bookingBatch });
+    if (run && recordCustomerTiming) {
+      try {
+        recordCustomerTiming({
+          runId: String(run._id), phase: prepared.run.phase, attempt: prepared.run.attempts.length, status: run.status,
+          beforeWorkerMs: step === 0 ? Math.max(0, workerStartedAt - new Date(queued.createdAt).getTime()) : null,
+          referenceMs: Math.round(referenceMs), preparationMs: Math.round(providerStart - started - referenceMs),
+          providerMs: Math.round(providerMs), catalogMs: catalogMs === null ? null : Math.round(catalogMs),
+          settlementMs: Math.round(performance.now() - settlementStart),
+          totalMs: Math.max(0, Date.now() - new Date(queued.createdAt).getTime()),
+        });
+      } catch { /* Telemetry must not interrupt a queued follow-up. */ }
+    }
     if (run?.status !== "queued" || !["normalize", "answer"].includes(run.phase)) return { status: run?.status ?? "already_settled" };
   }
   return { status: "queued" };
