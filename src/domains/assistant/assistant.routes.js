@@ -15,6 +15,7 @@ import { createReferenceRouter } from "./references/assistant.reference-routes.j
 import { loadReferenceConfig } from "./references/assistant.reference-config.js";
 import { embeddingReviewService } from "./admin/assistant.embedding-review.js";
 import { cairoTimestampReplacer } from "../../shared/utils/egyptTimezone.js";
+import { signalAssistantWake } from "./shared/assistant.wake.js";
 
 // Dependency injection is only for local HTTP tests; production always supplies the real auth and domain service.
 export function createAssistantRouter({ authenticate = protect, superAdmin = allowedTo(roles.SUPER_ADMIN),
@@ -55,6 +56,7 @@ export function createAssistantRouter({ authenticate = protect, superAdmin = all
   router.post("/messages", validators.message, handle(async (req, res, config) => {
     const result = await application.submitMessage(req.user._id, req.body, req.get("Idempotency-Key"), config);
     res.status(result.duplicate ? 200 : 202).json({ data: result });
+    if (!result.duplicate) signalAssistantWake();
   }));
   router.get("/runs/:runId", validators.run, handle(async (req, res, config) => res.json({ data: await application.getRun(req.user._id, req.params.runId, config) })));
   router.put("/subject", validators.subject, handle(async (req, res, config) => res.json({ data: await application.changeSubject(req.user._id, req.body, config) })));
