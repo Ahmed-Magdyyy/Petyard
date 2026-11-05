@@ -42,7 +42,7 @@ test("ambiguous warning observations publish a fixed clarification without new c
   const state = fixture(t, "هو عنده حساسية تقريبًا؟");
   await state.finish(structuredReply({ reply: "Unsafe invented certainty", replyLanguage: "ar", dietaryWarningAction: "clarify" }));
   assert.equal(state.warnings.length, 0); assert.equal(state.run.publicCode, "dietary_warning_clarification_required");
-  assert.match(state.messages[0].text, /ممكن توضّح/); assert.doesNotMatch(state.messages[0].text, /Unsafe/);
+  assert.match(state.messages[0].text, /أنهي حيوان المقصود/); assert.doesNotMatch(state.messages[0].text, /Unsafe/);
   assert.equal(state.run.attempts.length, 1); assert.equal(state.chat.contextVersion, 0);
 });
 

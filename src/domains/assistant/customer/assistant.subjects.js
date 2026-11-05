@@ -49,7 +49,7 @@ export function resolveSubjectDecision(data, run, subjects, fingerprints, config
 }
 
 export function subjectClarification(language) {
-  if (language === "ar" || language === "arabizi") return "تقصد أنهي حيوان؟ ممكن تقولّي اسمه أو توصفه، حتى لو مش مسجل عندك في بيتيارد.";
+  if (language === "ar" || language === "arabizi") return "أنهي حيوان المقصود؟ الاسم أو وصف بسيط كفاية، حتى لو ملوش ملف في بيتيارد.";
   return "Which pet do you mean? You can tell me its name or describe it, even if it has no saved Petyard profile.";
 }
 

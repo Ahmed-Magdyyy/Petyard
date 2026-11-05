@@ -26,7 +26,7 @@ test("empty reference evidence keeps general education available without fabrica
 test("current model request carries the agreed combination, attribution and conflict instructions", async t => {
   const s = customerChatFixture(t);
   const request = await buildContext(s.run, s.chat, [s.subject], s.config, {}, new Date(), batchFor(s, [evidence()]));
-  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v9");
+  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v10");
   assert.equal(s.config.promptVersion, PROMPT_VERSION);
   assert.match(request.instructions, /combine relevant passages with compatible learned knowledge/);
   assert.match(request.instructions, /never invent citations or attribute added learned knowledge to a book/);

@@ -32,8 +32,8 @@ test("structured subject decisions keep ordinary context, select owned pets, cla
   assert.throws(() => decide({ resolvedSubjectId: pets[1].id }), { code: "invalid_subject_decision" });
   assert.throws(() => decide({ subjectAction: "select", resolvedSubjectId: pets[1].id }, run(),
     pets.map((pet) => pet.id === pets[1].id ? { ...pet, species: "changed" } : pet)), { code: "context_changed" });
-  assert.match(subjectClarification("ar"), /تقصد/);
-  assert.match(subjectClarification("arabizi"), /تقصد/);
+  assert.match(subjectClarification("ar"), /أنهي حيوان المقصود/);
+  assert.match(subjectClarification("arabizi"), /أنهي حيوان المقصود/);
 });
 
 test("anonymous pet identity stays unknown until exact sourced facts update its existing ID; saved profiles cannot be edited", () => {

@@ -57,3 +57,15 @@ test("an Arabic reply preserves the user's exact Arabizi evidence for memory", (
   assert.equal(valid.memory.value, input);
   assert.equal(valid.memory.sourceQuote, input);
 });
+
+test("address preferences use conversational replies and the existing user memory without a pet profile", () => {
+  const input = "كلمني بالمذكر";
+  const reply = "تمام، هكلمك بالمذكر.";
+  const structured = structuredReply({ scope: "petyard", primaryTopic: "account_app_help", replyLanguage: "ar", reply,
+    memoryKey: "communication_preference", memorySubjectId: "user", memoryValue: input, sourceQuote: input });
+  const validate = (text, data) => validateResult({ structured: data, finishReason: "completed", toolCalls: [] },
+    { input: text, subjectId: null }, testConfig(), ["user"]);
+  assert.equal(validate(input, structured).reply, reply);
+  assert.deepEqual(validate(input, structured).memory, { key: "communication_preference", value: input, sourceQuote: input, subjectId: "user", kind: "preference" });
+  assert.equal(validate("طيب عموما انا ولد", structured).memory, null);
+});
