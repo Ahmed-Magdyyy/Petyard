@@ -143,11 +143,9 @@ test("changed chat, pet or dietary-warning context blocks first confirmation", a
   await assert.rejects(s.confirmReview(), { code: "context_changed" }); assert.deepEqual(s.writes, []);
 });
 
-test("dietary caution applies to every surviving component, including unclassified products", async t => {
+test("food and unclassified bundle components can be reviewed with an existing dietary caution", async t => {
   const s = reviews(t); s.savedPet(); s.pets[0].chronic_conditions = ["allergy"];
-  s.products[0].category = B; await assert.rejects(s.prepareReview(), { code: "food_review_required" });
-  delete s.products[0].category; await assert.rejects(s.prepareReview(), { code: "food_review_required" });
-  s.products[0].category = OTHER; await s.prepareReview(); await s.confirmReview(); assert.equal(s.cart.bundles.length, 1);
+  s.products[0].category = B; await s.prepareReview(); await s.confirmReview(); assert.equal(s.cart.bundles.length, 1);
 });
 
 test("an unsaved pet review cannot outlive the selected temporary subject", async t => {
@@ -301,14 +299,14 @@ test("ordinary-add reviews generate and restore a server line ID while rejecting
   assert.deepEqual((await s.confirmReview()).receipt, first.receipt); assert.equal((await s.state()).proposal.status, "confirmed");
 });
 
-test("ordinary quantity increase obeys dietary restrictions while explicit decrease or removal remains possible", async t => {
+test("ordinary food quantity changes remain available with an existing dietary caution", async t => {
   const s = reviews(t, { ordinary: true }); s.savedPet(); s.pets[0].chronic_conditions = ["allergy"]; s.products[0].category = B;
   const base = { warehouseId: W, language: "en", change: { action: "ordinary_set", cartId: String(s.cart._id),
     expectedCartVersion: 7, itemId: String(s.cart.items[0]._id), quantity: 3 } };
-  await assert.rejects(s.prepareReview(base), { code: "food_review_required" });
-  await s.prepareReview({ ...base, change: { ...base.change, quantity: 1 } }, "ordinary-decrease"); await s.confirmReview();
-  assert.equal(s.cart.items[0].quantity, 1); s.expectedCartVersion = 8;
-  await s.prepareReview({ ...base, change: { action: "ordinary_remove", cartId: String(s.cart._id), expectedCartVersion: 8,
+  await s.prepareReview(base); await s.confirmReview(); assert.equal(s.cart.items[0].quantity, 3); s.expectedCartVersion = 8;
+  await s.prepareReview({ ...base, change: { ...base.change, expectedCartVersion: 8, quantity: 1 } }, "ordinary-decrease"); await s.confirmReview();
+  assert.equal(s.cart.items[0].quantity, 1); s.expectedCartVersion = 9;
+  await s.prepareReview({ ...base, change: { action: "ordinary_remove", cartId: String(s.cart._id), expectedCartVersion: 9,
     itemId: String(s.cart.items[0]._id) } }, "ordinary-remove-1");
   await s.confirmReview(); assert.deepEqual(s.cart.items, []);
 });

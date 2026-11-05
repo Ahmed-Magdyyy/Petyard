@@ -105,6 +105,15 @@ test("numeric and option constraints still require exact source evidence", () =>
   }
 });
 
+test("retained filters require unexpired backend-provided user evidence", () => {
+  const run = { input: "any dry food in that size", subjectId: null };
+  const quote = "at least 3 kg";
+  const data = result({ productSearch: search({ action: "general", query: "cat dry food", minimumPackageWeightGrams: 3000, sourceQuote: quote }) }).structured;
+  assert.throws(() => productSearchIntent(data, run), { code: "invalid_product_search" });
+  assert.throws(() => productSearchIntent(data, run, [{ text: quote, expiresAt: new Date(0) }]), { code: "invalid_product_search" });
+  assert.equal(productSearchIntent(data, run, [{ text: quote, expiresAt: new Date(Date.now() + 60000) }]).filters.minimumPackageWeightGrams, 3000);
+});
+
 test("unknown usage, unsupported tier, urgent scope, switching and uncertain warnings never reach lookup", async (t) => {
   const state = customerChatFixture(t);
   for (const response of [{ ...result(), usage: null }, { ...result(), serviceTier: "unverified" },

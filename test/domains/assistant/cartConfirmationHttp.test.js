@@ -92,7 +92,7 @@ test("a dietary warning reported during HTTP confirmation prevents retaining an 
   const prepared = await s.httpPrepare(); assert.equal(prepared.status, 201);
   s.onCartRefresh = () => { s.warnings = [{ _id: oid(), owner: s.owner, subjectId, state: "active", version: 1, text: "Avoid chicken" }]; };
   const rejected = await s.httpConfirm(prepared.body.data.proposal);
-  assert.equal(rejected.status, 409); assert.equal(rejected.body.error.code, "food_review_required");
+  assert.equal(rejected.status, 409); assert.equal(rejected.body.error.code, "context_changed");
   assert.equal(s.cart, null); assert.equal(s.receipts.length, 0); assert.equal(s.account.cartRateCount, 2);
 });
 

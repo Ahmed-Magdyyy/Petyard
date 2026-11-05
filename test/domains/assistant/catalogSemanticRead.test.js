@@ -126,7 +126,7 @@ test("only a fresh exact matched variant is exposed; a stocked sibling cannot re
   result = await state.read({}, { semanticCandidates: async () => [stale] }); assert.deepEqual(result.products, []);
 });
 
-test("unknown semantic labels do not satisfy exact filters and dietary review still withholds food", async t => {
+test("unknown semantic labels do not satisfy exact filters while dietary cautions allow browsing", async t => {
   const row = variantProduct({ variants: [{ ...variantProduct().variants[0], options: [{ name: "unreviewed", value: "Blue" }] }] });
   const state = fixture(t, [row]);
   let result = await state.read({ filters: { minimumPackageWeightGrams: null, maximumPriceMinor: null, options: [{ name: "color", value: "Blue" }] } },
@@ -135,7 +135,7 @@ test("unknown semantic labels do not satisfy exact filters and dietary review st
   row.category = "999999999999999999999998";
   result = await state.read({ warnings: [{ subjectId: subject.id, state: "active", text: "allergy" }] },
     { semanticCandidates: async () => [variantDescriptor(row, VID)] });
-  assert.equal(result.status, "food_review_required"); assert.equal(result.withheldCount, 1);
+  assert.equal(result.status, "results"); assert.equal(result.withheldCount, 0); assert.equal(result.requiresDietaryReview, true);
 });
 
 test("semantic failures fall back, while disabled, missing-location, and changed-location reads do not call candidates", async t => {

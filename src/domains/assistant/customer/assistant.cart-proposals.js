@@ -13,7 +13,6 @@ import { fields, objectId } from "../shared/assistant.validation.js";
 import { transaction, assertAccess } from "../shared/assistant.store.js";
 import { customerRunFilter } from "../shared/assistant.purpose.js";
 import { storedCatalogDto } from "../products/assistant.product-cards.js";
-import { catalogDietaryRisk, classifyCatalogProduct } from "../products/assistant.catalog-policy.js";
 import { normalizeOfferAttributes } from "../products/assistant.product-attributes.js";
 import { subjectsFor, subjectFingerprint, PET_CONTEXT_FIELDS, subjectFromPet } from "./assistant.context.js";
 import { recoverCartAdditionReceipt, stageCartAdditionWithReceipt } from "./assistant.cart-receipts.js";
@@ -106,9 +105,6 @@ async function scope(owner, args, config, session = null) {
         card.matchingOffer.options.some((entry) => attributes.get(entry.name)?.state !== "known" || String(attributes.get(entry.name).value) !== entry.value)) {
       reject("source_offer_changed", 409);
     }
-  }
-  if (["known", "unknown"].includes(catalogDietaryRisk(subject, warnings)) && classifyCatalogProduct(product, config.catalogClassification) !== "nonfood") {
-    reject("food_review_required", 409);
   }
   return { productType: card.type, sourceExpiresAt: source.expiresAt, chat, subject, binding: hash({ source: String(source._id), catalog: source.catalogJson,
     chat: String(chat._id), contextVersion: chat.contextVersion, subject: subjectFingerprint(subject),

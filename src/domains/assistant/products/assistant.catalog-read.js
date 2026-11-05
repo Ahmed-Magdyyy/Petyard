@@ -133,9 +133,9 @@ async function appendBundleCards(result, patterns, warehouse, language, risk, co
     try { card = buildBundleProductCard({ bundle, warehouse, products, lang: language }); }
     catch (error) { if (/^BUNDLE_/.test(error.code)) continue; throw error; }
     if (!card) continue;
-    if (["known", "unknown"].includes(risk) && card.components.some(component =>
+    if (risk === "known" && card.components.some(component =>
       classifyCatalogProduct(products.find(row => String(row._id) === component.productId), config.catalogClassification) !== "nonfood")) {
-      result.withheldCount++; continue;
+      result.requiresDietaryReview = true;
     }
     result.products.push({ ...card, priceDisplay: "exact" });
     const id = String(bundle._id);
@@ -190,11 +190,8 @@ export async function readAssistantCatalog(input, config, { semanticCandidates, 
     candidates.push(product); candidateIds.add(String(product._id));
   }
   candidates.length = Math.min(candidates.length, candidateLimit);
-  const permitted = candidates.filter((product) => {
-    const classification = classifyCatalogProduct(product, config.catalogClassification);
-    return !["known", "unknown"].includes(risk) || classification === "nonfood";
-  });
-  result.withheldCount = candidates.length - permitted.length;
+  const permitted = candidates;
+  result.requiresDietaryReview = risk === "known" && candidates.some(product => classifyCatalogProduct(product, config.catalogClassification) !== "nonfood");
   const promotions = await findActivePromotionsForProducts(filters ? permitted : permitted.slice(0, cardLimit), new Date());
   let selected = permitted.map((product) => ({ product, matching: null }));
   if (filters) {
@@ -229,8 +226,7 @@ export async function readAssistantCatalog(input, config, { semanticCandidates, 
       (priority(a) ? 0 : (rank(a) ?? Infinity) - (rank(b) ?? Infinity)));
     result.products = result.products.slice(0, cardLimit);
   }
-  result.status = result.products.length ? "results" : result.withheldCount ? "food_review_required"
-    : result.unverifiedOfferCount ? "needs_verified_filters" : "empty";
+  result.status = result.products.length ? "results" : result.unverifiedOfferCount ? "needs_verified_filters" : "empty";
   result.generatedAt = new Date().toISOString();
   return result;
 }

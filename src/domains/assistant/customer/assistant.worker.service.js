@@ -73,7 +73,7 @@ export async function prepareRun(id, config, knowledgeBatch = null) {
       return { skippedNormalization: true };
     }
     const bookingPrevious = run.phase === "normalize" ? null : await loadBookingSelection(run, chat, config, session);
-    const { request, passages, prepareQuery, contextExpiresAt } = await buildContextWithKnowledge(run, chat, subjects, config, session, new Date(), knowledgeBatch, bookingPrevious, user.name);
+    const { request, passages, prepareQuery, contextExpiresAt, productSearchEvidence } = await buildContextWithKnowledge(run, chat, subjects, config, session, new Date(), knowledgeBatch, bookingPrevious, user.name);
     run.referencePreparationRequested = prepareQuery;
     if (prepareQuery || run.phase === "normalize") run.referenceContextExpiresAt = new Date(Math.min(
       contextExpiresAt.getTime(), run.referenceContextExpiresAt?.getTime() ?? Infinity));
@@ -90,7 +90,7 @@ export async function prepareRun(id, config, knowledgeBatch = null) {
     await run.save({ session });
     await event(run.owner, "provider_attempt_reserved", config, { attemptId: run.attempt, number: run.attempts.length, phase: run.phase, amount: run.reservation.amount,
       provider: config.provider, model: config.model, priceVersion: config.price.version }, { session, run: run._id });
-    return { run: run.toObject(), request, bookingPrevious, allowedSubjects: ["user", ...subjects.map((pet) => pet.id)],
+    return { run: run.toObject(), request, bookingPrevious, productSearchEvidence, allowedSubjects: ["user", ...subjects.map((pet) => pet.id)],
       subjectFingerprints: Object.fromEntries(subjects.map((pet) => [pet.id, subjectFingerprint(pet)])) };
   });
 }
@@ -153,7 +153,7 @@ export async function prepareProductSearch(prepared, result, config, { context, 
   if (!isCustomerRun(run)) reject("run_not_found", 404);
   sameConfig(run, config);
   if (result?.serviceTier !== "default" || costMicroUsd(result?.usage, run.config) === null) return null;
-  const valid = validateResult(result, run, config, prepared.allowedSubjects, { allowProductSearch: true,
+  const valid = validateResult(result, run, config, prepared.allowedSubjects, { allowProductSearch: true, productSearchEvidence: prepared.productSearchEvidence,
     allowCheckoutSummary: cartActionsEnabled(config) && run.catalogContext !== undefined, allowBookingOptions: bookingReadsEnabled(config) });
   const intent = valid.productSearch;
   if (!intent || !["keep", "select"].includes(result.structured.subjectAction) ||
@@ -222,7 +222,7 @@ export async function prepareCheckoutSummary(prepared, result, config, { readChe
   if (!isCustomerRun(run)) reject("run_not_found", 404);
   sameConfig(run, config);
   if (result?.serviceTier !== "default" || costMicroUsd(result?.usage, run.config) === null) return null;
-  const valid = validateResult(result, run, config, prepared.allowedSubjects, {
+  const valid = validateResult(result, run, config, prepared.allowedSubjects, { productSearchEvidence: prepared.productSearchEvidence,
     allowProductSearch: config.productSearchEnabled === true && run.catalogContext !== undefined,
     allowCheckoutSummary: cartActionsEnabled(config) && run.catalogContext !== undefined, allowBookingOptions: bookingReadsEnabled(config) });
   if (!valid.checkoutSummary || !["keep", "select"].includes(result.structured.subjectAction) ||
@@ -267,7 +267,7 @@ export async function prepareBookingOptions(prepared, result, config, { readBook
   if (!isCustomerRun(run)) reject("run_not_found", 404);
   sameConfig(run, config);
   if (result?.serviceTier !== "default" || costMicroUsd(result?.usage, run.config) === null) return null;
-  const valid = validateResult(result, run, config, prepared.allowedSubjects, {
+  const valid = validateResult(result, run, config, prepared.allowedSubjects, { productSearchEvidence: prepared.productSearchEvidence,
     allowProductSearch: config.productSearchEnabled === true && run.catalogContext !== undefined,
     allowCheckoutSummary: cartActionsEnabled(config) && run.catalogContext !== undefined, allowBookingOptions: bookingReadsEnabled(config) });
   const proposal = result.structured.bookingOptions;
@@ -370,7 +370,7 @@ export async function finishRun(prepared, result, error, { dispatched = true, cu
         await fenceReferenceSources(run.referenceSources, session);
       }
       const allowProductSearch = config.productSearchEnabled === true && run.catalogContext !== undefined;
-      valid = validateResult(result, run, config, prepared.allowedSubjects.filter((id) => id === "user" || subjects.some((pet) => pet.id === id)), { allowProductSearch,
+      valid = validateResult(result, run, config, prepared.allowedSubjects.filter((id) => id === "user" || subjects.some((pet) => pet.id === id)), { allowProductSearch, productSearchEvidence: prepared.productSearchEvidence,
         allowCheckoutSummary: cartActionsEnabled(config) && run.catalogContext !== undefined, allowBookingOptions: bookingReadsEnabled(currentConfig ?? config) });
       decision = valid.conversationRepair ? { kind: "publish" } : resolveSubjectDecision(result.structured, run, subjects, prepared.subjectFingerprints, config);
       warning = valid.conversationRepair ? null : dietaryWarningObservation(result.structured, run, decision);
@@ -567,7 +567,7 @@ export async function processAssistantRun(id, { getConfig = loadAssistantConfig,
       try { productSearchBatch = await prepareProductSearch(prepared, result, currentConfig, { readProducts, readSemantic }); }
       catch (failure) {
         if (failure.code === "product_search_timeout") {
-          const intent = productSearchIntent(result.structured, prepared.run);
+          const intent = productSearchIntent(result.structured, prepared.run, prepared.productSearchEvidence);
           const context = productSearchContext(prepared.run.catalogContext, result.structured.replyLanguage);
           const warning = dietaryWarningObservation(result.structured, prepared.run, { kind: "publish" });
           productSearchBatch = { binding: productSearchBinding(prepared.run, intent, context, warning), result: { status: "unavailable", products: [] } };

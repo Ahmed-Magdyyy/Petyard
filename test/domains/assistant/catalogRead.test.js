@@ -117,15 +117,16 @@ test("lookup uses bounded database name/tag/brand queries and renders three real
   assert.ok(result.generatedAt); assert.equal(result.classificationVersion, "reviewed-test-v1");
 });
 
-test("a known or unknown dietary risk withholds food and unknown classification while keeping reviewed nonfood", async (t) => {
+test("dietary cautions and incomplete profiles preserve food browsing with unverified suitability", async (t) => {
   const rows = [product({ category: F }), product({ category: null }), product()];
   const state = fixture(t, rows);
   for (const overrides of [{ warnings: [{ subjectId: subject.id, state: "active", text: "allergy" }] }, { subject: { ...subject, profile: undefined } }]) {
-    const result = await state.read(overrides); assert.equal(result.withheldCount, 2);
-    assert.equal(result.products.length, 1); assert.equal(result.products[0].id, String(rows[2]._id)); assert.equal(result.products[0].inStock, true);
+    const result = await state.read(overrides); assert.equal(result.withheldCount, 0);
+    assert.equal(result.products.length, 3); assert.ok(result.products.every(card => card.inStock));
+    assert.equal(result.requiresDietaryReview, Boolean(overrides.warnings));
   }
   const unavailable = await state.read({ warnings: [{ subjectId: subject.id, state: "active", text: "allergy" }] }, testConfig());
-  assert.equal(unavailable.status, "food_review_required"); assert.equal(unavailable.products.length, 0);
+  assert.equal(unavailable.status, "results"); assert.equal(unavailable.products.length, 3);
   assert.equal(unavailable.classificationVersion, null);
 });
 
@@ -282,7 +283,7 @@ test("revised native seed has the expected query results under mocked models wit
   const constrained = await read({ query: "beta alpha", filters: exactFilters({ options: [{ name: "color", value: "pink" }] }) });
   assert.equal(constrained.status, "needs_verified_filters"); assert.deepEqual(constrained.products, []);
   const unknown = { id: "chat:12345678-1234-1234-1234-123456789012", saved: false };
-  assert.equal((await read({ query: "feed", subject: unknown })).status, "food_review_required");
+  assert.equal((await read({ query: "feed", subject: unknown })).status, "results");
   assert.equal((await read({ query: "feed" })).status, "results");
 });
 
@@ -350,7 +351,7 @@ test("legacy labels and option values remain discoverable even when their dimens
   assert.match(JSON.stringify(state.reads[0].$and[0].$or), /variants\.options\.value/);
 });
 
-test("constrained reads require the app's refreshed warehouse and preserve dietary withholding", async (t) => {
+test("constrained food browsing still requires the app's refreshed warehouse", async (t) => {
   const food = product({ category: F, type: "VARIANT", variants: [offer({ price: 900, warehouseStocks: [{ warehouse: F, quantity: 2 }] })] });
   const toy = product({ type: "VARIANT", variants: [offer({ price: 900, warehouseStocks: [{ warehouse: F, quantity: 2 }] })] });
   const state = fixture(t, [food, toy]);
@@ -359,7 +360,7 @@ test("constrained reads require the app's refreshed warehouse and preserve dieta
   await assert.rejects(state.read(input), { code: "catalog_warehouse_changed" });
   assert.equal(state.reads.length, 0);
   const result = await state.read({ ...input, warehouseId: F });
-  assert.equal(result.withheldCount, 1); assert.equal(result.products.length, 1); assert.equal(result.products[0].id, String(toy._id));
+  assert.equal(result.withheldCount, 0); assert.equal(result.products.length, 2); assert.equal(result.requiresDietaryReview, true);
   assert.equal(result.products[0].inStock, true); assert.equal(result.effectiveWarehouseId, F);
 });
 

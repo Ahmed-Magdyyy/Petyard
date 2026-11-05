@@ -71,7 +71,7 @@ test("native confirmation coordinator rejects concurrent access and pet/chat/war
   t.mock.method(ProductModel, "find", (filter) => { assert.ok(filter._id.$in.every((id) => String(id) === manifest.product)); return query([product]); });
   t.mock.method(WarehouseModel, "findById", (id) => { assert.equal(String(id), manifest.warehouse); return query({ _id: manifest.warehouse, active: true }); });
   t.mock.method(CollectionModel, "findOne", () => query(null));
-  const expected = [null, "authentication_required", "ai_restricted", "context_changed", "context_changed", "food_review_required", "Synthetic coordinator receipt failure"];
+  const expected = [null, "authentication_required", "ai_restricted", "context_changed", "context_changed", "context_changed", "Synthetic coordinator receipt failure"];
   for (selected = 0; selected < coordinatorCases.length; selected++) {
     const seed = seeds[selected], session = await mongoose.startSession(); let quote;
     try { quote = await session.withTransaction(() => previewCartAdditionService({ userId: String(seed.users._id), warehouseId: manifest.warehouse,

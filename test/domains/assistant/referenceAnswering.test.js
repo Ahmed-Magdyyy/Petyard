@@ -6,6 +6,7 @@ import { retrieveKnowledgeBatch, retrieveReviewedPassages } from "../../../src/d
 import { customerChatFixture } from "./fixtures/customerChat.js";
 import { knownUsage, structuredReply } from "./fixtures/foundationPolicy.js";
 import { finishRun } from "../../../src/domains/assistant/customer/assistant.worker.service.js";
+import { AssistantMessage } from "../../../src/domains/assistant/shared/assistant.models.js";
 
 const evidence = () => ({ sourceId: "fictional-source", version: "fictional-version", title: "Fictional care reference",
   locator: "PDF page 1, excerpt 1", excerpt: "Fictional general care evidence.", reviewed: true, species: ["cat"] });
@@ -26,7 +27,7 @@ test("empty reference evidence keeps general education available without fabrica
 test("current model request carries the agreed combination, attribution and conflict instructions", async t => {
   const s = customerChatFixture(t);
   const request = await buildContext(s.run, s.chat, [s.subject], s.config, {}, new Date(), batchFor(s, [evidence()]));
-  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v11");
+  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v12");
   assert.equal(s.config.promptVersion, PROMPT_VERSION);
   assert.match(request.instructions, /combine relevant passages with compatible learned knowledge/);
   assert.match(request.instructions, /never invent citations or attribute added learned knowledge to a book/);
@@ -64,13 +65,13 @@ test("only a bounded owner display name is included in the conversational reques
   }
 });
 
-test("a general symptom reply can give guidance while a symptom-driven product search is blocked", async t => {
+test("a general symptom reply gives guidance without requesting shopping", async t => {
   const s = customerChatFixture(t, "My cat is very tired and not playing. What could be wrong?");
   const config = { ...s.config, productSearchEnabled: true };
   s.run.catalogContext = { warehouseId: "111111111111111111111111", language: "en" };
   const reply = "Several things can cause a change in activity. Contact your vet promptly. When did this start?";
   const structured = structuredReply({ scope: "pet_care", primaryTopic: "health_symptoms", reply, productSearch: {
-    action: "general", query: "cat supplements", minimumPackageWeightGrams: null, maximumPriceMinor: null, sourceQuote: "", options: [],
+    action: "none", query: "", minimumPackageWeightGrams: null, maximumPriceMinor: null, sourceQuote: "", options: [],
   } });
   s.run.config = config;
   await finishRun(s.prepared, { structured, finishReason: "completed", toolCalls: [], usage: knownUsage }, null, { currentConfig: config });
@@ -87,6 +88,15 @@ test("punctuation after a medical reply cannot repeat the advice or change the s
   assert.equal(s.run.subjectId, s.subject.id);
   assert.match(s.messages[0].text, /أنهي جزء محتاج شرح/);
   assert.doesNotMatch(s.messages[0].text, /كررت/);
+});
+
+test("filter evidence excludes assistant text and other pets from the visible history", async t => {
+  const s = customerChatFixture(t, "show food in that size"), now = new Date();
+  const previous = { role: "user", subjectId: s.subject.id, text: "at least 3 kg", createdAt: now, expiresAt: new Date(now.getTime() + 60000) };
+  t.mock.method(AssistantMessage, "find", () => ({ sort() { return this; }, limit() { return this; }, session() { return this; },
+    async lean() { return [previous, { ...previous, role: "assistant", text: "10 kg" }, { ...previous, subjectId: "pet:111111111111111111111111", text: "20 kg" }]; } }));
+  const built = await buildContextWithKnowledge(s.run, s.chat, [s.subject], s.config, {}, now);
+  assert.deepEqual(built.productSearchEvidence.map(entry => entry.text), [previous.text]);
 });
 
 test("retrieval without a worker-owned run supplies no evidence or paid work", async () => {

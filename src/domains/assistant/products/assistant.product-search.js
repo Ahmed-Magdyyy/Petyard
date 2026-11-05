@@ -3,10 +3,12 @@ import { reject } from "../shared/assistant.errors.js";
 import { fields, objectId } from "../shared/assistant.validation.js";
 
 // This is an internal model intent, not a product, price or executable domain action.
-export function productSearchIntent(data, run) {
+export function productSearchIntent(data, run, priorEvidence = []) {
   if (!["pet_care", "petyard", "health"].includes(data.scope)) return null;
   const search = data.productSearch;
   const filters = search;
+  const evidence = [run.input, ...priorEvidence.filter(entry => new Date(entry.expiresAt) > new Date()).map(entry => entry.text)];
+  const containsQuote = quote => evidence.some(input => input.includes(quote));
   const constrained = filters.minimumPackageWeightGrams !== null || filters.maximumPriceMinor !== null || filters.options.length > 0;
   if (search.action === "none") {
     if (search.query || constrained || filters.sourceQuote) reject("invalid_product_search", 503);
@@ -14,13 +16,13 @@ export function productSearchIntent(data, run) {
   }
   if (!["general", "pet"].includes(search.action) || typeof search.query !== "string" ||
       !search.query.trim() || search.query !== search.query.trim() || search.query.length > 120 || search.query.includes("\u0000") ||
-      (constrained ? !filters.sourceQuote.trim() || filters.sourceQuote.length > 500 || !run.input.includes(filters.sourceQuote) : Boolean(filters.sourceQuote)) ||
+      (constrained ? !filters.sourceQuote.trim() || filters.sourceQuote.length > 500 || !containsQuote(filters.sourceQuote) : Boolean(filters.sourceQuote)) ||
       filters.options.some((option) => !option.name.trim() || option.name.length > 80 || !option.value.trim() || option.value.length > 80 ||
-        !option.sourceQuote.trim() || option.sourceQuote.length > 500 || !run.input.includes(option.sourceQuote) || !option.sourceQuote.includes(option.value))) {
+        !option.sourceQuote.trim() || option.sourceQuote.length > 500 || !containsQuote(option.sourceQuote) || !option.sourceQuote.includes(option.value))) {
     reject("invalid_product_search", 503);
   }
-  // A model's "general" label cannot discard an already resolved pet's dietary restrictions.
   return { query: search.query, subjectId: run.subjectId ?? null, needsSubject: search.action === "pet" && !run.subjectId,
+    healthContext: data.scope === "health" || data.primaryTopic === "health_symptoms",
     filters: { minimumPackageWeightGrams: filters.minimumPackageWeightGrams, maximumPriceMinor: filters.maximumPriceMinor,
       options: structuredClone(filters.options) }, constrained };
 }

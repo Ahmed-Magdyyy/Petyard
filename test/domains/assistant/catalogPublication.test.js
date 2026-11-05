@@ -164,7 +164,7 @@ test("same-turn warning is used by the read and saved with the resulting catalog
   assert.equal(state.run.contextVersion, state.chat.contextVersion);
 });
 
-test("the recorded health search cannot read a catalog or publish cards even without a model warning", async (t) => {
+test("a recorded health shopping request publishes catalog matches with a veterinary suitability caution", async (t) => {
   const recorded = JSON.parse(await readFile(new URL("fixtures/healthShoppingV4.json", import.meta.url), "utf8"));
   const state = customerChatFixture(t, recorded.input, { productSearchEnabled: true, catalogSemanticEnabled: true,
     catalogSemanticMinimumScore: 0.2, maxOutputTokens: 1024 });
@@ -175,15 +175,16 @@ test("the recorded health search cannot read a catalog or publish cards even wit
   assert.equal(data.dietaryWarningAction, "none"); assert.equal(data.productSearch.action, "general");
   const response = answer(data);
   const valid = validateResult(response, state.run, state.config, state.prepared.allowedSubjects, { allowProductSearch: true });
-  assert.equal(valid.productSearch, null); assert.match(valid.reply, /بيطري/);
+  assert.ok(valid.productSearch); assert.match(valid.reply, /بيطري/);
   const batch = await prepareProductSearch(state.prepared, response, state.config, {
-    readProducts: () => assert.fail("Health advice cannot read catalog"),
-    readSemantic: () => assert.fail("Health advice cannot embed or search") });
-  assert.equal(batch, null);
+    readProducts: async () => outcome() });
+  assert.ok(batch);
   await finishRun(state.prepared, response, null, { currentConfig: state.config, productSearchBatch: batch });
   assert.equal(state.run.status, "completed"); assert.equal(state.run.accounting, "settled");
-  assert.equal(state.messages.length, 1); assert.match(state.messages[0].text, /بيطري/);
-  assert.equal(state.messages[0].catalogJson, undefined); assert.equal(messageDto(state.messages[0]).catalog, undefined);
+  assert.equal(state.messages.length, 1);
+  const catalog = messageDto(state.messages[0]).catalog;
+  assert.equal(catalog.status, "results"); assert.equal(catalog.suitability, "not_verified");
+  assert.match(catalog.notices.find(notice => notice.code === "suitability_not_verified").text, /الدكتور البيطري/);
   assert.equal(state.warnings.length, 0); assert.equal(state.unlocked, 1);
 });
 
@@ -192,20 +193,20 @@ test("the health boundary still rejects malformed evidence and unavailable tools
   const run = { input: "at most EGP 900", subjectId: null };
   const valid = answer({ scope: "health", replyLanguage: "en", productSearch: search({ maximumPriceMinor: 90000,
     sourceQuote: run.input }) });
-  assert.equal(validateResult(valid, run, config, [], { allowProductSearch: true }).productSearch, null);
+  assert.ok(validateResult(valid, run, config, [], { allowProductSearch: true }).productSearch);
   valid.structured.productSearch.sourceQuote = "invented";
   assert.throws(() => validateResult(valid, run, config, [], { allowProductSearch: true }), { code: "invalid_product_search" });
   valid.structured.productSearch.sourceQuote = run.input;
   assert.throws(() => validateResult(valid, run, config, []), { code: "product_search_unavailable" });
 });
 
-test("health advice still saves an explicit dietary warning while suppressing its requested shopping", async (t) => {
+test("health shopping preserves the explicit dietary warning and publishes catalog matches", async (t) => {
   const state = fixture(t), response = answer({ ...state.report(), reply: "Discuss this allergy with your veterinarian.", productSearch: search() });
-  const batch = await state.prepare(response, () => assert.fail("Health advice cannot search"));
-  assert.equal(batch, null); await state.complete(response, batch);
+  const batch = await state.prepare(response);
+  assert.ok(batch); await state.complete(response, batch);
   assert.equal(state.run.status, "completed"); assert.equal(state.warnings.length, 1);
-  assert.equal(state.messages.length, 1); assert.match(state.messages[0].text, /veterinarian/);
-  assert.equal(state.messages[0].catalogJson, undefined); assert.equal(state.budgetUpdates.length, 2);
+  assert.equal(state.messages.length, 1);
+  assert.equal(messageDto(state.messages[0]).catalog.suitability, "not_verified"); assert.equal(state.budgetUpdates.length, 2);
 });
 
 test("stale attempts and missing bound batches cannot publish a catalog", async (t) => {
@@ -402,6 +403,31 @@ function queue(state) {
     deadline: new Date(Date.now() + 60000), toObject() { return { ...this }; } });
   state.prepared.run = { ...state.run };
 }
+
+test("a shopping follow-up reuses the owner's earlier weight through preparation and publication", async t => {
+  for (const mode of ["results", "timeout"]) await t.test(mode, async t => {
+  const state = fixture(t, mode === "timeout" ? { timeoutMs: 20 } : {}); queue(state);
+  const previous = { owner: state.run.owner, chat: state.run.chat, role: "user", subjectId: state.run.subjectId,
+    sequence: 1, text: "عايز دراي فود للقط 3 كيلو أو أكتر", createdAt: new Date(), expiresAt: new Date(Date.now() + 60000) };
+  state.run.input = "أي دراي فود بالحجم ده"; state.source.text = state.run.input;
+  state.run.userSequence = 2; state.source.sequence = 2; state.chat.nextSequence = 2;
+  t.mock.method(AssistantMessage, "find", filter => ({ sort() { return this; }, limit() { return this; }, session() { return this; },
+    async lean() { return matchesQuery(previous, filter) ? [previous] : []; } }));
+  const response = answer({ scope: "petyard", productSearch: search({ query: "cat dry food", minimumPackageWeightGrams: 3000, sourceQuote: previous.text }) });
+  const result = await processAssistantRun(state.run._id, { getConfig: () => state.config,
+    adapterFactory: () => ({ async generate(request) { assert.ok(request.messages.some(message => message.content.includes(previous.text))); return response; } }),
+    readProducts: async input => {
+      assert.equal(input.filters.minimumPackageWeightGrams, 3000);
+      if (mode === "timeout") return new Promise(() => {});
+      return outcome({ products: [card({ matchingOfferCount: 1, matchingOffers: [{ variantId: null, price: 100,
+        discountedPrice: null, finalPriceMinor: 10000, inStock: true, attributes: [{ name: "weight", value: 3000 }] }] })] });
+    } });
+  assert.equal(result.status, "completed");
+  const catalog = messageDto(state.messages[0]).catalog;
+  assert.equal(catalog.status, mode === "timeout" ? "unavailable" : "results");
+  if (mode === "results") assert.equal(catalog.products[0].matchingOffer.packageWeightGrams, 3000);
+  });
+});
 
 test("runtime executes one lookup and one paid-adapter fixture call; lookup failure/timeout completes safely without retry", async (t) => {
   for (const mode of ["results", "failure", "timeout", "missing_location"]) {

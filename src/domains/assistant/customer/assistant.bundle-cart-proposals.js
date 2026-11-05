@@ -6,7 +6,6 @@ import { AssistantCartProposal } from "../shared/assistant.cart-proposal.model.j
 import { AssistantAccount, AssistantChat, AssistantDietaryWarning, AssistantMessage, AssistantRun } from "../shared/assistant.models.js";
 import { UserModel } from "../../user/user.model.js";
 import { PetModel } from "../../pet/pet.model.js";
-import { ProductModel } from "../../product/product.model.js";
 import { requireBundleUser } from "../../bundle/bundle.access.js";
 import { previewBundleCartChange, stageBundleCartChangeWithReceipt, recoverBundleCartChange } from "../../bundle/bundle.cart-transaction.js";
 import { requireCartActions } from "../shared/assistant.config.js";
@@ -14,7 +13,6 @@ import { assertAccess } from "../shared/assistant.store.js";
 import { objectId } from "../shared/assistant.validation.js";
 import { reject } from "../shared/assistant.errors.js";
 import { subjectsFor, subjectFingerprint, subjectFromPet, PET_CONTEXT_FIELDS } from "./assistant.context.js";
-import { catalogDietaryRisk, classifyCatalogProduct } from "../products/assistant.catalog-policy.js";
 import { bundleCartReviewInput, bundleCartReviewConfirmation } from "./assistant.bundle-cart.validation.js";
 import { assertBundleCartProposalStore as ready, runBundleCartReviewTransaction as transact } from "../../bundle/bundle.cart-review-store.js";
 
@@ -66,19 +64,6 @@ async function context(owner, authorization, config, session, request = {}) {
     warnings: warnings.map(row => ({ id: String(row._id), version: row.version, text: row.text })),
     restrictionVersion: authorization.account.restrictionVersion ?? 0, config: config.signature });
   return { chat, subject, warnings, binding, sourceExpiresAt: source?.expiresAt };
-}
-async function dietary(quote, scope, config, session) {
-  if (!["known", "unknown"].includes(catalogDietaryRisk(scope.subject, scope.warnings))) return;
-  const increasedOrdinary = ["ordinary_add", "ordinary_set"].includes(quote.action) ? quote.ordinaryItemsAfter.filter(row =>
-    row.quantity > (quote.ordinaryItemsBefore.find(before => before.id === row.id)?.quantity ?? 0)) : [];
-  const ids = [...new Set([...quote.groups.flatMap(group => group.components.map(row => row.productId)), ...increasedOrdinary.map(row => row.productId)])];
-  if (!ids.length) return;
-  const products = await ProductModel.find({ _id: { $in: ids.map(objectId) }, isActive: true })
-    .select("_id category subcategory isActive").maxTimeMS(5000).session(session).lean();
-  if (ids.some(id => {
-    const matches = products.filter(row => String(row._id) === id);
-    return matches.length !== 1 || matches[0].isActive !== true || classifyCatalogProduct(matches[0], config.catalogClassification) !== "nonfood";
-  })) reject("food_review_required", 409);
 }
 const fingerprint = record => hash({ kind, id: String(record._id), owner: String(record.owner), requestHash: record.requestHash,
   binding: record.binding, version: record.version, expiresAt: new Date(record.expiresAt).toISOString(), quoteJson: record.quoteJson, inputJson: record.inputJson });
@@ -150,7 +135,6 @@ export async function prepareBundleCartReview(actor, body, key, config) {
     const { sourceMessageId, ...cartRequest } = request;
     const args = { ...cartRequest, change: { ...request.change, ...(groupId ? { newGroupId: groupId } : {}), ...(itemId ? { newItemId: itemId } : {}) } };
     const quote = await previewBundleCartChange(authorization.user, args, { session });
-    await dietary(quote, scope, config, session);
     const expiresAt = new Date(Math.min(Date.now() + config.cartPolicy.proposalSeconds * 1000,
       scope.subject?.expiresAt ? new Date(scope.subject.expiresAt).getTime() : Infinity,
       scope.sourceExpiresAt ? new Date(scope.sourceExpiresAt).getTime() : Infinity));
@@ -185,7 +169,6 @@ export async function confirmBundleCartReview(actor, idValue, body, config) {
     if (stored.proposal.status === "expired") reject("bundle_cart_review_expired", 409);
     const scope = await context(owner, authorization, config, session, stored.request);
     if (scope.binding !== stored.record.binding) reject("context_changed", 409);
-    await dietary(stored.proposal.quote, scope, config, session);
     await fenceContext(owner, authorization, scope, session);
     const result = await stageBundleCartChangeWithReceipt(authorization.user, stored.args, operation(stored.record, stored), { session });
     enabled(config);

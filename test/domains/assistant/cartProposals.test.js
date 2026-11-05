@@ -130,13 +130,13 @@ test("expired source, incomplete run and changed pet context reject stale cards"
   s.source.expiresAt = new Date(Date.now() - 1); await assert.rejects(s.prepare(), { code: "source_message_not_found" });
 });
 
-test("current dietary warnings override old food cards and changed context fences existing proposals", async (t) => {
+test("changed dietary-warning context requires a fresh cart review", async (t) => {
   const s = fixture(t); const petId = oid(); const subjectId = `pet:${petId}`;
   s.pets = [{ _id: petId, petOwner: s.owner, name: "Milo", type: "cat", chronic_conditions: [], temp_health_issues: [] }];
   s.chat.activeSubject = subjectId; s.source.subjectId = subjectId; s.catalog.subjectId = subjectId; s.product.category = F;
   const { proposal } = await s.prepare();
   s.warnings.push({ _id: oid(), owner: s.owner, subjectId, state: "active", version: 1, text: "Existing dietary caution" });
-  await assert.rejects(s.check(proposal), { code: "food_review_required" });
+  await assert.rejects(s.check(proposal), { code: "context_changed" });
   s.warnings = []; s.chat.contextVersion++;
   await assert.rejects(s.check(proposal), { code: "context_changed" }); assert.equal(s.writes, 1);
 });
@@ -150,7 +150,7 @@ test("preparation rechecks access/context after quotation and does not persist s
 
 test("product deactivation during quotation cannot persist a usable proposal", async (t) => {
   const s = fixture(t); s.onCartRefresh = () => { s.product.isActive = false; };
-  await assert.rejects(s.prepare(), { code: "product_not_found", status: 404 });
+  await assert.rejects(s.prepare(), { statusCode: 409, message: "Adjust unavailable cart quantities before adding more items." });
   assert.equal(s.records.length, 0); assert.equal(s.writes, 0);
 });
 
@@ -303,8 +303,19 @@ test("a new dietary warning prevents confirmation of an older food offer", async
   s.product.category = F;
   const { proposal } = await s.prepare();
   s.warnings.push({ _id: oid(), owner: s.owner, subjectId, state: "active", version: 1, text: "No chicken" });
-  await assert.rejects(s.confirm(proposal), { code: "food_review_required" });
+  await assert.rejects(s.confirm(proposal), { code: "context_changed" });
   assert.equal(s.cartWrites, 0); assert.equal(s.receipts.length, 0);
+});
+
+test("an existing dietary caution allows a food addition through normal review and confirmation", async t => {
+  const s = fixture(t, { confirmation: true }), petId = oid(), subjectId = `pet:${petId}`;
+  s.pets = [{ _id: petId, __v: 0, petOwner: s.owner, name: "Cat", type: "cat", chronic_conditions: ["kidney concern"], temp_health_issues: [] }];
+  s.chat.activeSubject = subjectId; s.source.subjectId = subjectId; s.catalog.subjectId = subjectId; s.product.category = F;
+  s.warnings = [{ _id: oid(), owner: s.owner, subjectId, state: "active", version: 1, text: "Dietary caution" }];
+  const { proposal } = await s.prepare();
+  const confirmed = await s.confirm(proposal);
+  assert.equal(confirmed.confirmed, true); assert.equal(s.cart.items.length, 1); assert.equal(s.receipts.length, 1);
+  assert.equal(s.catalog.suitability, "not_verified");
 });
 
 test("a saved pet transferred to another owner cannot authorize an old proposal", async (t) => {

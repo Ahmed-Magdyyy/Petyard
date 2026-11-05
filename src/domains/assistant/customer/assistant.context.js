@@ -134,7 +134,10 @@ export async function buildContextWithKnowledge(run, chat, subjects, config, ses
   const contextExpiry = Math.min(new Date(run.createdAt ?? now).getTime() + config.historyDays * 86400000,
     ...history.flatMap(message => [new Date(message.expiresAt).getTime(), new Date(message.createdAt).getTime() + config.memoryDays * 86400000]),
     ...memories.map(memory => new Date(memory.validUntil).getTime()));
-  return { request, passages, prepareQuery, contextExpiresAt: new Date(contextExpiry) };
+  const productSearchEvidence = normalize ? [] : history.filter(message => message.role === "user" && (message.subjectId ?? null) === (run.subjectId ?? null))
+    .map(message => ({ text: message.text, expiresAt: new Date(Math.min(new Date(message.expiresAt).getTime(),
+      new Date(message.createdAt).getTime() + config.memoryDays * 86400000)) }));
+  return { request, passages, prepareQuery, contextExpiresAt: new Date(contextExpiry), productSearchEvidence };
 }
 
 export async function retainMemory(proposal, run, sourceMessage, config, session) {

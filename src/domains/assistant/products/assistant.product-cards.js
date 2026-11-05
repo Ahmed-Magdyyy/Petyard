@@ -98,6 +98,7 @@ const replies = {
     needs_verified_filters: "The available product information does not verify all your requested attributes. I haven't relaxed your requirements.",
     unavailable: "Product search is unavailable right now. You can use the store directly. No purchase was made.",
     snapshot: "Prices and availability can change. Product details refresh them.", suitability_not_verified: "Matching does not confirm medical or dietary suitability.",
+    dietary_review: "These are catalog matches. Ask your veterinarian whether a food is suitable for your pet's condition before changing its diet.",
     partial_food_withheld: "Some foods or unclassified products were withheld because dietary suitability is unverified.",
   },
   ar: {
@@ -109,6 +110,7 @@ const replies = {
     needs_verified_filters: "بيانات المنتجات المتاحة مش بتأكد كل الشروط اللي طلبتها. مش هعرض نتيجة على إنها مطابقة من غير تأكيد.",
     unavailable: "البحث عن المنتجات مش متاح دلوقتي. ممكن تستخدم المتجر مباشرة. ما حصلش أي شراء.",
     snapshot: "السعر والتوفر ممكن يتغيروا. افتح تفاصيل المنتج للتحديث.", suitability_not_verified: "المطابقة مش تأكيد للمناسبة الطبية أو الغذائية.",
+    dietary_review: "دي نتائج من كتالوج بيتيارد. راجع الدكتور البيطري في مناسبة الأكل لحالة حيوانك قبل تغيير نظامه الغذائي.",
     partial_food_withheld: "بعض الأكل أو المنتجات غير المصنفة مخفية لأن المناسبة الغذائية مش مؤكدة.",
   },
 };
@@ -144,7 +146,8 @@ export function buildCatalogSnapshot(outcome, intent, context, subject, language
     requestedWarehouseId: context.warehouseId, effectiveWarehouseId: outcome.effectiveWarehouseId ?? null, rerouted: outcome.rerouted ?? false,
     generatedAt: outcome.generatedAt ?? now.toISOString(), dataMode: "snapshot", currency: "EGP", suitability: "not_verified", products,
     notices: (outcome.status === "results" ? ["snapshot", "suitability_not_verified", ...(outcome.withheldCount > 0 ? ["partial_food_withheld"] : [])] : [])
-      .map((code) => ({ code, text: localized[code] })) });
+      .map((code) => ({ code, text: code === "suitability_not_verified" && (outcome.requiresDietaryReview || intent.healthContext)
+        ? localized.dietary_review : localized[code] })) });
 }
 
 export function renderCatalogResponse(snapshot, language) {
