@@ -25,7 +25,7 @@ test("English and Arabic are the only output languages while Arabizi inputs reta
 test("fixed safety and scope replies use the validated output language even when Arabizi input has no Arabic characters", () => {
   const run = { input: "Milo mesh 2ader yetnaffas", subjectId: "pet:111111111111111111111111" };
   const config = testConfig();
-  for (const scope of ["identity", "health", "urgent", "off_topic"]) {
+  for (const scope of ["identity", "urgent", "off_topic"]) {
     for (const replyLanguage of ["ar", "en"]) {
       const result = { structured: structuredReply({ scope, replyLanguage }), finishReason: "completed", toolCalls: [] };
       const reply = validateResult(result, run, config, []).reply;

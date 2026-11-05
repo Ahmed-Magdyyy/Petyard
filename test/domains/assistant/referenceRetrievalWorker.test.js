@@ -538,14 +538,19 @@ test("a question mark cannot let guessed advice through a known-unclear response
   assert.doesNotMatch(s.messages[0].text, /Wash|bedding/); assert.equal(s.embeddingCalls, 0);
 });
 
-test("an unclear-query safeguard preserves urgent and health referral priority", async t => {
+test("an unclear-query safeguard preserves urgent priority and blocks guessed clinical advice", async t => {
   for (const scope of ["urgent", "health"]) await t.test(scope, async t => {
     const s = connectedFixture(t), original = s.outcome;
     s.referenceAction = "prepare"; s.queryPreparation = { status: "unclear", query: null }; s.replyLanguage = "ar";
     s.afterDispatch = () => { s.outcome = () => ({ ...original(), structured: structuredReply({ scope, reply: "GUESS", replyLanguage: "ar" }) }); };
-    assert.equal((await s.process()).status, "completed"); assert.equal(s.run.publicCode, null);
-    assert.match(s.messages[0].text, scope === "urgent" ? /طوارئ بيطرية/ : /طبيب بيطري/);
-    assert.notEqual(s.messages[0].text, meaningClarificationReply("ar")); assert.doesNotMatch(s.messages[0].text, /GUESS/);
+    assert.equal((await s.process()).status, "completed");
+    if (scope === "urgent") {
+      assert.equal(s.run.publicCode, null); assert.match(s.messages[0].text, /طوارئ بيطرية/);
+    } else {
+      assert.equal(s.run.publicCode, "meaning_clarification_required");
+      assert.equal(s.messages[0].text, meaningClarificationReply("ar"));
+    }
+    assert.doesNotMatch(s.messages[0].text, /GUESS/);
     assert.equal(s.embeddingCalls, 0); assert.equal(s.modelCalls, 3);
   });
 });

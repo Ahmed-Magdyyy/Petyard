@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { instructions, PROMPT_VERSION, referenceAnsweringInstructions } from "../../../src/domains/assistant/customer/assistant.policy.js";
-import { buildContext } from "../../../src/domains/assistant/customer/assistant.context.js";
+import { buildContext, buildContextWithKnowledge } from "../../../src/domains/assistant/customer/assistant.context.js";
 import { retrieveKnowledgeBatch, retrieveReviewedPassages } from "../../../src/domains/assistant/customer/assistant.knowledge.js";
 import { customerChatFixture } from "./fixtures/customerChat.js";
 import { knownUsage, structuredReply } from "./fixtures/foundationPolicy.js";
@@ -26,7 +26,7 @@ test("empty reference evidence keeps general education available without fabrica
 test("current model request carries the agreed combination, attribution and conflict instructions", async t => {
   const s = customerChatFixture(t);
   const request = await buildContext(s.run, s.chat, [s.subject], s.config, {}, new Date(), batchFor(s, [evidence()]));
-  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v10");
+  assert.ok(request.instructions.startsWith(instructions)); assert.equal(PROMPT_VERSION, "petyard-focused-reference-catalog-v11");
   assert.equal(s.config.promptVersion, PROMPT_VERSION);
   assert.match(request.instructions, /combine relevant passages with compatible learned knowledge/);
   assert.match(request.instructions, /never invent citations or attribute added learned knowledge to a book/);
@@ -46,13 +46,22 @@ test("source excerpts are serialized alongside explicit untrusted-data and attri
   assert.match(request.instructions, /compare supplied species, age, circumstances, source purpose and date/);
 });
 
-test("reference availability cannot bypass existing personalized-health response controls", async t => {
+test("the assistant publishes a specific medical answer without replacing it with a template", async t => {
   const s = customerChatFixture(t, "A personalized health question");
-  await s.finish(structuredReply({ scope: "health", reply: "UNSUPPORTED_TREATMENT_TEXT" }));
-  assert.match(s.messages[0].text, /Share the changes you've noticed with your veterinarian/);
-  assert.doesNotMatch(s.messages[0].text, /UNSUPPORTED_TREATMENT_TEXT|what changed, and when\?/i);
-  assert.match(instructions, /Personalized health\/nutrition claims, diagnosis, treatment, drug doses and suitability certification remain unsupported even with references/);
+  const reply = "A change in appetite alone doesn't establish kidney disease. A vet can check kidney function with an exam and tests.";
+  await s.finish(structuredReply({ scope: "health", reply }));
+  assert.equal(s.messages[0].text, reply);
+  assert.match(instructions, /Do not confirm an individual diagnosis, prescribe treatment, provide drug doses or certify dietary suitability/);
   assert.match(instructions, /Use current authorized backend data for Petyard prices, stock, appointments and action outcomes/);
+});
+
+test("only a bounded owner display name is included in the conversational request", async t => {
+  const s = customerChatFixture(t, "What's my name?");
+  const build = name => buildContextWithKnowledge(s.run, s.chat, [s.subject], s.config, {}, new Date(), null, null, name);
+  assert.match((await build("  اسم تجريبي  ")).request.instructions, /"ownerDisplayName":"اسم تجريبي"/);
+  for (const name of ["x".repeat(101), "Test\nName", undefined]) {
+    assert.doesNotMatch((await build(name)).request.instructions, /"ownerDisplayName":/);
+  }
 });
 
 test("a general symptom reply can give guidance while a symptom-driven product search is blocked", async t => {
@@ -68,6 +77,16 @@ test("a general symptom reply can give guidance while a symptom-driven product s
   assert.equal(s.run.status, "completed");
   assert.equal(s.messages[0].text, reply);
   assert.equal(s.messages[0].catalogJson, undefined);
+});
+
+test("punctuation after a medical reply cannot repeat the advice or change the selected pet", async t => {
+  const s = customerChatFixture(t, "!");
+  await s.finish(structuredReply({ scope: "health", primaryTopic: "nutrition", replyLanguage: "ar", subjectAction: "clarify",
+    reply: "كررت الإجابة السابقة" }));
+  assert.equal(s.run.status, "completed");
+  assert.equal(s.run.subjectId, s.subject.id);
+  assert.match(s.messages[0].text, /أنهي جزء محتاج شرح/);
+  assert.doesNotMatch(s.messages[0].text, /كررت/);
 });
 
 test("retrieval without a worker-owned run supplies no evidence or paid work", async () => {

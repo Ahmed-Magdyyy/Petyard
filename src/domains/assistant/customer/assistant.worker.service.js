@@ -27,10 +27,11 @@ import { fenceReferenceSources } from "../references/assistant.reference-search.
 import { bindReferenceQuery, boundReferenceQuery, canQueueReferenceAnswer, meaningClarificationReply, unwrapReferenceResult, validateNormalization } from "./assistant.reference-query.js";
 
 const noUsage = Object.freeze({ inputTokens: 0, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 0, reasoningTokens: 0, totalTokens: 0 });
-async function eligibleUser(owner, run, session) {
-  const user = await UserModel.findById(owner).select("role active deletedAt account_status phoneVerified passwordChangedAT").session(session).lean();
+async function eligibleUser(owner, run, session, includeName = false) {
+  const user = await UserModel.findById(owner).select("role active deletedAt account_status phoneVerified passwordChangedAT" + (includeName ? " name" : "")).session(session).lean();
   if (!user || !user.active || user.deletedAt || user.role === "guest" || user.account_status === "banned" || !user.phoneVerified ||
       (user.passwordChangedAT && user.passwordChangedAT > run.createdAt)) reject("access_denied", 403);
+  return user;
 }
 function sameConfig(run, config) {
   requireEnabled(config);
@@ -55,7 +56,7 @@ export async function prepareRun(id, config, knowledgeBatch = null) {
     sameConfig(run, config);
     const { account, chat } = await getState(run.owner, session);
     assertAccess(account, config);
-    await eligibleUser(run.owner, run, session);
+    const user = await eligibleUser(run.owner, run, session, run.phase !== "normalize");
     if (String(account.activeRun) !== String(run._id)) reject("active_request_changed", 409);
     if (run.deadline <= new Date()) reject("queue_expired", 503);
     await assertRunSource(run, session);
@@ -72,7 +73,7 @@ export async function prepareRun(id, config, knowledgeBatch = null) {
       return { skippedNormalization: true };
     }
     const bookingPrevious = run.phase === "normalize" ? null : await loadBookingSelection(run, chat, config, session);
-    const { request, passages, prepareQuery, contextExpiresAt } = await buildContextWithKnowledge(run, chat, subjects, config, session, new Date(), knowledgeBatch, bookingPrevious);
+    const { request, passages, prepareQuery, contextExpiresAt } = await buildContextWithKnowledge(run, chat, subjects, config, session, new Date(), knowledgeBatch, bookingPrevious, user.name);
     run.referencePreparationRequested = prepareQuery;
     if (prepareQuery || run.phase === "normalize") run.referenceContextExpiresAt = new Date(Math.min(
       contextExpiresAt.getTime(), run.referenceContextExpiresAt?.getTime() ?? Infinity));
@@ -258,8 +259,8 @@ export async function prepareCheckoutSummary(prepared, result, config, { readChe
 
 const bookingContext = run => bookingContextInput(run.bookingContext ?? { location: null });
 const bookingBinding = (run, language, intent, previous) => productSearchBinding(run, { action: "booking_options", language, intent, previous }, bookingContext(run), null);
-const clinicOfferAllowed = (valid, proposal, config) => valid.scope === "health" && valid.primaryTopic === "health_symptoms" &&
-  proposal.action === "none" && bookingActionsEnabled(config);
+const clinicOfferAllowed = (valid, proposal, config) => valid.primaryTopic === "health_symptoms" && bookingActionsEnabled(config) &&
+  (valid.scope === "health" && proposal.action === "none" || valid.scope === "pet_care" && proposal.action === "read");
 
 export async function prepareBookingOptions(prepared, result, config, { readBookingOptions } = {}) {
   const run = prepared.run;
@@ -371,8 +372,8 @@ export async function finishRun(prepared, result, error, { dispatched = true, cu
       const allowProductSearch = config.productSearchEnabled === true && run.catalogContext !== undefined;
       valid = validateResult(result, run, config, prepared.allowedSubjects.filter((id) => id === "user" || subjects.some((pet) => pet.id === id)), { allowProductSearch,
         allowCheckoutSummary: cartActionsEnabled(config) && run.catalogContext !== undefined, allowBookingOptions: bookingReadsEnabled(currentConfig ?? config) });
-      decision = resolveSubjectDecision(result.structured, run, subjects, prepared.subjectFingerprints, config);
-      warning = dietaryWarningObservation(result.structured, run, decision);
+      decision = valid.conversationRepair ? { kind: "publish" } : resolveSubjectDecision(result.structured, run, subjects, prepared.subjectFingerprints, config);
+      warning = valid.conversationRepair ? null : dietaryWarningObservation(result.structured, run, decision);
       if (decision.kind === "change") {
         await applySubjectChange(decision, run, chat, subjects, config, session);
         queueAnswer(run);
@@ -387,8 +388,8 @@ export async function finishRun(prepared, result, error, { dispatched = true, cu
         await run.save({ session });
         return run;
       }
-      if (result.referenceAction === "prepare") reject("invalid_reference_query", 503);
-      meaningClarification = decision.kind === "publish" && valid.scope === "pet_care" &&
+      if (!valid.conversationRepair && result.referenceAction === "prepare") reject("invalid_reference_query", 503);
+      meaningClarification = decision.kind === "publish" && ["pet_care", "health"].includes(valid.scope) &&
         (result.referenceAction === "clarify" || boundReferenceQuery(run)?.status === "unclear");
       if (meaningClarification) {
         if (valid.productSearch || valid.checkoutSummary || valid.bookingOptions || warning?.kind === "report") reject("invalid_reference_query", 503);
@@ -446,12 +447,12 @@ export async function finishRun(prepared, result, error, { dispatched = true, cu
           (proposal.action !== "read" || previous)) valid.reply = renderBookingSelection(selectionCard(bookingSelection, booking, run.subjectId), result.structured.replyLanguage);
         valid.memory = null;
       }
-      if (decision.kind === "publish" && warning?.kind !== "clarify" &&
+      if (decision.kind === "publish" && !meaningClarification && warning?.kind !== "clarify" &&
         clinicOfferAllowed(valid, result.structured.bookingOptions, currentConfig ?? config) &&
         bookingBatch?.binding === bookingBinding(run, result.structured.replyLanguage, result.structured.bookingOptions, null) &&
         bookingBatch.snapshot.status === "ready" && bookingBatch.snapshot.services.some(service => service.type === "CLINIC" && service.options.length)) {
         const offer = result.structured.replyLanguage === "ar"
-          ? "لو تحب، أقدر أساعدك تشوف خيارات حجز كشف في عيادة بيتيارد في إسكندرية."
+          ? "ممكن أساعد في حجز كشف في عيادة بيتيارد في إسكندرية. نراجع خيارات الحجز؟"
           : "If you'd like, I can show you how to book a vet visit at a Petyard clinic in Alexandria.";
         if (valid.reply.length + 2 + offer.length <= config.maxOutputChars) valid.reply += `\n\n${offer}`;
       }

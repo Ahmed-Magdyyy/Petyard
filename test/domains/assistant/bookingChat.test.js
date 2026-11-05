@@ -68,10 +68,12 @@ test("missing context/location avoids resolver reads and outside Alexandria show
     assert.equal(card.action, null); if (mode !== "empty") assert.deepEqual(card.services, []);
   });
 });
-test("a diagnosis boundary offers a clinic only with verified coverage and a clinic option", async t => {
-  for (const mode of ["eligible", "outside", "no_clinic", "missing", "read_failed", "stale_location", "disabled", "urgent"]) await t.test(mode, async t => {
+test("a diagnosis or triage reply offers a clinic only with verified coverage and a clinic option", async t => {
+  for (const mode of ["eligible", "triage", "outside", "no_clinic", "missing", "read_failed", "stale_location", "disabled", "urgent"]) await t.test(mode, async t => {
     const s = fixture(t, "Does my cat have kidney disease?");
-    const answer = response({ scope: mode === "urgent" ? "urgent" : "health", primaryTopic: "health_symptoms", bookingOptions: "none" });
+    const reply = "These signs can have different causes. Contact a veterinarian for an assessment.";
+    const answer = response({ scope: mode === "urgent" ? "urgent" : mode === "triage" ? "pet_care" : "health",
+      reply, primaryTopic: "health_symptoms", bookingOptions: mode === "triage" ? "read" : "none" });
     if (mode === "missing") { delete s.run.bookingContext; s.prepared.run = { ...s.run }; }
     if (mode === "disabled") s.config.bookingActionsEnabled = false;
     let reads = 0;
@@ -85,8 +87,8 @@ test("a diagnosis boundary offers a clinic only with verified coverage and a cli
     if (mode === "stale_location") s.run.bookingContext = { location: { governorateCode: "cairo" } };
     await s.complete(answer, batch);
     const dto = messageDto(s.messages[0]);
-    assert.match(dto.text, mode === "urgent" ? /immediate veterinary attention/ : /with your veterinarian/);
-    assert.equal(dto.text.includes("Petyard clinic in Alexandria"), mode === "eligible");
+    assert.match(dto.text, mode === "urgent" ? /immediate veterinary attention/ : /These signs can have different causes/);
+    assert.equal(dto.text.includes("Petyard clinic in Alexandria"), ["eligible", "triage"].includes(mode));
     assert.doesNotMatch(dto.text, /INVENTED/);
     assert.equal(dto.booking, undefined);
   });
@@ -124,6 +126,7 @@ test("disabled and unsafe usage/scope/subject/warning decisions never read servi
     if (mode === "disabled") { s.config.bookingReadsEnabled = false; }
     if (mode === "usage") answer.usage = null; if (mode === "tier") answer.serviceTier = "unverified";
     if (["urgent", "health", "identity", "off_topic"].includes(mode)) answer.structured.scope = mode;
+    if (mode === "health") answer.structured.reply = "A veterinarian can help check the cause.";
     if (mode === "clarify") answer.structured.subjectAction = "clarify";
     if (mode === "switch") answer.structured.subjectAction = "create_unsaved";
     if (mode === "warning") answer.structured.dietaryWarningAction = "clarify";

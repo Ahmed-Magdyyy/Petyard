@@ -171,6 +171,7 @@ test("the recorded health search cannot read a catalog or publish cards even wit
   state.run.catalogContext = { warehouseId: W, language: "ar" }; state.prepared.run = { ...state.run };
   // Rebind only the fictional pet ID and use synthetic accounting for publication.
   const data = structuredClone(recorded.structured); data.resolvedSubjectId = state.subject.id;
+  data.reply = "اختيار الأكل المناسب للحساسية يتراجع مع الطبيب البيطري.";
   assert.equal(data.dietaryWarningAction, "none"); assert.equal(data.productSearch.action, "general");
   const response = answer(data);
   const valid = validateResult(response, state.run, state.config, state.prepared.allowedSubjects, { allowProductSearch: true });
@@ -199,7 +200,7 @@ test("the health boundary still rejects malformed evidence and unavailable tools
 });
 
 test("health advice still saves an explicit dietary warning while suppressing its requested shopping", async (t) => {
-  const state = fixture(t), response = answer({ ...state.report(), productSearch: search() });
+  const state = fixture(t), response = answer({ ...state.report(), reply: "Discuss this allergy with your veterinarian.", productSearch: search() });
   const batch = await state.prepare(response, () => assert.fail("Health advice cannot search"));
   assert.equal(batch, null); await state.complete(response, batch);
   assert.equal(state.run.status, "completed"); assert.equal(state.warnings.length, 1);

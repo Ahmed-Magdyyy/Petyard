@@ -70,7 +70,8 @@ export async function buildContext(run, chat, subjects, config, session, now = n
   return (await buildContextWithKnowledge(run, chat, subjects, config, session, now, knowledgeBatch, previousBooking)).request;
 }
 
-export async function buildContextWithKnowledge(run, chat, subjects, config, session, now = new Date(), knowledgeBatch = null, previousBooking) {
+export async function buildContextWithKnowledge(run, chat, subjects, config, session, now = new Date(), knowledgeBatch = null, previousBooking, ownerName) {
+  const displayName = typeof ownerName === "string" ? ownerName.trim() : "";
   const selected = subjects.find((pet) => pet.id === run.subjectId);
   const referenceQuery = boundReferenceQuery(run, now);
   const normalize = run.phase === "normalize";
@@ -111,7 +112,8 @@ export async function buildContextWithKnowledge(run, chat, subjects, config, ses
     productSearchAvailable: config.productSearchEnabled === true && run.catalogContext !== undefined,
     checkoutSummaryAvailable: cartActionsEnabled(config) && run.catalogContext !== undefined,
     bookingOptionsAvailable: bookingReadsEnabled(config),
-    ...(bookingReadsEnabled(config) ? { bookingToday: toCairoDateISO(now) } : {}),
+    ...(bookingReadsEnabled(config) ? { bookingToday: toCairoDateISO(now), bookingLocationProvided: Boolean(run.bookingContext?.location) } : {}),
+    ...(displayName && displayName.length <= 100 && !/[\u0000-\u001f\u007f]/u.test(displayName) ? { ownerDisplayName: displayName } : {}),
     ...(bookingDraft ? { bookingDraft } : {}),
     activeSubject: run.subjectId, resolutionPhase: run.phase ?? "resolve", subjectSelectionExplicit: run.subjectExplicit ?? false,
     awaitingSubject: chat.awaitingSubject ?? false, sourceQuoteMaxChars: config.maxMessageChars,
