@@ -84,6 +84,23 @@ test("discovery, service, branch and time choices survive multiple distinct runs
   assert.equal(dto.bookingSelection.status, "selection_complete"); assert.equal(s.messages.length, 4);
   assert.equal(dto.bookingSelection.action.booking.services[0].serviceOptionKey, "standard");
 });
+
+test("accepting an urgent clinic invitation enters discovery through the existing location checks", async t => {
+  for (const mode of ["eligible", "outside", "missing"]) await t.test(mode, async t => {
+    const s = fixture(t, "My cat cannot breathe"); let reads = 0;
+    const urgent = await s.complete(response(selection(), { scope: "urgent", primaryTopic: "health_symptoms" }), () => assert.fail("Urgent guidance must not wait for discovery"));
+    assert.match(urgent.text, /If you're in Alexandria/); assert.equal(urgent.booking, undefined);
+    s.next("Yes, show the clinic booking options");
+    if (mode === "missing") { delete s.run.bookingContext; s.prepared.run = { ...s.run }; }
+    const dto = await s.complete(response(), async () => {
+      reads++;
+      return mode === "outside" ? { eligible: false, reason: "booking_region_unavailable", services: [], locations: [] } : options();
+    });
+    assert.equal(s.run.status, "completed");
+    assert.equal(dto.booking.status, mode === "eligible" ? "ready" : mode === "outside" ? "ineligible" : "needs_location");
+    assert.equal(reads, mode === "missing" ? 0 : 1); assert.equal(dto.booking.slotReserved, false);
+  });
+});
 test("explicit reset clears all fields, while an ambiguous no-action reply leaves the previous draft unchanged", async t => {
   const s = fixture(t, "full choices"); await s.complete(response(fullIntent(s.run.input)));
   s.next("4 or 5?"); const before = await loadBookingSelection(s.run, s.chat, s.config);

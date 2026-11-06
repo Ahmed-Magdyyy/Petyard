@@ -46,6 +46,21 @@ test("clarification and catalog helpers render Arabic for legacy Arabizi languag
   }
 });
 
+test("off-topic copy is friendly and urgent booking invitations preserve immediate-care priority", () => {
+  const run = { input: "A fictional question", subjectId: null }, config = testConfig();
+  const reply = (scope, replyLanguage, settings = config) => validateResult({ structured: structuredReply({ scope, replyLanguage }),
+    finishReason: "completed", toolCalls: [] }, run, settings, []).reply;
+  assert.match(reply("off_topic", "ar"), /^معلش/); assert.match(reply("off_topic", "en"), /^Sorry,/);
+  assert.match(reply("off_topic", "ar"), /منتجات وخدمات بيتيارد/);
+  for (const language of ["ar", "en"]) {
+    const urgent = reply("urgent", language, { ...config, bookingReadsEnabled: true, bookingActionsEnabled: true, bookingRetentionEnabled: true });
+    const invitation = language === "ar" ? "ولو في إسكندرية" : "If you're in Alexandria";
+    assert.ok(urgent.indexOf(invitation) > 0);
+    assert.match(urgent.split("\n\n")[0], language === "ar" ? /من غير انتظار الشات أو ميعاد حجز/ : /without waiting for chat or an appointment/);
+    assert.equal(reply("urgent", language).includes(invitation), false);
+  }
+});
+
 test("an Arabic reply preserves the user's exact Arabizi evidence for memory", () => {
   const input = "3ayez afkar le3b baseeta ma3 Milo fel beit";
   const run = { input, subjectId: "pet:111111111111111111111111" };
