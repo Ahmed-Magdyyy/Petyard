@@ -145,7 +145,7 @@ Read `GET /api/v1/home-layout/preview?token=<token>`. It returns an immutable sn
 
 ### Step 5: hydrate products in one batch
 
-Read the preview's `data.product_ids` and call the batch API once. Build an ID-to-product map from its response. Resolve each product placement through that map while keeping every placement UUID and order intact.
+Read the preview's `data.product_ids` and call the batch API once. Build an ID-to-product map from its response. Preserve the authored tree and placement UUIDs. For customer product lists, display in-stock cards first and out-of-stock cards last, retaining authored order inside each group; admin editing keeps the authored order.
 
 Four cards and a product button can refer to three unique products. That requires one batch request for three IDs, not five detail requests. An empty manifest needs no product request.
 
@@ -231,7 +231,7 @@ x-guest-id: <existing guest identity when not authenticated>
 { "ids": ["68cf1234567890abcdef1234", "68cf1234567890abcdef1235"] }
 ```
 
-Successful response: `{"data":{"products":[/* complete existing product-detail objects */],"unavailable_product_ids":[/* requested unavailable IDs */]}}`. Match by each product's `id`, never array index. Returned products follow first-use request order after deduplication.
+Successful response: `{"data":{"products":[/* complete existing product-detail objects */],"unavailable_product_ids":[/* requested unavailable IDs */]}}`. Match by each product's `id`, never array index. Customer/guest results place `inStock:true` first and `inStock:false` last, retaining first-use request order inside each group after deduplication. Staff results retain first-use request order without stock grouping.
 
 - `ids` is the only body field. Maximum 50 supplied entries before deduplication, including repeats; normalized unique IDs also cannot exceed 50. Supply the already unique layout list.
 - Raw JSON is limited to 2048 bytes, including whitespace/chunked or inflated bodies. Invalid JSON returns 400; excess bytes return 413; a non-JSON content type returns 415. No silent truncation.
@@ -930,7 +930,7 @@ Preview is immutable; save/GET/publication does not refresh it. Recreate after e
 
 ### 12.6 Hydrate editor/customer from the snapshot, not from copied commerce fields
 
-Call the batch API once using preview/public data.product_ids. Build a Map keyed by canonical product id. Every card/typed product action can reuse that entry; retain placement UUIDs and child order.
+Call the batch API once using preview/public data.product_ids. Build a Map keyed by canonical product id. Every card/typed product action can reuse that entry; retain authored placement UUIDs and the saved tree. Customer-rendered product lists must place out-of-stock cards last, preserving placement order within each stock group; do not rewrite the saved layout to persist this live-stock ordering.
 
 For editor reopening, keep an exact normalized wire snapshot plus a separate hydrated editor view. Existing editor forms may need product name/image/variants; those are transient catalog fields, not additions to the ID-only wire item. Normalize again before every new PATCH. A brand/category manual item stays authored; do not replace its name/image with a whole product or expand its action into products.
 
@@ -1415,3 +1415,11 @@ The [combined FE response](PHASE_BACKEND_PRODUCTION_RESPONSE_AND_INTEGRATION_GUI
 ### 2026-10-16 customer-version configuration
 
 Customer **5.1.9** is owner-confirmed as the first compatible block/carousel/subcategory version; live **5.1.8** lacks support. Both encrypted backend floors are now 5.1.9 on the inspected server. Use a minimum of at least 5.1.9 for extended layouts; the previous unset-floor preparation decision is superseded. Legacy cutover remains false, and no layout was published. See [the publish-blocker response](UI_BUILDER_PUBLISH_BLOCKERS_RESPONSE.md) before reopening/saving the affected draft.
+
+## 20. Customer product stock priority — 2026-11-11
+
+The customer `POST /api/v1/products/batch` response now moves all returned `inStock:false` products after all `inStock:true` products, regardless of submitted ID order. Each group's original order is retained. Availability uses the existing response's warehouse-aware stock calculation, including variants. Zero-stock products remain in `data.products`; they are not moved to `unavailable_product_ids` merely because stock is zero.
+
+SuperAdmin/admin/moderator batch responses and `GET /api/v1/products/admin` ordering are unchanged. The normal customer `GET /api/v1/products` already prioritizes stock before the requested sort across pagination; this remains unchanged. No request fields, response fields, routes or dependencies were added. Batch still accepts only its existing `warehouse` query parameter, not `sort` or `sortKey`.
+
+If the customer renderer resolves a product list from placement IDs, preserve the placement identity but stable-partition that displayed list by the returned `inStock` values before applying any within-group sort. Reconstructing the old global ID order or sorting the entire list by price/name afterward would undo stock priority. Keep section order and non-product blocks unchanged. This local change still requires deployment and FE/device acceptance.

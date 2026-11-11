@@ -131,8 +131,11 @@ The customer opens Product details, not direct Add to cart. One selected Product
 may be one card; multiple Products may use the client's “Shop this video” list.
 Hydrate the returned IDs through the existing **POST `/api/v1/products/batch`**
 body `{ "ids": [...] }`, at most 50, using normal identity/language/warehouse
-rules. Preserve authored order by mapping returned Products to the original
-ID list, and handle `unavailable_product_ids` without breaking video playback.
+rules. Customer/guest batch results place in-stock Products first and preserve
+authored/request order within each stock group. When mapping to the original ID
+list, apply that same grouping so out-of-stock Products remain last. Staff batch
+order and stored `productIds` are unchanged. Handle `unavailable_product_ids`
+without breaking video playback; zero stock alone does not make an ID unavailable.
 Later Product deactivation/deletion does not delete or unpublish the Video;
 its IDs remain references and current batch eligibility determines the CTA.
 Use live price, stock and variants. No copied commerce, custom CTA marketing

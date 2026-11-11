@@ -590,8 +590,8 @@ Keep active and pending session/asset IDs separate in local state. Do not overwr
 {"ids":["68cf1234567890abcdef1235","68cf1234567890abcdef1234"]}
 ```
 
-4. Read available Products under `data` and `meta.unavailable_product_ids`. Product values use the existing complete public detail DTO, not a new Video commerce DTO.
-5. Rebuild display order using the authored `productIds`, not an assumed database return order.
+4. Read returned Products under `data.products` and missing/ineligible IDs under `data.unavailable_product_ids`. Product values use the existing complete public detail DTO, not a new Video commerce DTO.
+5. Customer/guest batch responses put in-stock products first, retaining authored/request order within each stock group. When hydrating an authored list by ID, apply the same stock-first grouping rather than restoring out-of-stock products above available ones. Staff selection ordering remains unchanged.
 6. Open normal Product detail and variant selection. No direct Add-to-cart shortcut was added.
 7. If all links become unavailable, hide/disable the shop action honestly while keeping playable media. An out-of-stock available Product is not automatically a missing Product; use its current normal commerce behavior.
 

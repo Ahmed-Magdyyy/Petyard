@@ -41,6 +41,9 @@ export async function getProductsBatchService(ids, { lang = "en", user = null,
   }));
   const media = await projectProductsMedia(details.map((product) => ({ productId: product.id, images: product.images })));
   details.forEach((product) => { product.media = media.get(String(product.id)); });
+  if (![roles.SUPER_ADMIN, roles.ADMIN, roles.MODERATOR].includes(user?.role)) {
+    details.sort((first, second) => Number(second.inStock) - Number(first.inStock));
+  }
   const result = { products: details, unavailable_product_ids: requested.filter((id) => !byId.has(id)) };
   if (Buffer.byteLength(JSON.stringify({ data: result }), "utf8") > PRODUCT_BATCH_MAX_RESPONSE_BYTES) {
     throw new ApiError("Product batch response exceeds 2 MiB. No products were truncated.", 413);

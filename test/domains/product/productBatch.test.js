@@ -72,6 +72,51 @@ test("batch validates/deduplicates IDs, loads two products in one set query, and
   assert.equal(result.products[0].media[0].type, "image");
 });
 
+test("customer batch puts out-of-stock products last while preserving order inside stock groups", async (t) => {
+  const D = "68cf1234567890abcdef1237", missing = "68cf1234567890abcdef1238";
+  fixture(t, [
+    product(A, { warehouseStocks: [{ warehouse: W, quantity: 0 }] }),
+    product(B),
+    product(C, { warehouseStocks: [] }),
+    product(D, { warehouseStocks: [{ warehouse: W, quantity: 2 }] }),
+  ]);
+  const result = await getProductsBatchService([C, B, A, D, C, missing]);
+  assert.deepEqual(result.products.map((row) => row.id), [B, D, C, A]);
+  assert.deepEqual(result.products.map((row) => row.stock), [7, 2, 0, 0]);
+  assert.deepEqual(result.unavailable_product_ids, [missing]);
+});
+
+test("stock-last batch ordering applies to users and guests without changing staff order", async (t) => {
+  fixture(t, [product(A, { warehouseStocks: [] }), product(B)]);
+  for (const options of [
+    { user: { _id: W, role: "user" } },
+    { guestId: "stock-order-guest" },
+    { user: { _id: W, role: "guest" } },
+  ]) {
+    const result = await getProductsBatchService([A, B], options);
+    assert.deepEqual(result.products.map((row) => row.id), [B, A]);
+  }
+  for (const role of ["superAdmin", "admin", "moderator"]) {
+    const result = await getProductsBatchService([A, B], { user: { _id: W, role } });
+    assert.deepEqual(result.products.map((row) => row.id), [A, B], role);
+  }
+});
+
+test("batch stock priority follows the selected warehouse for simple and variant products", async (t) => {
+  const otherWarehouse = C;
+  fixture(t, [product(A, {
+    type: "VARIANT", warehouseStocks: [],
+    variants: [{ _id: "68cf1234567890abcdef1237", price: 100, options: [], images: [],
+      warehouseStocks: [{ warehouse: W, quantity: 0 }, { warehouse: otherWarehouse, quantity: 5 }] }],
+  }), product(B)]);
+  const first = await getProductsBatchService([A, B], { warehouseId: W });
+  assert.deepEqual(first.products.map((row) => row.id), [B, A]);
+  assert.deepEqual(first.products.map((row) => row.inStock), [true, false]);
+  const second = await getProductsBatchService([B, A], { warehouseId: otherWarehouse });
+  assert.deepEqual(second.products.map((row) => row.id), [A, B]);
+  assert.deepEqual(second.products.map((row) => row.stock), [5, 0]);
+});
+
 test("empty, malformed, oversized and maximum-count batch requests have explicit outcomes", async (t) => {
   const { filters } = fixture(t, Array.from({ length: 50 }, (_v, index) => product((index + 1).toString(16).padStart(24, "0"))));
   assert.deepEqual(await getProductsBatchService([]), { products: [], unavailable_product_ids: [] });
@@ -184,7 +229,7 @@ test("response bounds reject huge complete DTOs without truncating their fields"
 });
 
 test("batch HTTP uses the real route, accepts guests, validates input and respects authentication/staff scope", async (t) => {
-  const { filters } = fixture(t);
+  const { filters } = fixture(t, [product(A, { warehouseStocks: [] }), product(B)]);
   const secret = process.env.JWT_ACCESS_SECRET;
   const environment = process.env.NODE_ENV;
   process.env.JWT_ACCESS_SECRET = "product-batch-test-secret";
@@ -206,6 +251,8 @@ test("batch HTTP uses the real route, accepts guests, validates input and respec
     const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({ ids: [A, B, C] }) });
     assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "private, no-store");
     const body = await response.json(); assert.equal(body.data.products.length, 2);
+    assert.deepEqual(body.data.products.map((row) => row.id), [B, A]);
+    assert.deepEqual(body.data.products.map((row) => row.inStock), [true, false]);
     assert.deepEqual(body.data.unavailable_product_ids, [C]); assert.equal(filters.length, 1);
     const empty = await fetch(url, { method: "POST", headers, body: JSON.stringify({ ids: [] }) });
     assert.deepEqual(await empty.json(), { data: { products: [], unavailable_product_ids: [] } });
