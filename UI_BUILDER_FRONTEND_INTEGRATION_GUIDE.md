@@ -3624,7 +3624,7 @@ Preview is immutable; save/GET/publication does not refresh it. Recreate after e
 
 #### 28.4.6 Hydrate editor/customer from the snapshot, not from copied commerce fields
 
-Call the batch API once using preview/public data.product_ids. Build a Map keyed by canonical product id. Every card/typed product action can reuse that entry; retain placement UUIDs and child order.
+Call the batch API once using preview/public data.product_ids. Build a Map keyed by canonical product id. Every card/typed product action can reuse that entry; retain authored placement UUIDs and the saved tree. In customer product lists, display in-stock cards before out-of-stock cards, retaining authored placement order inside each group. Admin editing keeps the authored order. Do not write live stock-driven display order back into the layout.
 
 For editor reopening, keep an exact normalized wire snapshot plus a separate hydrated editor view. Existing editor forms may need product name/image/variants; those are transient catalog fields, not additions to the ID-only wire item. Normalize again before every new PATCH. A brand/category manual item stays authored; do not replace its name/image with a whole product or expand its action into products.
 
@@ -4113,3 +4113,13 @@ Read the focused [combined FE response](PHASE_BACKEND_PRODUCTION_RESPONSE_AND_IN
 ### 2026-10-16 customer-version configuration
 
 The owner confirmed customer version **5.1.9** first supports blocks, carousels and subcategory actions; live **5.1.8** does not. Both encrypted backend floors are now 5.1.9 on the inspected server, replacing the previous unset-version preparation policy. Extended layouts must target at least 5.1.9. Legacy Home cutover remains false. No layout was published by this configuration correction. Read [the publish-blocker response](UI_BUILDER_PUBLISH_BLOCKERS_RESPONSE.md) for the archived test draft, actual evidence boundaries and required fresh FE save/validation/preview.
+
+## 31. Customer product stock priority — 2026-11-11
+
+- Customer/guest `POST /api/v1/products/batch` results place every returned `inStock:true` product before every `inStock:false` product. Submitted selection order is retained inside each group. No zero-stock product is dropped merely for being out of stock; missing/ineligible IDs still follow the existing `data.unavailable_product_ids` contract.
+- Stock classification uses the existing mapped Product DTO and requested effective warehouse context, including variant stock. Fields, prices, media and eligibility policies remain unchanged.
+- SuperAdmin/admin/moderator batch results retain their previous ID order. `GET /api/v1/products/admin` is unchanged. The customer `GET /api/v1/products` already performs stock grouping before FE sorting and pagination; regression tests retain that guarantee.
+- For a hydrated customer product list, use the returned order or stable-partition its authored placements by `inStock`, then retain/apply the desired order within each group. Restoring the complete old ID order or running a global price/name sort would undo this rule. Do not reorder sections or unrelated image/text/button nodes, or save this live presentation change into the draft.
+- No new query parameter, request/response field or endpoint was introduced. Batch remains bounded to 50 IDs, with no pagination and only its existing warehouse query parameter. Separate batch chunks do not establish one globally stock-sorted list without frontend composition.
+
+This is local implementation evidence, not a deployment or signed-customer-build claim. FE must verify its displayed product lists do not undo the backend's stock priority.
