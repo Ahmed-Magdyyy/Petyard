@@ -114,6 +114,7 @@ function mockCartModels(t, warehouse, cart) {
     _id: cart.items[0].product,
     type: 'SIMPLE',
     name_en: 'Prime flow item',
+    isActive: true,
     name_ar: 'Prime flow item',
     price: 100,
     discountedPrice: null,
@@ -124,6 +125,82 @@ function mockCartModels(t, warehouse, cart) {
     variants: [],
   }]));
 }
+
+test('order stock validation checks every cart line before creating an order', async (t) => {
+  const cases = [
+    { name: 'guest simple COD', guest: true, paymentMethod: 'COD' },
+    { name: 'user simple COD', paymentMethod: 'COD' },
+    { name: 'guest variant card', guest: true, variant: true, paymentMethod: 'CARD' },
+    { name: 'user variant card', variant: true, paymentMethod: 'CARD' },
+    { name: 'inactive product', inactive: true, reject: true },
+    { name: 'insufficient stock', stock: 0, reject: true },
+    { name: 'missing warehouse stock', missingStock: true, reject: true },
+    { name: 'duplicate warehouse stock', duplicateStock: true, reject: true },
+    { name: 'fractional quantity', quantity: 0.5, reject: true },
+    { name: 'duplicate simple lines exceed stock', duplicateLine: true, stock: 1, reject: true },
+    { name: 'duplicate variant lines exceed stock', variant: true, duplicateLine: true, stock: 1, reject: true },
+    { name: 'different variants have separate stock', variant: true, secondVariant: true, stock: 1 },
+  ];
+
+  for (const scenario of cases) {
+    await t.test(scenario.name, async (t) => {
+      const warehouse = makeWarehouse();
+      const userId = scenario.guest ? null : new mongoose.Types.ObjectId();
+      const cart = makeCart(warehouse, { userId });
+      mockCartModels(t, warehouse, cart);
+      const rows = scenario.missingStock ? [] : [{ warehouse: warehouse._id, quantity: scenario.stock ?? 10 }];
+      if (scenario.duplicateStock) rows.push({ ...rows[0] });
+      const product = {
+        _id: cart.items[0].product,
+        type: scenario.variant ? 'VARIANT' : 'SIMPLE',
+        isActive: !scenario.inactive,
+        price: 100,
+        warehouseStocks: rows,
+        variants: [],
+        async save() {},
+      };
+      cart.items[0].productType = product.type;
+      cart.items[0].quantity = scenario.quantity ?? 1;
+      if (scenario.variant) {
+        product.variants.push({ _id: new mongoose.Types.ObjectId(), price: 100, warehouseStocks: rows });
+        cart.items[0].variantId = product.variants[0]._id;
+      }
+      if (scenario.duplicateLine) cart.items.push({ ...cart.items[0] });
+      if (scenario.secondVariant) {
+        const variant = { _id: new mongoose.Types.ObjectId(), price: 200, warehouseStocks: rows.map(row => ({ ...row })) };
+        product.variants.push(variant);
+        cart.items.push({ ...cart.items[0], variantId: variant._id });
+      }
+      t.mock.method(ProductModel, 'find', () => queryResult([product]));
+      t.mock.method(mongoose, 'startSession', async () => ({ async withTransaction(callback) { return callback(); }, endSession() {} }));
+      t.mock.method(OrderModel, 'findOne', () => queryResult(null));
+      t.mock.method(UserModel, 'findById', () => queryResult({ walletBalance: 0 }));
+      const stopBeforePersistence = new Error('Stop before persistence or external side effects');
+      let orderDoc;
+      const create = t.mock.method(OrderModel, 'create', async ([doc]) => {
+        orderDoc = doc;
+        throw stopBeforePersistence;
+      });
+      const createOrder = scenario.guest ? createOrderForGuestService : createOrderForUserService;
+      const action = () => createOrder({ userId, guestId: cart.guestId, paymentMethod: scenario.paymentMethod || 'CARD' });
+
+      if (scenario.reject) {
+        await assert.rejects(action, error => {
+          assert.equal(error.statusCode, 409);
+          assert.equal(error.errors[0].code, 'CART_STOCK_REVIEW_REQUIRED');
+          return true;
+        });
+        assert.equal(create.mock.callCount(), 0);
+        assert.equal(rows[0]?.quantity, scenario.missingStock ? undefined : scenario.stock ?? 10);
+      } else {
+        await assert.rejects(action, error => error === stopBeforePersistence);
+        assert.equal(create.mock.callCount(), 1);
+        assert.equal(orderDoc.items.length, scenario.secondVariant ? 2 : 1);
+        assert.equal(orderDoc.subtotal, scenario.secondVariant ? 300 : 100);
+      }
+    });
+  }
+});
 
 test('coordinate resolution marks Prime only inside the operational warehouse sub-area', async (t) => {
   const warehouse = makeWarehouse();
@@ -316,7 +393,7 @@ test('checkout summary retains fractional EGP arithmetic without adding rounding
   mockCartModels(t, warehouse, cart);
   cart.items[0].itemPrice = 0.3;
   t.mock.method(ProductModel, 'find', () => queryResult([{
-    _id: cart.items[0].product, type: 'SIMPLE', price: 0.3,
+    _id: cart.items[0].product, type: 'SIMPLE', isActive: true, price: 0.3,
     warehouseStocks: [{ warehouse: warehouse._id, quantity: 100 }], variants: [],
   }]));
   warehouse.primeShippingPrice = 0.02;
@@ -368,6 +445,7 @@ test('guest card order persists Prime fee and sends that total to the mocked pay
   t.mock.method(ProductModel, 'find', () => queryResult([{
     _id: cart.items[0].product,
     type: 'SIMPLE',
+    isActive: true,
     price: 100,
     discountedPrice: null,
     subcategory: null,
@@ -433,6 +511,7 @@ test('user card order applies wallet only to merchandise and persists remaining 
   t.mock.method(ProductModel, 'find', () => queryResult([{
     _id: cart.items[0].product,
     type: 'SIMPLE',
+    isActive: true,
     price: 100,
     discountedPrice: null,
     subcategory: null,
@@ -495,6 +574,7 @@ test('guest COD order persists coupon shipping discount and decrements stock', a
   const product = {
     _id: cart.items[0].product,
     type: 'SIMPLE',
+    isActive: true,
     price: 100,
     discountedPrice: null,
     subcategory: null,
@@ -574,7 +654,7 @@ test('immediate orders preserve merchandise, wallet, stock and locked shipping a
       let savedOrder, walletTransaction, walletDebit, couponUses = 0;
       let walletBalance = scenario.wallet || 0;
       const product = {
-        _id: cart.items[0].product, type: 'SIMPLE', price: scenario.subtotal,
+        _id: cart.items[0].product, type: 'SIMPLE', isActive: true, price: scenario.subtotal,
         name_en: 'Item', images: [], variants: [],
         warehouseStocks: [{ warehouse: warehouse._id, quantity: 10, revision: 0 }],
         async save() {},
