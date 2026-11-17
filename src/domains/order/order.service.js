@@ -420,17 +420,6 @@ async function buildOrderItemsWithPromotions({ session, cart, lang = "en" }) {
     if (promotionByProductId.has(pid)) {
       return promotionByProductId.get(pid);
     }
-    const source = product.type === "SIMPLE" ? product : (product.variants ?? []).find(row => String(row._id) === String(item.variantId));
-    const rows = (source?.warehouseStocks ?? []).filter(row => String(row.warehouse) === String(cart.warehouse));
-    const key = `${item.product}:${item.variantId ?? ""}`;
-    const requested = (requestedBySku.get(key) ?? 0) + quantity;
-    if (product.isActive !== true || rows.length !== 1 || !Number.isSafeInteger(rows[0].quantity) ||
-        !Number.isSafeInteger(requested) || rows[0].quantity < requested) {
-      throw new ApiError("Adjust unavailable cart quantities before placing the order.", 409,
-        [{ code: "CART_STOCK_REVIEW_REQUIRED" }]);
-    }
-    requestedBySku.set(key, requested);
-
     const promotion = await findActivePromotionForProduct(
       {
         productId: product._id,
@@ -479,6 +468,17 @@ async function buildOrderItemsWithPromotions({ session, cart, lang = "en" }) {
         400,
       );
     }
+
+    const source = product.type === "SIMPLE" ? product : (product.variants ?? []).find(row => String(row._id) === String(item.variantId));
+    const rows = (source?.warehouseStocks ?? []).filter(row => String(row.warehouse) === String(cart.warehouse));
+    const key = `${item.product}:${item.variantId ?? ""}`;
+    const requested = (requestedBySku.get(key) ?? 0) + quantity;
+    if (product.isActive !== true || rows.length !== 1 || !Number.isSafeInteger(rows[0].quantity) ||
+        !Number.isSafeInteger(requested) || rows[0].quantity < requested) {
+      throw new ApiError("Adjust unavailable cart quantities before placing the order.", 409,
+        [{ code: "CART_STOCK_REVIEW_REQUIRED" }]);
+    }
+    requestedBySku.set(key, requested);
 
     const promotion = await getPromotionForProduct(product);
     const promoPercent =

@@ -583,6 +583,7 @@ test('checkout rebinds stock and shipping to the effective warehouse', async (t)
     type: 'SIMPLE',
     name_en: 'Test product',
     name_ar: 'Test product',
+    isActive: true,
     price: 100,
     discountedPrice: null,
     images: [],
