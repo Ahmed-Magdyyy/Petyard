@@ -4,6 +4,8 @@ import { assertBundleOrderSnapshot } from "../bundle/bundle.order-snapshot.js";
 import {
   orderStatusEnum,
   orderLineKindEnum,
+  orderPlatformEnum,
+  orderPlatformSourceEnum,
   orderSubstitutionStateEnum,
   paymentMethodEnum,
   paymentStatusEnum
@@ -262,6 +264,16 @@ const orderSchema = new Schema(
       type: String,
       enum: Object.values(paymentMethodEnum),
       default: paymentMethodEnum.COD,
+    },
+    platform: {
+      type: String,
+      enum: Object.values(orderPlatformEnum),
+      immutable: true,
+    },
+    platformSource: {
+      type: String,
+      enum: Object.values(orderPlatformSourceEnum),
+      immutable: true,
     },
     instapayScreenshot: { type: String },
     instapayScreenshots: {

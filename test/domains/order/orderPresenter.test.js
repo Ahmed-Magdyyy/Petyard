@@ -77,6 +77,8 @@ test("presentOrder uses toJSON exactly once without mutating a Mongoose-like obj
   assert.deepEqual(result, {
     _id: "order-2",
     status: "pending",
+    platform: "unknown",
+    platformSource: "unknown",
     instapayScreenshot: document.instapayScreenshot,
     instapayScreenshots: [document.instapayScreenshot],
   });
@@ -84,8 +86,9 @@ test("presentOrder uses toJSON exactly once without mutating a Mongoose-like obj
 });
 
 test("presentOrder leaves missing, null, and Cloudinary proof values unchanged", () => {
-  assert.deepEqual(presentOrder({ _id: "missing" }), { _id: "missing" });
-  assert.deepEqual(presentOrder({ _id: "null", instapayScreenshot: null }), { _id: "null", instapayScreenshot: null });
+  const missingPlatform = { platform: "unknown", platformSource: "unknown" };
+  assert.deepEqual(presentOrder({ _id: "missing" }), { _id: "missing", ...missingPlatform });
+  assert.deepEqual(presentOrder({ _id: "null", instapayScreenshot: null }), { _id: "null", instapayScreenshot: null, ...missingPlatform });
   assert.equal(presentOrder(null), null);
 });
 
@@ -147,7 +150,7 @@ test("presentOrderPage preserves pagination metadata and only presents data entr
   const page = {
     data: [
       { _id: "one", instapayScreenshot: null },
-      { _id: "two", instapayScreenshot: "https://external.example/proof.png" },
+      { _id: "two", instapayScreenshot: "https://external.example/proof.png", platform: "web", platformSource: "request" },
     ],
     page: 2,
     totalPages: 4,
@@ -160,7 +163,7 @@ test("presentOrderPage preserves pagination metadata and only presents data entr
   assert.equal(result.totalPages, 4);
   assert.equal(result.statusCounts, page.statusCounts);
   assert.deepEqual(result.data, [
-    page.data[0],
+    { ...page.data[0], platform: "unknown", platformSource: "unknown" },
     {
       ...page.data[1],
       instapayScreenshots: [page.data[1].instapayScreenshot],

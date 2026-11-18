@@ -1,12 +1,21 @@
-import { body, param } from "express-validator";
+import { body, header, param } from "express-validator";
 import { validatorMiddleware } from "../../shared/middlewares/validatorMiddleware.js";
 import {
   orderStatusEnum,
+  orderPlatformEnum,
   paymentMethodEnum,
 } from "../../shared/constants/enums.js";
 import { getInstapayScreenshotFiles } from "./order.instapay.js";
 
+const orderPlatformHeader = header("x-app-platform")
+  .optional()
+  .custom((value) =>
+    [orderPlatformEnum.ANDROID, orderPlatformEnum.IOS, orderPlatformEnum.WEB].includes(value),
+  )
+  .withMessage("X-App-Platform must be one of: android, ios, web");
+
 export const createOrderForUserValidator = [
+  orderPlatformHeader,
   // Reject the retired request explicitly; ignoring it could place an ordinary order by mistake.
   body("bundleCheckout")
     .not().exists()
@@ -44,6 +53,7 @@ export const createOrderForUserValidator = [
 ];
 
 export const createOrderForGuestValidator = [
+  orderPlatformHeader,
   body("couponCode")
     .optional({ nullable: true })
     .isString()

@@ -17,6 +17,8 @@ import { UserModel } from "../user/user.model.js";
 import { WalletTransactionModel } from "../wallet/walletTransaction.model.js";
 import {
   orderLineKindEnum,
+  orderPlatformEnum,
+  orderPlatformSourceEnum,
   orderStatusEnum,
   orderSubstitutionStateEnum,
   inventoryAuditReasonEnum,
@@ -996,6 +998,7 @@ export async function processOrderCreationWithCart({
   cart,
   orderUserId,
   orderGuestId,
+  platform = orderPlatformEnum.UNKNOWN,
   couponCode,
   couponUserId,
   paymentMethod,
@@ -1212,6 +1215,10 @@ export async function processOrderCreationWithCart({
   const orderDoc = {
     user: orderUserId,
     guestId: orderGuestId,
+    platform,
+    platformSource: platform === orderPlatformEnum.UNKNOWN
+      ? orderPlatformSourceEnum.UNKNOWN
+      : orderPlatformSourceEnum.REQUEST,
     warehouse: cart.warehouse,
     orderNumber,
     currency: cart.currency || "EGP",
@@ -1419,6 +1426,7 @@ async function ensureOrderCartCheckoutKey(cart, identity) {
 
 export async function createOrderForUserService({
   userId,
+  platform,
   couponCode,
   paymentMethod,
   notes,
@@ -1510,6 +1518,7 @@ export async function createOrderForUserService({
         cart,
         orderUserId: userId,
         orderGuestId: null,
+        platform,
         couponCode,
         couponUserId: userId,
         paymentMethod,
@@ -1575,6 +1584,7 @@ export async function createOrderForUserService({
 
 export async function createOrderForGuestService({
   guestId,
+  platform,
   couponCode,
   paymentMethod,
   notes,
@@ -1665,6 +1675,7 @@ export async function createOrderForGuestService({
         cart,
         orderUserId: null,
         orderGuestId: guestId,
+        platform,
         couponCode,
         couponUserId: null,
         paymentMethod,

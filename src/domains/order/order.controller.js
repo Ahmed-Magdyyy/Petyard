@@ -33,6 +33,7 @@ export const createOrderForGuest = asyncHandler(async (req, res) => {
 
   const result = await createOrderForGuestService({
     guestId,
+    platform: req.get("X-App-Platform"),
     couponCode,
     paymentMethod,
     notes,
@@ -57,6 +58,7 @@ export const createOrderForUser = asyncHandler(async (req, res) => {
 
   const result = await createOrderForUserService({
     userId: req.user._id,
+    platform: req.get("X-App-Platform"),
     couponCode,
     paymentMethod,
     notes,

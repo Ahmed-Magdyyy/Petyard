@@ -127,8 +127,10 @@ for (const method of ["cod", "pos_on_delivery", "instapay", "card"]) {
 }
 
 for (const ordinary of [true, false]) test(`existing card skeleton assembly leaves stock, money and cart unchanged (${ordinary ? "mixed" : "bundle only"})`, async t => {
-  const s = setup(t, { ordinary }), before = s.snapshot(), order = await s.place({ paymentMethod: "card" });
+  const s = setup(t, { ordinary }), before = s.snapshot(), order = await s.place({ paymentMethod: "card", platform: "android" });
   assert.equal(order.status, "awaiting_payment"); assert.equal(order.sideEffectsCommitted, false);
+  assert.equal(s.orders[0].platform, "android");
+  assert.equal(s.orders[0].platformSource, "request");
   assert.equal(order.total, ordinary ? 90 : 70); assert.equal(order.settlement.cardDuePiastres, order.total * 100);
   assert.deepEqual({ ...s.cart, __v: before.cart.__v }, before.cart); assert.equal(s.cart.__v, before.cart.__v + 1);
   assert.deepEqual(s.snapshot().products, before.products); assert.equal(s.user.walletBalance, 10);
@@ -251,9 +253,13 @@ async function publicFixture(t, options) {
 }
 
 for (const method of ["cod", "pos_on_delivery"]) for (const ordinary of [true, false]) test(`existing HTTP order route purchases ${ordinary ? "mixed" : "bundle-only"} merchandise with ${method}`, async t => {
-  const s = await publicFixture(t, { ordinary }), result = await s.request({ paymentMethod: method, notes: "Call first" });
+  const s = await publicFixture(t, { ordinary }), result = await s.request({ paymentMethod: method, notes: "Call first" }, { "X-App-Platform": "ios" });
   assert.equal(result.status, 201, JSON.stringify(result.body)); assert.equal(result.body.data.total, ordinary ? 90 : 70);
   assert.equal(result.body.data.paymentMethod, method); assert.equal(result.body.data.notes, "Call first");
+  assert.equal(result.body.data.platform, "ios");
+  assert.equal(result.body.data.platformSource, "request");
+  assert.equal(s.orders[0].platform, "ios");
+  assert.equal(s.orders[0].platformSource, "request");
   assert.equal(result.body.data.items.length, ordinary ? 1 : 0); assert.equal(result.body.data.bundles.length, 1);
   assert.equal(s.orders.length, 1); assert.equal(s.stockSaves, 1); assert.equal(s.ledger.length, 1); assert.equal(s.user.walletBalance, 0);
   assert.deepEqual(s.cart.items, []); assert.equal(s.cart.bundles, undefined);
@@ -262,11 +268,42 @@ for (const method of ["cod", "pos_on_delivery"]) for (const ordinary of [true, f
 
 for (const ordinary of [true, false]) test(`guest HTTP order route buys ${ordinary ? "mixed" : "bundle-only"} merchandise without signing in`, async t => {
   const s = await publicFixture(t, { guest: true, ordinary });
-  const result = await s.request({ paymentMethod: "cod" });
+  const result = await s.request(
+    { paymentMethod: "cod", platform: "android", platformSource: "inferred" },
+    ordinary ? { "X-App-Platform": "web" } : {},
+  );
   assert.equal(result.status, 201, JSON.stringify(result.body));
+  assert.equal(result.body.data.platform, ordinary ? "web" : "unknown");
+  assert.equal(result.body.data.platformSource, ordinary ? "request" : "unknown");
+  assert.equal(s.orders[0].platform, result.body.data.platform);
+  assert.equal(s.orders[0].platformSource, result.body.data.platformSource);
   assert.equal(result.body.data.total, ordinary ? 100 : 80);
   assert.equal(result.body.data.bundles.length, 1); assert.equal(s.stockSaves, 1);
   assert.deepEqual(s.ledger, []);
+});
+
+test("both order routes reject an invalid platform header before starting checkout", async t => {
+  for (const guest of [false, true]) {
+    await t.test(guest ? "guest" : "registered", async child => {
+      const s = await publicFixture(child, { guest });
+      for (const platform of ["mobile", "unknown", "", "ios, web"]) {
+        const result = await s.request({ paymentMethod: "cod" }, { "X-App-Platform": platform });
+        assert.equal(result.status, 400);
+        assert.deepEqual(result.body, {
+          status: "fail",
+          error: [{
+            field: "x-app-platform",
+            value: platform,
+            location: "headers",
+            message: "X-App-Platform must be one of: android, ios, web",
+          }],
+          message: "Validation error",
+        });
+      }
+      assert.equal(s.starts, 0);
+      assert.equal(s.orders.length, 0);
+    });
+  }
 });
 
 test("guest card checkout key backfill uses the owned cart and retains the existing retry window", async t => {

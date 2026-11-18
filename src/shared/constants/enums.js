@@ -30,6 +30,18 @@ export const orderStatusEnum = Object.freeze({
   RETURNED: "returned",
 });
 
+export const orderPlatformEnum = Object.freeze({
+  ANDROID: "android",
+  IOS: "ios",
+  WEB: "web",
+  UNKNOWN: "unknown",
+});
+
+export const orderPlatformSourceEnum = Object.freeze({
+  REQUEST: "request",
+  UNKNOWN: "unknown",
+});
+
 export const paymentMethodEnum = Object.freeze({
   COD: "cod",
   CARD: "card",

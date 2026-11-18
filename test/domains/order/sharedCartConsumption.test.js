@@ -194,7 +194,10 @@ for (const ordinary of [true, false]) test(`guest card confirmation consumes ${o
 
 test("existing card confirmation clears mixed merchandise and retains its wallet, capture and key-rotation rules", async t => {
   const s = await payment(t, { bundles: true }), address = clone(s.cart.deliveryAddress);
+  Object.assign(s.order, { platform: "ios", platformSource: "request" });
   await s.confirm();
+  assert.equal(s.order.platform, "ios");
+  assert.equal(s.order.platformSource, "request");
   assert.equal(s.order.paymentStatus, "paid"); assert.equal(s.order.status, "pending"); assert.equal(s.order.sideEffectsCommitted, true);
   assert.equal(s.product.warehouseStocks[0].quantity, 4); assert.equal(s.productSaves, 1);
   assert.equal(s.walletDebits, 1); assert.equal(s.walletBalance, 0); assert.equal(s.walletLedger[0].amount, -10);

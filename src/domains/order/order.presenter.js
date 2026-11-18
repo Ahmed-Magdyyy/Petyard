@@ -1,6 +1,10 @@
 import { getPrivateImageDeliveryUrl } from "../../shared/utils/privateImageDelivery.js";
 import { fromPiastres } from "../../shared/utils/money.js";
 import { presentBundleOrderGroups } from "../bundle/bundle.order-snapshot.js";
+import {
+  orderPlatformEnum,
+  orderPlatformSourceEnum,
+} from "../../shared/constants/enums.js";
 
 function presentSettlementMoney(settlement, field) {
   const value = settlement?.[field];
@@ -78,6 +82,11 @@ export function presentOrder(order, deliveryOptions) {
 
   let value =
     typeof order.toJSON === "function" ? order.toJSON() : { ...order };
+  value = {
+    ...value,
+    platform: value.platform ?? orderPlatformEnum.UNKNOWN,
+    platformSource: value.platformSource ?? orderPlatformSourceEnum.UNKNOWN,
+  };
   if (value.bundleGroups !== undefined || value.items?.some(item => item.bundleGroupId != null || item.bundleComponentIndex != null)) {
     const bundles = presentBundleOrderGroups(value);
     const { bundleGroups, ...rest } = value;

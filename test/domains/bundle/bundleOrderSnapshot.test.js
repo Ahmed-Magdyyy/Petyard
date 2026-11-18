@@ -68,13 +68,14 @@ test("a positive one-piastre bundle may have zero-value physical cohorts", async
   assert.equal(calculateMerchandiseGrossPiastres(order.items), 2);
 });
 
-test("normal orders retain absent optional fields and unchanged presentation", async () => {
+test("normal orders retain absent bundle fields and present a missing platform as unknown", async () => {
   const s = fixture(); delete s.order.bundleGroups; s.order.items = [s.order.items[0]];
   const doc = new OrderModel(s.order); await doc.validate(); const json = doc.toJSON();
   assert.equal(Object.hasOwn(json, "bundleGroups"), false);
   assert.equal(Object.hasOwn(json, "bundleCheckout"), false);
   assert.equal(Object.hasOwn(json.items[0], "bundleGroupId"), false); assert.equal(Object.hasOwn(json.items[0], "bundleComponentIndex"), false);
-  assert.deepEqual(presentOrder(json), json); assert.doesNotThrow(() => assertBundleOrderCanReorder(json));
+  assert.deepEqual(presentOrder(json), { ...json, platform: "unknown", platformSource: "unknown" });
+  assert.doesNotThrow(() => assertBundleOrderCanReorder(json));
   assert.doesNotThrow(() => assertBundleLineCanSubstitute(json.items[0]));
 });
 
